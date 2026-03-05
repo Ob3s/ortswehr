@@ -2,7 +2,7 @@
   "name": "Ortswehr Verwaltung",
   "short_name": "Ortswehr",
   "description": "Verwaltung für die freiwillige Feuerwehr",
-  "start_url": "/",
+  "start_url": "/ortswehr/",
   "display": "standalone",
   "background_color": "#cc2200",
   "theme_color": "#cc2200",
