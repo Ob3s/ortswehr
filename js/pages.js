@@ -61,11 +61,9 @@ registerPage('dashboard', async (el) => {
       <div class="muted" style="font-size:0.82rem">${fw.profil.dienstgrad||''} · ${fw.isWehrfuehrer()?'Wehrführer':'Kamerad'}</div>
     </div>
 
-    ${fw.isWehrfuehrer() ? `
-      <button class="alarm-btn" onclick="navigate('uebung-form',{typ:'einsatz'})">
-        🚨 EINSATZ MELDEN
-      </button>
-    ` : ''}
+    <button class="alarm-btn" onclick="navigate('uebung-form',{typ:'einsatz'})">
+      🚨 EINSATZ MELDEN
+    </button>
 
     ${offen > 0 ? `
       <div class="pending-banner" onclick="navigate('uebungen')">
@@ -331,6 +329,8 @@ window.uebungSpeichern = async (id) => {
   const dauer_h  = parseFloat(document.getElementById('f-dauer').value);
   const beschr   = document.getElementById('f-beschr').value.trim();
   if (!titel || !datumStr) { fw.toast('Titel und Datum erforderlich', true); return; }
+  // Übungen nur Wehrführer, Einsätze alle
+  if (typ === 'uebung' && !fw.isWehrfuehrer()) { fw.toast('Nur Wehrführer können Übungen anlegen', true); return; }
 
   const data = { titel, datum: new Date(datumStr), typ, dauer_h, beschreibung: beschr };
   const isNeu = !id;
