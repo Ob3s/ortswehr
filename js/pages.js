@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten
+// js/pages.js – alle Seiten v1.0.9
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -19,17 +19,19 @@ function anwesenheitBadge(s) {
 }
 function getStats(anwesenheiten) {
   const vor12m = new Date(); vor12m.setFullYear(vor12m.getFullYear()-1);
-  let gesamt=0, einsaetze=0, stunden12m=0;
+  let gesamtEinsatz=0, gesamtDienst=0, einsaetze=0, dienste=0, stunden12m=0;
   for (const a of anwesenheiten) {
     if (a.status !== 'bestaetigt') continue;
-    gesamt += a.dauer_h || 0;
-    if (a.typ === 'einsatz') einsaetze++;
+    const h = a.dauer_h || 0;
     const d = a.datum?.toDate ? a.datum.toDate() : new Date(a.datum);
-    if (d >= vor12m) stunden12m += a.dauer_h || 0;
+    if (a.typ === 'einsatz') { gesamtEinsatz += h; einsaetze++; }
+    else                     { gesamtDienst  += h; dienste++;   }
+    if (d >= vor12m) stunden12m += h;
   }
   return {
-    gesamt: Math.round(gesamt*10)/10,
-    einsaetze,
+    gesamtEinsatz: Math.round(gesamtEinsatz*10)/10,
+    gesamtDienst:  Math.round(gesamtDienst*10)/10,
+    einsaetze, dienste,
     stunden12m: Math.round(stunden12m*10)/10,
     ziel: stunden12m >= 40,
   };
@@ -42,9 +44,9 @@ registerPage('dashboard', async (el) => {
     fw.getDocs('anwesenheiten', fw.where('userId','==',fw.user.uid)),
     fw.getDocs('uebungen', fw.orderBy('datum','desc')),
   ]);
-  const meine   = aSnap.docs.map(d => ({id:d.id,...d.data()}));
-  const stats   = getStats(meine);
-  const uebungen = uSnap.docs.map(d => ({id:d.id,...d.data()})).slice(0,6);
+  const meine    = aSnap.docs.map(d => ({id:d.id,...d.data()}));
+  const stats    = getStats(meine);
+  const eintraege = uSnap.docs.map(d => ({id:d.id,...d.data()})).slice(0,6);
   const meineMap = new Map(meine.map(a => [a.uebungId, a.status]));
 
   let offen = 0;
@@ -62,7 +64,7 @@ registerPage('dashboard', async (el) => {
     </div>
 
     <button class="alarm-btn" onclick="navigate('uebung-form',{typ:'einsatz'})">
-      🚨 EINSATZ MELDEN
+      🚨 Einsatz
     </button>
 
     ${offen > 0 ? `
@@ -73,56 +75,48 @@ registerPage('dashboard', async (el) => {
       </div>` : ''}
 
     <div class="stats-grid">
-      <div class="stat-card"><div class="stat-zahl">${stats.gesamt}</div><div class="stat-label">Gesamtstunden</div></div>
+      <div class="stat-card"><div class="stat-zahl">${stats.gesamtEinsatz}h</div><div class="stat-label">Einsatzstunden</div></div>
       <div class="stat-card"><div class="stat-zahl">${stats.einsaetze}</div><div class="stat-label">Einsätze</div></div>
+      <div class="stat-card"><div class="stat-zahl">${stats.gesamtDienst}h</div><div class="stat-label">Dienststunden</div></div>
+      <div class="stat-card"><div class="stat-zahl">${stats.dienste}</div><div class="stat-label">Dienste</div></div>
       <div class="stat-card wide ${stats.ziel?'erreicht':'fehlt'}">
         <div class="stat-zahl">${stats.stunden12m} / 40h</div>
         <div class="stat-label">Letzte 12 Monate ${stats.ziel?'✅ Ziel erreicht':'⚠️ Noch nicht erreicht'}</div>
       </div>
     </div>
 
-    <div class="section-header">Aktuelle Übungen & Einsätze</div>
+    <div class="section-header">Aktuelle Einsätze & Dienste</div>
     <div class="card">
-      ${uebungen.length===0 ? '<div class="empty">Keine Einträge</div>' :
-        uebungen.map(u => `
+      ${eintraege.length===0 ? '<div class="empty">Keine Einträge</div>' :
+        eintraege.map(u => `
           <div class="list-item" onclick="navigate('uebung-detail',{id:'${u.id}'})">
             <div class="typ-dot typ-${u.typ}"></div>
             <div class="list-item-body">
               <div class="list-item-title">${u.titel}</div>
-              <div class="list-item-sub">${datum(u.datum)} · ${u.dauer_h}h</div>
+              <div class="list-item-sub">${datum(u.datum)} · ${u.dauer_h||''}h</div>
             </div>
             <div class="list-item-right">${anwesenheitBadge(meineMap.get(u.id))}</div>
             <div class="list-chevron">›</div>
           </div>`).join('')}
     </div>
-    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.0.8</div>
+    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.0.9</div>
   `;
-  // Deep Link prüfen
   checkDeepLink();
 });
 
-// ── Deep Link: URL-Parameter beim Start prüfen ────────────
-function checkDeepLink() {
-  const params = new URLSearchParams(window.location.search);
-  const uebungId = params.get('uebung');
-  if (uebungId) {
-    // URL bereinigen ohne Reload
-    window.history.replaceState({}, '', window.location.pathname);
-    navigate('uebung-detail', { id: uebungId });
-  }
-}
-
-// ── Übungen ───────────────────────────────────────────────
+// ── Dienste & Einsätze ────────────────────────────────────
 registerPage('uebungen', async (el) => {
-  fw.setTitle('Übungen & Einsätze');
+  fw.setTitle('Einsätze & Dienste');
   if (fw.isWehrfuehrer()) fw.showHeaderAction('+ Neu', () => navigate('uebung-form', {}));
 
   const [uSnap, aSnap] = await Promise.all([
     fw.getDocs('uebungen', fw.orderBy('datum','desc')),
     fw.getDocs('anwesenheiten', fw.where('userId','==',fw.user.uid)),
   ]);
-  const uebungen = uSnap.docs.map(d => ({id:d.id,...d.data()}));
+  const alle     = uSnap.docs.map(d => ({id:d.id,...d.data()}));
   const meineMap = new Map(aSnap.docs.map(d => [d.data().uebungId, d.data().status]));
+  const einsaetze = alle.filter(u => u.typ === 'einsatz');
+  const dienste   = alle.filter(u => u.typ !== 'einsatz');
 
   let vorschlaege = [];
   if (fw.isWehrfuehrer()) {
@@ -130,27 +124,29 @@ registerPage('uebungen', async (el) => {
     vorschlaege = vSnap.docs.map(d => ({id:d.id,...d.data()}));
   }
 
+  function renderListe(liste) {
+    if (!liste.length) return '<div class="empty">Keine Einträge</div>';
+    return liste.map(u => `
+      <div class="list-item" onclick="navigate('uebung-detail',{id:'${u.id}'})">
+        <div class="typ-dot typ-${u.typ}"></div>
+        <div class="list-item-body">
+          <div class="list-item-title">${u.titel}</div>
+          <div class="list-item-sub">${datum(u.datum)} · ${u.dauer_h||''}h</div>
+        </div>
+        <div class="list-item-right">${anwesenheitBadge(meineMap.get(u.id))}</div>
+        <div class="list-chevron">›</div>
+      </div>`).join('');
+  }
+
   el.innerHTML = `
     ${vorschlaege.length > 0 ? `
       <div class="section-header">⏳ Ausstehende Bestätigungen (${vorschlaege.length})</div>
       <div class="card" id="vorschlaege-liste"></div>
     ` : ''}
-    <div class="section-header">Alle Übungen & Einsätze</div>
-    <div class="card">
-      ${uebungen.length===0 ? '<div class="empty">Noch keine Einträge</div>' :
-        uebungen.map(u => `
-          <div class="list-item" onclick="navigate('uebung-detail',{id:'${u.id}'})">
-            <div class="typ-dot typ-${u.typ}"></div>
-            <div class="list-item-body">
-              <div class="list-item-title">${u.titel}</div>
-              <div class="list-item-sub">${datum(u.datum)} · ${u.dauer_h}h ·
-                <span class="badge ${u.typ==='einsatz'?'badge-red':'badge-blue'}">${u.typ==='einsatz'?'Einsatz':'Übung'}</span>
-              </div>
-            </div>
-            <div class="list-item-right">${anwesenheitBadge(meineMap.get(u.id))}</div>
-            <div class="list-chevron">›</div>
-          </div>`).join('')}
-    </div>
+    <div class="section-header">🚨 Einsätze</div>
+    <div class="card">${renderListe(einsaetze)}</div>
+    <div class="section-header">📅 Dienste</div>
+    <div class="card">${renderListe(dienste)}</div>
   `;
 
   if (vorschlaege.length > 0) {
@@ -168,7 +164,7 @@ registerPage('uebungen', async (el) => {
           <div class="list-item-sub">${v.uebungTitel||''} · ${datum(v.datum)}</div>
         </div>
         <div style="display:flex;gap:0.4rem">
-          <button class="btn btn-sm btn-success" onclick="bestaetigen('${v.id}','${v.uebungId}','${v.userId}','${users[v.userId]?.vorname||''} ${users[v.userId]?.nachname||''}')">✅</button>
+          <button class="btn btn-sm btn-success" onclick="bestaetigen('${v.id}','${v.uebungId}','${v.userId}','${(users[v.userId]?.vorname||'')+' '+(users[v.userId]?.nachname||'')}')">✅</button>
           <button class="btn btn-sm btn-danger"  onclick="ablehnen('${v.id}')">❌</button>
         </div>
       </div>`).join('');
@@ -177,7 +173,6 @@ registerPage('uebungen', async (el) => {
 
 window.bestaetigen = async (aId, uId, userId, name) => {
   await fw.updateDoc('anwesenheiten/'+aId, { status:'bestaetigt', bestaetigtAm: new Date() });
-  // Push an Kamerad wenn gewünscht
   const uSnap = await fw.getDoc('users/'+userId);
   const u = uSnap.data();
   if (u?.notif_bestaetigung && u?.fcmToken) {
@@ -190,12 +185,13 @@ window.ablehnen = async (aId) => {
   fw.toast('Abgelehnt'); navigate('uebungen');
 };
 
-// ── Übung Detail ──────────────────────────────────────────
+// ── Detail ────────────────────────────────────────────────
 registerPage('uebung-detail', async (el, {id}) => {
   const snap = await fw.getDoc('uebungen/'+id);
   if (!snap.exists()) { el.innerHTML='<div class="empty">Nicht gefunden</div>'; return; }
   const u = {id,...snap.data()};
-  fw.setTitle(u.titel);
+  const isEinsatz = u.typ === 'einsatz';
+  fw.setTitle(isEinsatz ? 'Einsatz' : 'Dienst');
   fw.showBack(() => navigate('uebungen'));
   if (fw.isWehrfuehrer()) fw.showHeaderAction('✏️ Edit', () => navigate('uebung-form',{id}));
 
@@ -206,8 +202,7 @@ registerPage('uebung-detail', async (el, {id}) => {
   let teilnehmerHTML = '';
   if (fw.isWehrfuehrer()) {
     const allA = await fw.getDocs('anwesenheiten', fw.where('uebungId','==',id));
-    const alle = allA.docs.map(d => ({id:d.id,...d.data()}));
-    const best = alle.filter(a => a.status==='bestaetigt');
+    const best = allA.docs.map(d => ({id:d.id,...d.data()})).filter(a => a.status==='bestaetigt');
     teilnehmerHTML = `
       <div class="section-header">Teilnehmer (${best.length})</div>
       <div class="card">
@@ -218,15 +213,16 @@ registerPage('uebung-detail', async (el, {id}) => {
               <button class="btn btn-sm btn-danger" onclick="teilnehmerEntfernen('${a.id}','${id}')">🗑</button>
             </div>`).join('')}
         <div class="btn-row">
-          <button class="btn btn-secondary btn-sm" onclick="navigate('uebung-eintragen',{id:'${id}',titel:'${u.titel.replace(/'/g,"\\'")}',dauer:${u.dauer_h},typ:'${u.typ}',datumStr:'${u.datum?.toDate?.().toISOString()||u.datum}'})">+ Kamerad eintragen</button>
+          <button class="btn btn-secondary btn-sm" onclick="navigate('uebung-eintragen',{id:'${id}',titel:'${u.titel.replace(/'/g,"\\'")}',dauer:${u.dauer_h||0},typ:'${u.typ}',datumStr:'${u.datum?.toDate?.().toISOString()||u.datum}'})">+ Kamerad eintragen</button>
         </div>
       </div>`;
   }
 
   el.innerHTML = `
     <div class="card">
-      <span class="badge ${u.typ==='einsatz'?'badge-red':'badge-blue'}">${u.typ==='einsatz'?'⚡ Einsatz':'🔥 Übung'}</span>
-      <div style="margin-top:0.6rem;font-weight:600">${datum(u.datum)} · ${u.dauer_h} Stunden</div>
+      <span class="badge ${isEinsatz?'badge-red':'badge-blue'}">${isEinsatz?'⚡ Einsatz':'📅 Dienst'}</span>
+      <div style="margin-top:0.6rem;font-weight:600;font-size:1.1rem">${u.titel}</div>
+      <div style="margin-top:0.3rem;color:var(--muted);font-size:0.85rem">${datum(u.datum)}${u.dauer_h ? ' · '+u.dauer_h+'h' : ''}</div>
       ${u.beschreibung ? `<p class="muted" style="margin-top:0.4rem;font-size:0.85rem">${u.beschreibung}</p>` : ''}
     </div>
     <div class="section-header">Meine Anwesenheit</div>
@@ -238,7 +234,7 @@ registerPage('uebung-detail', async (el, {id}) => {
         ${meineA.status==='abgelehnt'?'<p class="muted" style="font-size:0.83rem">Deine Teilnahme wurde abgelehnt.</p>':''}
       ` : `
         <p class="muted" style="font-size:0.85rem;margin-bottom:0.8rem">Du hast dich noch nicht gemeldet.</p>
-        <button class="btn btn-primary" onclick="teilnahmeMelden('${id}','${u.titel.replace(/'/g,"\\'")}',${u.dauer_h},'${u.typ}','${u.datum?.toDate?.().toISOString()||u.datum}')">
+        <button class="btn btn-primary" onclick="teilnahmeMelden('${id}','${u.titel.replace(/'/g,"\\'")}',${u.dauer_h||0},'${u.typ}','${u.datum?.toDate?.().toISOString()||u.datum}')">
           Teilnahme melden
         </button>
       `}
@@ -300,51 +296,68 @@ window.direktEintragen = async (uebungId, userId, name, dauer_h, typ, datumStr) 
   navigate('uebung-detail', {id: uebungId});
 };
 
-// ── Übung/Einsatz Form ────────────────────────────────────
+// ── Einsatz / Dienst Form ─────────────────────────────────
 registerPage('uebung-form', async (el, {id, typ: vorTyp}) => {
   let u = null;
   if (id) { const s = await fw.getDoc('uebungen/'+id); if (s.exists()) u={id,...s.data()}; }
-  fw.setTitle(u ? 'Bearbeiten' : (vorTyp==='einsatz' ? 'Neuer Einsatz' : 'Neue Übung'));
+  const selTyp = u?.typ || vorTyp || 'dienst';
+  const isEinsatz = selTyp === 'einsatz';
+  fw.setTitle(u ? 'Bearbeiten' : (isEinsatz ? 'Einsatz melden' : 'Neuer Dienst'));
   fw.showBack(() => navigate('uebungen'));
 
   const datumVal = u?.datum?.toDate ? u.datum.toDate().toISOString().slice(0,10)
-    : (u?.datum ? new Date(u.datum).toISOString().slice(0,10) : new Date().toISOString().slice(0,10));
-  const selTyp = u?.typ || vorTyp || 'uebung';
+    : new Date().toISOString().slice(0,10);
 
-  el.innerHTML = `
-    <div class="card">
-      <div class="form-row"><label>Titel</label>
-        <input id="f-titel" value="${u?.titel||''}" placeholder="${selTyp==='einsatz'?'Brandeinsatz...':'Monatsübung April...'}">
-      </div>
-      <div class="form-row"><label>Datum</label><input id="f-datum" type="date" value="${datumVal}"></div>
-      <div class="form-row"><label>Typ</label>
-        <select id="f-typ">
-          <option value="uebung"  ${selTyp==='uebung' ?'selected':''}>🔥 Übung</option>
-          <option value="einsatz" ${selTyp==='einsatz'?'selected':''}>⚡ Einsatz</option>
-        </select>
-      </div>
-      <div class="form-row"><label>Dauer (Stunden)</label>
-        <input id="f-dauer" type="number" step="0.5" min="0.5" value="${u?.dauer_h||2}">
-      </div>
-      <div class="form-row"><label>Beschreibung (optional)</label>
-        <textarea id="f-beschr">${u?.beschreibung||''}</textarea>
-      </div>
-      <div class="btn-row">
-        <button class="btn btn-primary" onclick="uebungSpeichern('${id||''}')">💾 Speichern & Benachrichtigen</button>
-        ${u ? `<button class="btn btn-danger" onclick="uebungLoeschen('${id}')">🗑 Löschen</button>` : ''}
-      </div>
-    </div>`;
+  if (isEinsatz) {
+    // Einsatz: nur Stichwort, Datum automatisch, minimale Eingabe
+    el.innerHTML = `
+      <div class="card">
+        <div style="font-family:'DM Serif Display',serif;font-size:1.3rem;color:var(--red);margin-bottom:1rem">🚨 Einsatz</div>
+        <div class="form-row">
+          <label>Einsatzstichwort</label>
+          <input id="f-titel" placeholder="Brand, THL, Hilfeleistung…" autofocus>
+        </div>
+        <div class="form-row">
+          <label>Dauer (Stunden)</label>
+          <input id="f-dauer" type="number" step="0.5" min="0.5" value="2">
+        </div>
+        <button class="btn btn-danger btn-full" style="margin-top:0.5rem" onclick="uebungSpeichern('${id||''}','einsatz')">🚨 Einsatz melden & Alarm senden</button>
+      </div>`;
+  } else {
+    // Dienst: vollständiges Formular
+    el.innerHTML = `
+      <div class="card">
+        <div class="form-row"><label>Titel</label>
+          <input id="f-titel" value="${u?.titel||''}" placeholder="Monatsübung April…">
+        </div>
+        <div class="form-row"><label>Datum</label><input id="f-datum" type="date" value="${datumVal}"></div>
+        <div class="form-row"><label>Dauer (Stunden)</label>
+          <input id="f-dauer" type="number" step="0.5" min="0.5" value="${u?.dauer_h||2}">
+        </div>
+        <div class="form-row"><label>Beschreibung (optional)</label>
+          <textarea id="f-beschr">${u?.beschreibung||''}</textarea>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" onclick="uebungSpeichern('${id||''}','dienst')">💾 Speichern & Benachrichtigen</button>
+          ${u ? `<button class="btn btn-danger" onclick="uebungLoeschen('${id}')">🗑 Löschen</button>` : ''}
+        </div>
+      </div>`;
+  }
 });
 
-window.uebungSpeichern = async (id) => {
-  const titel    = document.getElementById('f-titel').value.trim();
-  const datumStr = document.getElementById('f-datum').value;
-  const typ      = document.getElementById('f-typ').value;
-  const dauer_h  = parseFloat(document.getElementById('f-dauer').value);
-  const beschr   = document.getElementById('f-beschr').value.trim();
-  if (!titel || !datumStr) { fw.toast('Titel und Datum erforderlich', true); return; }
-  // Übungen nur Wehrführer, Einsätze alle
-  if (typ === 'uebung' && !fw.isWehrfuehrer()) { fw.toast('Nur Wehrführer können Übungen anlegen', true); return; }
+window.uebungSpeichern = async (id, forcTyp) => {
+  const titel   = document.getElementById('f-titel').value.trim();
+  const dauer_h = parseFloat(document.getElementById('f-dauer').value) || 0;
+  const typ     = forcTyp === 'einsatz' ? 'einsatz' : 'dienst';
+  const isEinsatz = typ === 'einsatz';
+
+  // Datum: bei Einsatz immer heute, sonst aus Formular
+  const datumStr = isEinsatz
+    ? new Date().toISOString().slice(0,10)
+    : (document.getElementById('f-datum')?.value || new Date().toISOString().slice(0,10));
+  const beschr = document.getElementById('f-beschr')?.value?.trim() || '';
+
+  if (!titel) { fw.toast('Stichwort erforderlich', true); return; }
 
   const data = { titel, datum: new Date(datumStr), typ, dauer_h, beschreibung: beschr };
   const isNeu = !id;
@@ -356,13 +369,8 @@ window.uebungSpeichern = async (id) => {
       const ref = await fw.addDoc('uebungen', {...data, erstelltVon: fw.user.uid, erstelltAm: new Date()});
       uebungId = ref.id;
     }
-
-    // Push-Benachrichtigungen senden
-    if (isNeu) {
-      await benachrichtigeOrtswehr(typ, titel, datumStr, dauer_h, uebungId);
-    }
-
-    fw.toast('Gespeichert ✅');
+    if (isNeu) await benachrichtigeOrtswehr(typ, titel, datumStr, dauer_h, uebungId);
+    fw.toast(isEinsatz ? 'Einsatz gemeldet 🚨' : 'Gespeichert ✅');
     navigate('uebungen');
   } catch(e) { fw.toast(e.message, true); }
 };
@@ -373,9 +381,8 @@ window.uebungLoeschen = async (id) => {
   fw.toast('Gelöscht'); navigate('uebungen');
 };
 
-// ── Push-Benachrichtigungen senden ────────────────────────
+// ── Push ──────────────────────────────────────────────────
 async function benachrichtigeOrtswehr(typ, titel, datumStr, dauer_h, uebungId) {
-  // Alle Kameraden derselben Ortswehr laden
   const ortswehrId = fw.profil.ortswehrId;
   let usersSnap;
   if (ortswehrId) {
@@ -383,7 +390,6 @@ async function benachrichtigeOrtswehr(typ, titel, datumStr, dauer_h, uebungId) {
   } else {
     usersSnap = await fw.getDocs('users');
   }
-
   const isEinsatz = typ === 'einsatz';
   const tokens = [];
   for (const d of usersSnap.docs) {
@@ -393,14 +399,11 @@ async function benachrichtigeOrtswehr(typ, titel, datumStr, dauer_h, uebungId) {
     if (isEinsatz && u.notif_einsatz !== false) tokens.push(u.fcmToken);
     if (!isEinsatz && u.notif_uebung !== false) tokens.push(u.fcmToken);
   }
-
   if (tokens.length === 0) return;
-
-  const title = isEinsatz ? '🚨 EINSATZ ALARM' : '🔔 Neue Übung';
+  const title = isEinsatz ? '🚨 EINSATZ ALARM' : '🔔 Neuer Dienst';
   const body  = isEinsatz
-    ? `${titel} – Sofort zum Gerätehaus!`
+    ? titel
     : `${titel} am ${new Date(datumStr).toLocaleDateString('de-DE')} (${dauer_h}h)`;
-
   await sendPush(tokens, title, body, isEinsatz, uebungId);
 }
 
@@ -408,17 +411,24 @@ async function sendPush(tokens, title, body, alarm = false, uebungId = null) {
   try {
     console.log('Push wird gesendet an', tokens.length, 'Empfänger...');
     await fw.addDoc('push_queue', {
-      tokens, title, body,
-      alarm: alarm,
-      uebungId: uebungId,
-      erstelltAm: new Date(),
-      erstelltVon: fw.user.uid,
+      tokens, title, body, alarm, uebungId,
+      erstelltAm: new Date(), erstelltVon: fw.user.uid,
     });
     console.log('push_queue Dokument erstellt ✅');
-    fw.toast('Alarm gesendet 🚨');
+    fw.toast(alarm ? 'Alarm gesendet 🚨' : 'Benachrichtigung gesendet ✅');
   } catch(e) {
     console.error('Push Fehler:', e);
     fw.toast('Push Fehler: ' + e.message, true);
+  }
+}
+
+// ── Deep Link ─────────────────────────────────────────────
+function checkDeepLink() {
+  const params = new URLSearchParams(window.location.search);
+  const uebungId = params.get('uebung');
+  if (uebungId) {
+    window.history.replaceState({}, '', window.location.pathname);
+    navigate('uebung-detail', { id: uebungId });
   }
 }
 
@@ -435,8 +445,10 @@ registerPage('profil', async (el) => {
 
   el.innerHTML = `
     <div class="stats-grid">
-      <div class="stat-card"><div class="stat-zahl">${stats.gesamt}</div><div class="stat-label">Gesamtstunden</div></div>
+      <div class="stat-card"><div class="stat-zahl">${stats.gesamtEinsatz}h</div><div class="stat-label">Einsatzstunden</div></div>
       <div class="stat-card"><div class="stat-zahl">${stats.einsaetze}</div><div class="stat-label">Einsätze</div></div>
+      <div class="stat-card"><div class="stat-zahl">${stats.gesamtDienst}h</div><div class="stat-label">Dienststunden</div></div>
+      <div class="stat-card"><div class="stat-zahl">${stats.dienste}</div><div class="stat-label">Dienste</div></div>
       <div class="stat-card wide ${stats.ziel?'erreicht':'fehlt'}">
         <div class="stat-zahl">${stats.stunden12m} / 40h</div>
         <div class="stat-label">Letzte 12 Monate ${stats.ziel?'✅ Ziel erreicht':'⚠️ Noch nicht erreicht'}</div>
@@ -460,7 +472,7 @@ registerPage('profil', async (el) => {
         <input type="checkbox" id="n-einsatz" style="width:24px;height:24px;accent-color:var(--red);cursor:pointer;flex-shrink:0">
       </div>
       <div class="notif-row" style="display:flex;align-items:center;gap:0.8rem;padding:0.6rem 0;border-bottom:1px solid var(--border)">
-        <div style="flex:1"><div style="font-weight:600">📅 Neue Übung</div><div class="muted" style="font-size:0.78rem">Bei neuen Übungen</div></div>
+        <div style="flex:1"><div style="font-weight:600">📅 Neuer Dienst</div><div class="muted" style="font-size:0.78rem">Bei neuen Diensten</div></div>
         <input type="checkbox" id="n-uebung" style="width:24px;height:24px;accent-color:var(--red);cursor:pointer;flex-shrink:0">
       </div>
       <div class="notif-row" style="display:flex;align-items:center;gap:0.8rem;padding:0.6rem 0;border-bottom:1px solid var(--border)">
@@ -504,7 +516,6 @@ registerPage('profil', async (el) => {
       <button class="btn btn-danger btn-full" onclick="abmelden()">Abmelden</button>
     </div>
   `;
-  // Checkbox-Status direkt nach dem Rendern setzen
   initNotifCheckboxes();
 });
 
@@ -521,23 +532,18 @@ window.profilSpeichern = async () => {
   fw.toast('Gespeichert ✅');
 };
 
-// Listener für Notif-Button (onclick funktioniert nicht in ES-Modulen)
-document.addEventListener('click', e => {
-  if (e.target.id === 'notif-save-btn') notifSpeichern();
-});
-
-// Checkbox-Status nach dem Rendern setzen
 function initNotifCheckboxes() {
   const p = fw.profil;
   const e = document.getElementById('n-einsatz');
   const u = document.getElementById('n-uebung');
   const b = document.getElementById('n-best');
+  const s = document.getElementById('n-selbst');
   if (e) e.checked = p.notif_einsatz !== false;
   if (u) u.checked = p.notif_uebung !== false;
   if (b) b.checked = p.notif_bestaetigung !== false;
-  const s = document.getElementById('n-selbst');
   if (s) s.checked = p.notif_selbst === true;
 }
+
 window.pushTesten = async () => {
   fw.toast('Registriere Push...');
   await fw.registerPush();
@@ -553,7 +559,6 @@ window.notifSpeichern = async () => {
   };
   await fw.setDoc('users/'+fw.user.uid, data);
   Object.assign(fw.profil, data);
-  // Push-Token erneuern/entfernen
   if (data.notif_einsatz || data.notif_uebung || data.notif_bestaetigung) {
     await fw.registerPush();
   } else {
@@ -624,8 +629,10 @@ registerPage('kamerad-detail', async (el, {id}) => {
 
   el.innerHTML = `
     <div class="stats-grid">
-      <div class="stat-card"><div class="stat-zahl">${stats.gesamt}</div><div class="stat-label">Gesamtstunden</div></div>
+      <div class="stat-card"><div class="stat-zahl">${stats.gesamtEinsatz}h</div><div class="stat-label">Einsatzstunden</div></div>
       <div class="stat-card"><div class="stat-zahl">${stats.einsaetze}</div><div class="stat-label">Einsätze</div></div>
+      <div class="stat-card"><div class="stat-zahl">${stats.gesamtDienst}h</div><div class="stat-label">Dienststunden</div></div>
+      <div class="stat-card"><div class="stat-zahl">${stats.dienste}</div><div class="stat-label">Dienste</div></div>
       <div class="stat-card wide ${stats.ziel?'erreicht':'fehlt'}">
         <div class="stat-zahl">${stats.stunden12m} / 40h</div>
         <div class="stat-label">${stats.ziel?'✅ Ziel erreicht':'⚠️ Ziel nicht erreicht'}</div>
@@ -658,8 +665,17 @@ registerPage('kamerad-detail', async (el, {id}) => {
         <input id="q-bem" placeholder="Bemerkung" style="flex:2;min-width:100px">
         <button class="btn btn-primary btn-sm" onclick="qualiHinzufuegen('${id}')">+</button>
       </div>
+    </div>
+    <div class="card">
+      <button class="btn btn-danger btn-full" onclick="kameradLoeschen('${id}')">🗑 Kamerad löschen</button>
     </div>`;
 });
+
+window.kameradLoeschen = async (id) => {
+  if (!confirm('Kamerad wirklich löschen? Alle Anwesenheiten bleiben erhalten.')) return;
+  await fw.setDoc('users/'+id, { aktiv: false });
+  fw.toast('Kamerad deaktiviert'); navigate('kameraden');
+};
 
 window.qualiHinzufuegen = async (userId) => {
   const bez = document.getElementById('q-bez').value.trim();
@@ -682,7 +698,6 @@ registerPage('kamerad-form', async (el, {id}) => {
   fw.setTitle(u ? 'Bearbeiten' : 'Neuer Kamerad');
   fw.showBack(() => id ? navigate('kamerad-detail',{id}) : navigate('kameraden'));
 
-  // Ortswehren laden
   const owSnap = await fw.getDocs('ortswehren');
   const ortswehren = owSnap.docs.map(d => ({id:d.id,...d.data()}));
   const owOptions = ortswehren.map(o =>
@@ -750,7 +765,7 @@ window.kameradSpeichern = async (id) => {
   }
 };
 
-// ── Ortswehren verwalten ──────────────────────────────────
+// ── Ortswehren ────────────────────────────────────────────
 registerPage('ortswehren', async (el) => {
   fw.setTitle('Ortswehren');
   fw.showHeaderAction('+ Neu', () => navigate('ortswehr-form', {}));
@@ -758,7 +773,7 @@ registerPage('ortswehren', async (el) => {
   const wehren = snap.docs.map(d => ({id:d.id,...d.data()}));
   el.innerHTML = `
     <div class="card">
-      ${wehren.length===0 ? '<div class="empty">Noch keine Ortswehren angelegt</div>' :
+      ${wehren.length===0 ? '<div class="empty">Noch keine Ortswehren angelegt.<br>Oben rechts auf "+ Neu" tippen.</div>' :
         wehren.map(w => `
           <div class="list-item" onclick="navigate('ortswehr-form',{id:'${w.id}'})">
             <div class="list-item-icon">🏘️</div>
@@ -800,7 +815,7 @@ window.ortswehrSpeichern = async (id) => {
   fw.toast('Gespeichert ✅'); navigate('ortswehren');
 };
 window.ortswehrLoeschen = async (id) => {
-  if (!confirm('Ortswehr löschen? Kameraden bleiben erhalten.')) return;
+  if (!confirm('Ortswehr löschen?')) return;
   await fw.deleteDoc('ortswehren/'+id);
   fw.toast('Gelöscht'); navigate('ortswehren');
 };
