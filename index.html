@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="theme-color" content="#cc2200">
-  <meta name="app-version" content="1.4.9">
+  <meta name="app-version" content="1.5.0">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ortswehr">
@@ -277,24 +277,36 @@
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/ortswehr/sw.js');
+  }
 
-    // Einmalig beim Start: version.json vom Server holen (nie gecacht)
+  // Update-Prüfung: version.json vom Server holen (nie gecacht)
+  window.pruefeAufUpdate = async (manuell = false) => {
     try {
       const res = await fetch('/ortswehr/version.json?t=' + Date.now());
       const { version } = await res.json();
       const lokal = document.querySelector('meta[name="app-version"]')?.content;
       if (lokal && version && version !== lokal) {
-        // Neue Version da – Banner zeigen
         const banner = document.getElementById('update-banner');
         if (banner) banner.style.display = 'flex';
-        document.getElementById('update-btn')?.addEventListener('click', () => {
-          // Caches leeren und hart neu laden
-          caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k))))
-            .then(() => window.location.reload(true));
-        });
+        document.getElementById('update-btn').onclick = async () => {
+          document.getElementById('update-btn').textContent = '⏳ Wird aktualisiert...';
+          // Alle SW deregistrieren und Caches löschen
+          const regs = await navigator.serviceWorker.getRegistrations();
+          await Promise.all(regs.map(r => r.unregister()));
+          const keys = await caches.keys();
+          await Promise.all(keys.map(k => caches.delete(k)));
+          window.location.reload(true);
+        };
+      } else if (manuell) {
+        fw.toast('✅ App ist aktuell (v' + lokal + ')');
       }
-    } catch(e) { /* offline – ignorieren */ }
-  }
+    } catch(e) {
+      if (manuell) fw.toast('Keine Verbindung', true);
+    }
+  };
+
+  // Beim Start automatisch prüfen
+  pruefeAufUpdate();
 </script>
 <script src="js/pages.js" type="module" defer></script>
 </body>

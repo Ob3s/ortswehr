@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v1.4.9
+// js/pages.js – alle Seiten v1.5.0
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -127,7 +127,7 @@ ${renderNaechsteDienste(naechster, naechsterOegeln)}
     </div>
 
 
-    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.4.9</div>
+    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.5.0</div>
   `;
   checkDeepLink();
   startStatusPruefung();
@@ -718,6 +718,7 @@ registerPage('profil', async (el) => {
     </div>
     <div class="card">
       <button class="btn btn-danger btn-full" onclick="abmelden()">Abmelden</button>
+      <button class="btn btn-secondary btn-full" style="margin-top:0.5rem" onclick="pruefeAufUpdate(true)">🔄 Auf Updates prüfen</button>
     </div>
   `;
   initNotifCheckboxes();
