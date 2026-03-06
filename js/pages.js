@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v1.3.4
+// js/pages.js – alle Seiten v1.3.5
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -52,6 +52,24 @@ function getStats(anwesenheiten) {
   };
 }
 
+// ── Nächste Dienste ──────────────────────────────────────
+function dienstKarte(d, label) {
+  return `<div class="card" style="margin-bottom:0.5rem;cursor:pointer" onclick="navigate('uebung-detail',{id:'${d.id}',typ:'dienst'})">
+    <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.2rem">${label}</div>
+    <div style="font-weight:600">${d.titel}</div>
+    <div style="font-size:0.83rem;color:var(--muted)">${datum(d.datum)}${d.zeitBeginn ? ' · '+d.zeitBeginn+' Uhr' : ''}${d.ort ? ' · '+d.ort : ''}</div>
+  </div>`;
+}
+function renderNaechsteDienste(naechster, naechsterOegeln) {
+  if (!naechster) return '<div class="card" style="font-size:0.85rem;text-align:center;color:var(--muted)">Keine bevorstehenden Dienste</div>';
+  let html = dienstKarte(naechster, '📅 Nächster Dienst');
+  // Oegeln extra anzeigen wenn der nächste Dienst nicht in Oegeln ist
+  if (naechsterOegeln && naechsterOegeln.id !== naechster.id) {
+    html += dienstKarte(naechsterOegeln, '📅 Nächster Dienst in Oegeln');
+  }
+  return html;
+}
+
 // ── Dashboard ─────────────────────────────────────────────
 registerPage('dashboard', async (el) => {
   fw.setTitle('Dashboard');
@@ -88,19 +106,7 @@ registerPage('dashboard', async (el) => {
       🚨 Einsatz
     </button>
 
-    ${naechster ? `
-    <div class="card" style="margin-bottom:0.5rem" onclick="navigate('uebung-detail',{id:'${naechster.id}',typ:'dienst'})">
-      <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.2rem">📅 Nächster Dienst</div>
-      <div style="font-weight:600">${naechster.titel}</div>
-      <div style="font-size:0.83rem;color:var(--muted)">${datum(naechster.datum)}${naechster.zeitBeginn ? ' · '+naechster.zeitBeginn+' Uhr' : ''}${naechster.ort ? ' · '+naechster.ort : ''}</div>
-    </div>
-    ${naechsterOegeln && naechsterOegeln.id !== naechster.id ? `
-    <div class="card" style="margin-bottom:0.5rem" onclick="navigate('uebung-detail',{id:'${naechsterOegeln.id}',typ:'dienst'})">
-      <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.2rem">📅 Nächster Dienst in Oegeln</div>
-      <div style="font-weight:600">${naechsterOegeln.titel}</div>
-      <div style="font-size:0.83rem;color:var(--muted)">${datum(naechsterOegeln.datum)}${naechsterOegeln.zeitBeginn ? ' · '+naechsterOegeln.zeitBeginn+' Uhr' : ''}${naechsterOegeln.ort ? ' · '+naechsterOegeln.ort : ''}</div>
-    </div>` : ''}
-    ` : '<div class="card muted" style="font-size:0.85rem;text-align:center">Keine bevorstehenden Dienste</div>'}
+${renderNaechsteDienste(naechster, naechsterOegeln)}
 
     ${offen > 0 ? `
       <div class="pending-banner" onclick="navigate('einsaetze')">
@@ -121,7 +127,7 @@ registerPage('dashboard', async (el) => {
     </div>
 
 
-    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.3.4</div>
+    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.3.5</div>
   `;
   checkDeepLink();
   startStatusPruefung();

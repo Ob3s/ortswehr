@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="theme-color" content="#cc2200">
-  <meta name="app-version" content="1.3.4">
+  <meta name="app-version" content="1.3.5">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ortswehr">
@@ -241,52 +241,25 @@
     return cred.user.uid;
   };
 
-  // Update-Banner global verfügbar
-  function zeigeUpdateBanner(worker) {
-    const banner = document.getElementById('update-banner');
-    if (!banner || banner.dataset.shown) return;
-    banner.dataset.shown = '1';
-    banner.style.display = 'flex';
-    document.getElementById('update-btn')?.addEventListener('click', () => {
-      worker.postMessage('SKIP_WAITING');
-    });
-  }
-
   if ('serviceWorker' in navigator) {
-    const reg = await navigator.serviceWorker.register('/ortswehr/sw.js');
+    navigator.serviceWorker.register('/ortswehr/sw.js');
 
-    if (reg.waiting) zeigeUpdateBanner(reg.waiting);
-    reg.addEventListener('updatefound', () => {
-      const nw = reg.installing;
-      nw.addEventListener('statechange', () => {
-        if (nw.state === 'installed' && navigator.serviceWorker.controller) {
-          zeigeUpdateBanner(nw);
-        }
-      });
-    });
-
-    let reloading = false;
-    navigator.serviceWorker.addEventListener('controllerchange', () => {
-      if (!reloading) { reloading = true; window.location.reload(); }
-    });
-
-    // Einmalig beim Start prüfen ob neue Version auf GitHub
-    pruefeGithubVersion();
-  }
-
-  async function pruefeGithubVersion() {
+    // Einmalig beim Start: version.json vom Server holen (nie gecacht)
     try {
       const res = await fetch('/ortswehr/version.json?t=' + Date.now());
       const { version } = await res.json();
       const lokal = document.querySelector('meta[name="app-version"]')?.content;
       if (lokal && version && version !== lokal) {
-        // SW-Update erzwingen – das löst updatefound aus und zeigt den Banner
-        const reg = await navigator.serviceWorker.getRegistration('/ortswehr/sw.js');
-        if (reg) await reg.update();
-        // Falls SW schon wartet (z.B. nach reload) direkt Banner zeigen
-        if (reg?.waiting) zeigeUpdateBanner(reg.waiting);
+        // Neue Version da – Banner zeigen
+        const banner = document.getElementById('update-banner');
+        if (banner) banner.style.display = 'flex';
+        document.getElementById('update-btn')?.addEventListener('click', () => {
+          // Caches leeren und hart neu laden
+          caches.keys().then(keys => Promise.all(keys.map(k => caches.delete(k))))
+            .then(() => window.location.reload(true));
+        });
       }
-    } catch(e) { /* kein Internet oder Fehler – ignorieren */ }
+    } catch(e) { /* offline – ignorieren */ }
   }
 </script>
 <script src="js/pages.js" type="module" defer></script>
