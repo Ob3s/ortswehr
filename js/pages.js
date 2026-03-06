@@ -95,7 +95,8 @@ registerPage('dashboard', async (el) => {
             <div class="list-chevron">›</div>
           </div>`).join('')}
     </div>
-  `;
+    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.0.7</div>
+  \`;
 });
 
 // ── Übungen ───────────────────────────────────────────────
@@ -458,6 +459,7 @@ registerPage('profil', async (el) => {
         <input type="checkbox" id="n-selbst" style="width:24px;height:24px;accent-color:var(--red);cursor:pointer;flex-shrink:0">
       </div>` : ''}
       <button class="btn btn-secondary btn-full" style="margin-top:0.8rem" id="notif-save-btn" onclick="notifSpeichern()">Einstellungen speichern</button>
+      <button class="btn btn-ghost" style="margin-top:0.4rem;font-size:0.8rem" onclick="pushTesten()">🔔 Push-Registrierung testen</button>
     </div>
 
     <div class="section-header">Dienstlich</div>
@@ -522,6 +524,11 @@ function initNotifCheckboxes() {
   const s = document.getElementById('n-selbst');
   if (s) s.checked = p.notif_selbst === true;
 }
+window.pushTesten = async () => {
+  fw.toast('Registriere Push...');
+  await fw.registerPush();
+};
+
 window.notifSpeichern = async () => {
   const selbstEl = document.getElementById('n-selbst');
   const data = {
