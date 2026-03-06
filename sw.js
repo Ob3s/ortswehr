@@ -1,14 +1,17 @@
 // sw.js – Service Worker
-const CACHE = 'ortswehr-v4';
+const CACHE = 'ortswehr-v5';
 const ASSETS = [
   '/ortswehr/', '/ortswehr/index.html',
   '/ortswehr/css/style.css', '/ortswehr/js/pages.js', '/ortswehr/manifest.json',
   '/ortswehr/icons/icon-192.png', '/ortswehr/icons/icon-512.png'
 ];
 
+// Diese URLs niemals cachen – sonst erkennt der SW seine eigenen Updates nicht
+const NEVER_CACHE = ['sw.js', 'version.json'];
+
 self.addEventListener('install', e => {
-  // KEIN skipWaiting hier! Wir warten auf Nutzer-Bestätigung
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
+  // KEIN skipWaiting – warten auf Nutzer-Bestätigung
 });
 
 self.addEventListener('activate', e => {
@@ -19,8 +22,11 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
-  if (e.request.url.includes('firestore') || e.request.url.includes('googleapis') ||
-      e.request.url.includes('firebase') || e.request.url.includes('gstatic')) return;
+  const url = e.request.url;
+  // Nie cachen: Firebase, externe APIs, sw.js selbst, version.json
+  if (url.includes('firestore') || url.includes('googleapis') ||
+      url.includes('firebase') || url.includes('gstatic') ||
+      NEVER_CACHE.some(n => url.includes(n))) return;
   e.respondWith(
     caches.match(e.request).then(cached => cached || fetch(e.request))
   );
