@@ -391,15 +391,19 @@ async function benachrichtigeOrtswehr(typ, titel, datumStr, dauer_h, uebungId) {
 }
 
 async function sendPush(tokens, title, body, alarm = false) {
-  // Push via Firestore-Trigger (Cloud Function liest diese Collection)
   try {
+    console.log('Push wird gesendet an', tokens.length, 'Empfänger...');
     await fw.addDoc('push_queue', {
-      tokens, title, body, alarm,
+      tokens, title, body,
+      alarm: alarm,
       erstelltAm: new Date(),
       erstelltVon: fw.user.uid,
     });
+    console.log('push_queue Dokument erstellt ✅');
+    fw.toast('Alarm gesendet 🚨');
   } catch(e) {
-    console.warn('Push queue:', e);
+    console.error('Push Fehler:', e);
+    fw.toast('Push Fehler: ' + e.message, true);
   }
 }
 
@@ -453,7 +457,7 @@ registerPage('profil', async (el) => {
         <div style="flex:1"><div style="font-weight:600">🧪 Selbst benachrichtigen</div><div class="muted" style="font-size:0.78rem">Nur für Tests – Wehrführer erhält eigene Alarme</div></div>
         <input type="checkbox" id="n-selbst" style="width:24px;height:24px;accent-color:var(--red);cursor:pointer;flex-shrink:0">
       </div>` : ''}
-      <button class="btn btn-secondary btn-full" style="margin-top:0.8rem" id="notif-save-btn">Einstellungen speichern</button>
+      <button class="btn btn-secondary btn-full" style="margin-top:0.8rem" id="notif-save-btn" onclick="notifSpeichern()">Einstellungen speichern</button>
     </div>
 
     <div class="section-header">Dienstlich</div>
@@ -484,6 +488,8 @@ registerPage('profil', async (el) => {
       <button class="btn btn-danger btn-full" onclick="abmelden()">Abmelden</button>
     </div>
   `;
+  // Checkbox-Status direkt nach dem Rendern setzen
+  initNotifCheckboxes();
 });
 
 window.profilSpeichern = async () => {
@@ -516,8 +522,6 @@ function initNotifCheckboxes() {
   const s = document.getElementById('n-selbst');
   if (s) s.checked = p.notif_selbst === true;
 }
-setTimeout(initNotifCheckboxes, 50);
-
 window.notifSpeichern = async () => {
   const selbstEl = document.getElementById('n-selbst');
   const data = {
