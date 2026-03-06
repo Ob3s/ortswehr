@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="theme-color" content="#cc2200">
-  <meta name="app-version" content="1.2.8">
+  <meta name="app-version" content="1.2.9">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ortswehr">
@@ -63,7 +63,7 @@
 <div id="toast"></div>
 <div id="update-banner" style="display:none;position:fixed;bottom:70px;left:50%;transform:translateX(-50%);z-index:999;background:#1e293b;color:#fff;border-radius:14px;padding:0.7rem 1.2rem;display:none;align-items:center;gap:0.8rem;box-shadow:0 4px 20px rgba(0,0,0,0.3);font-size:0.88rem;white-space:nowrap">
   🆕 Neue Version verfügbar
-  <button id="update-btn" style="background:var(--red);color:#fff;border:none;border-radius:8px;padding:0.35rem 0.9rem;font-size:0.85rem;cursor:pointer;font-weight:600">Jetzt updaten</button>
+  <button id="update-btn" style="background:var(--red);color:#fff;border:none;border-radius:8px;padding:0.35rem 0.9rem;font-size:0.85rem;cursor:pointer;font-weight:600">Jetzt aktualisieren</button>
 </div>
 
 <script type="module">
@@ -230,16 +230,19 @@
     return cred.user.uid;
   };
 
+  // Update-Banner global verfügbar
+  function zeigeUpdateBanner(worker) {
+    const banner = document.getElementById('update-banner');
+    if (!banner || banner.dataset.shown) return;
+    banner.dataset.shown = '1';
+    banner.style.display = 'flex';
+    document.getElementById('update-btn')?.addEventListener('click', () => {
+      worker.postMessage('SKIP_WAITING');
+    });
+  }
+
   if ('serviceWorker' in navigator) {
     const reg = await navigator.serviceWorker.register('/ortswehr/sw.js');
-
-    function zeigeUpdateBanner(worker) {
-      const banner = document.getElementById('update-banner');
-      if (banner) banner.style.display = 'flex';
-      document.getElementById('update-btn')?.addEventListener('click', () => {
-        worker.postMessage('SKIP_WAITING');
-      });
-    }
 
     if (reg.waiting) zeigeUpdateBanner(reg.waiting);
     reg.addEventListener('updatefound', () => {
@@ -266,11 +269,11 @@
       const { version } = await res.json();
       const lokal = document.querySelector('meta[name="app-version"]')?.content;
       if (lokal && version && version !== lokal) {
-        const banner = document.getElementById('update-banner');
-        if (banner) banner.style.display = 'flex';
-        document.getElementById('update-btn')?.addEventListener('click', () => {
-          window.location.reload(true);
-        });
+        // SW-Update erzwingen – das löst updatefound aus und zeigt den Banner
+        const reg = await navigator.serviceWorker.getRegistration('/ortswehr/sw.js');
+        if (reg) await reg.update();
+        // Falls SW schon wartet (z.B. nach reload) direkt Banner zeigen
+        if (reg?.waiting) zeigeUpdateBanner(reg.waiting);
       }
     } catch(e) { /* kein Internet oder Fehler – ignorieren */ }
   }

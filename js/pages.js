@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v1.2.8
+// js/pages.js – alle Seiten v1.2.9
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -96,7 +96,7 @@ registerPage('dashboard', async (el) => {
     </div>
 
 
-    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.2.8</div>
+    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.2.9</div>
   `;
   checkDeepLink();
   startStatusPruefung();
