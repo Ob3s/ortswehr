@@ -113,22 +113,24 @@
     hideHeaderAction() { document.getElementById('header-action').classList.add('hidden'); },
 
     async registerPush() {
-      if (!messaging) return null;
+      if (!messaging) { this.toast('Push: messaging nicht verfügbar', true); return null; }
       try {
         const perm = await Notification.requestPermission();
-        if (perm !== 'granted') { console.warn('Push: Berechtigung verweigert'); return null; }
-        // Firebase Messaging SW muss im Root liegen
+        if (perm !== 'granted') { this.toast('Push: Berechtigung verweigert', true); return null; }
         const swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
         await navigator.serviceWorker.ready;
         const token = await getToken(messaging, { vapidKey: VAPID, serviceWorkerRegistration: swReg });
         if (token) {
           await this.setDoc('users/' + this.user.uid, { fcmToken: token });
-          console.log('FCM Token gespeichert:', token.slice(0,20)+'...');
+          this.toast('Push registriert ✅');
         } else {
-          console.warn('Push: Kein Token erhalten');
+          this.toast('Push: Kein Token erhalten', true);
         }
         return token;
-      } catch(e) { console.warn('Push Fehler:', e); return null; }
+      } catch(e) {
+        this.toast('Push Fehler: ' + e.code, true);
+        return null;
+      }
     },
   };
 
