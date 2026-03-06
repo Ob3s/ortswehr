@@ -37,21 +37,6 @@ self.addEventListener('message', e => {
   if (e.data === 'SKIP_WAITING') self.skipWaiting();
 });
 
-// ── Push ──────────────────────────────────────────────────
-self.addEventListener('push', e => {
-  const data = e.data?.json() || {};
-  const title = data.title || '🚒 Ortswehr';
-  e.waitUntil(self.registration.showNotification(title, {
-    body:    data.body || '',
-    icon:    '/ortswehr/icons/icon-192.png',
-    badge:   '/ortswehr/icons/icon-192.png',
-    tag:     data.tag || 'ortswehr',
-    vibrate: data.alarm ? [200,100,200,100,200,100,400] : [200,100,200],
-    data:    { url: data.url || '/ortswehr/' },
-    requireInteraction: data.alarm || false,
-  }));
-});
-
 self.addEventListener('notificationclick', e => {
   e.notification.close();
   const url = e.notification.data?.url || '/ortswehr/';
