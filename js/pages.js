@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v1.1.0
+// js/pages.js – alle Seiten v1.1.1
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -63,6 +63,14 @@ registerPage('dashboard', async (el) => {
       <div class="muted" style="font-size:0.82rem">${fw.profil.dienstgrad||''} · ${fw.isWehrfuehrer()?'Wehrführer':'Kamerad'}</div>
     </div>
 
+    <div id="status-bar" style="display:flex;gap:0.5rem;margin-bottom:0.8rem;padding:0.6rem 0.8rem;background:var(--card);border-radius:12px;align-items:center;font-size:0.78rem">
+      <div id="s-online"  style="display:flex;align-items:center;gap:0.3rem"><span style="width:10px;height:10px;border-radius:50%;background:#ccc;display:inline-block"></span>Online</div>
+      <div style="color:var(--border)">·</div>
+      <div id="s-notif"   style="display:flex;align-items:center;gap:0.3rem"><span style="width:10px;height:10px;border-radius:50%;background:#ccc;display:inline-block"></span>Benachrichtigungen</div>
+      <div style="color:var(--border)">·</div>
+      <div id="s-token"   style="display:flex;align-items:center;gap:0.3rem"><span style="width:10px;height:10px;border-radius:50%;background:#ccc;display:inline-block"></span>Push-Token</div>
+    </div>
+
     <button class="alarm-btn" onclick="navigate('uebung-form',{typ:'einsatz'})">
       🚨 Einsatz
     </button>
@@ -99,10 +107,34 @@ registerPage('dashboard', async (el) => {
             <div class="list-chevron">›</div>
           </div>`).join('')}
     </div>
-    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.1.0</div>
+    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.1.1</div>
   `;
   checkDeepLink();
+  pruefeStatus();
 });
+
+async function pruefeStatus() {
+  function setLampe(id, ok, text) {
+    const el = document.getElementById(id);
+    if (!el) return;
+    el.innerHTML = `<span style="width:10px;height:10px;border-radius:50%;background:${ok?'#22c55e':'#ef4444'};display:inline-block;box-shadow:0 0 6px ${ok?'#22c55e':'#ef4444'}"></span>${text}`;
+  }
+
+  // 1. Online?
+  const online = navigator.onLine;
+  setLampe('s-online', online, online ? 'Online' : 'Offline');
+
+  // 2. Benachrichtigungen erlaubt?
+  const perm = Notification.permission;
+  const notifOk = perm === 'granted';
+  setLampe('s-notif', notifOk, notifOk ? 'Benachrichtigungen ✓' : (perm === 'denied' ? 'Verweigert ✗' : 'Nicht erteilt'));
+
+  // 3. FCM-Token vorhanden?
+  const snap = await fw.getDoc('users/'+fw.user.uid);
+  const token = snap.data()?.fcmToken;
+  const tokenOk = !!(token && token.length > 10);
+  setLampe('s-token', tokenOk, tokenOk ? 'Push aktiv ✓' : 'Kein Token ✗');
+}
 
 // ── Hilfsfunktion: Liste rendern ─────────────────────────
 function renderEintragListe(liste, meineMap) {
