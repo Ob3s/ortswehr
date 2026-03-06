@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="theme-color" content="#cc2200">
-  <meta name="app-version" content="1.4.4">
+  <meta name="app-version" content="1.4.6">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ortswehr">
@@ -152,24 +152,33 @@
 
   if (messaging) {
     onMessage(messaging, payload => {
-      // App im Vordergrund: Notification direkt anzeigen
       const title    = payload.notification?.title || '🚒 Ortswehr';
       const body     = payload.notification?.body  || '';
       const alarm    = payload.data?.alarm === 'true';
       const uebungId = payload.data?.uebungId || '';
       console.log('FCM Vordergrund:', title);
-      if (Notification.permission === 'granted') {
-        const n = new Notification(title, {
-          body,
-          icon: '/ortswehr/icons/icon-192.png',
-          tag:  alarm ? 'einsatz' : 'allgemein',
-          requireInteraction: alarm,
-        });
-        n.onclick = () => {
-          window.focus();
-          if (uebungId) navigate('uebung-detail', { id: uebungId, typ: 'einsatz' });
-          n.close();
-        };
+      fw.toast((alarm ? '🚨 ' : '🔔 ') + title + ': ' + body);
+      if (alarm) {
+        // Alarmton über Web Audio API
+        try {
+          const ctx = new (window.AudioContext || window.webkitAudioContext)();
+          const spieleTon = (freq, start, dauer) => {
+            const osc = ctx.createOscillator();
+            const gain = ctx.createGain();
+            osc.connect(gain); gain.connect(ctx.destination);
+            osc.frequency.value = freq;
+            osc.type = 'square';
+            gain.gain.setValueAtTime(0.6, ctx.currentTime + start);
+            gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + start + dauer);
+            osc.start(ctx.currentTime + start);
+            osc.stop(ctx.currentTime + start + dauer);
+          };
+          // 3x Alarm-Piep
+          spieleTon(880, 0.0, 0.3);
+          spieleTon(880, 0.4, 0.3);
+          spieleTon(880, 0.8, 0.6);
+        } catch(e) { console.warn('Audio nicht verfügbar:', e); }
+        if (uebungId) setTimeout(() => navigate('uebung-detail', { id: uebungId, typ: 'einsatz' }), 1500);
       }
     });
   }
