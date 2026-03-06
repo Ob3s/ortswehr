@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v1.3.5
+// js/pages.js – alle Seiten v1.3.7
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -102,7 +102,7 @@ registerPage('dashboard', async (el) => {
       <span id="status-lampe" style="width:12px;height:12px;border-radius:50%;background:#ccc;display:inline-block;flex-shrink:0;cursor:default" title="Status wird geprüft..."></span>
     </div>
 
-    <button class="alarm-btn" onclick="navigate('uebung-form',{typ:'einsatz'})">
+    <button class="alarm-btn" onclick="navigate('uebung-form',{typ:'einsatz',alarm:true})">
       🚨 Einsatz
     </button>
 
@@ -127,7 +127,7 @@ ${renderNaechsteDienste(naechster, naechsterOegeln)}
     </div>
 
 
-    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.3.5</div>
+    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.3.7</div>
   `;
   checkDeepLink();
   startStatusPruefung();
@@ -262,7 +262,7 @@ function col(typ) { return typ === 'einsatz' ? 'einsaetze' : 'dienste'; }
 // ── Einsätze ──────────────────────────────────────────────
 registerPage('einsaetze', async (el) => {
   fw.setTitle('Einsätze');
-  fw.showHeaderAction('+ Einsatz', () => navigate('uebung-form', {typ:'einsatz'}));
+  fw.showHeaderAction('+ Einsatz', () => navigate('uebung-form', {typ:'einsatz', alarm:false}));
   const [uSnap, aSnap, vSnap] = await Promise.all([
     fw.getDocs('einsaetze', fw.orderBy('datum','desc')),
     fw.getDocs('anwesenheiten', fw.where('userId','==',fw.user.uid)),
@@ -469,7 +469,7 @@ window.direktEintragen = async (uebungId, userId, name, dauer_h, typ, datumStr) 
 };
 
 // ── Einsatz / Dienst Form ─────────────────────────────────
-registerPage('uebung-form', async (el, {id, typ: vorTyp}) => {
+registerPage('uebung-form', async (el, {id, typ: vorTyp, alarm: mitAlarm}) => {
   let u = null;
   if (id) { const s = await fw.getDoc(col(vorTyp||'dienst')+'/'+id); if (!s.exists()) { const s2 = await fw.getDoc(col('einsatz')+'/'+id); if(s2.exists()) u={id,...s2.data()}; } else { u={id,...s.data()}; } }
   const selTyp = u?.typ || vorTyp || 'dienst';
@@ -499,7 +499,8 @@ registerPage('uebung-form', async (el, {id, typ: vorTyp}) => {
           <label>Ende (optional, kann nachgetragen werden)</label>
           <input id="f-ende" type="time" value="${u?.zeitEnde||''}">
         </div>
-        <button class="btn btn-danger btn-full" style="margin-top:0.5rem" onclick="uebungSpeichern('${id||''}','einsatz')">${u ? '💾 Speichern' : '🚨 Einsatz melden & Alarm senden'}</button>
+        <input type="hidden" id="f-alarm" value="${mitAlarm ? '1' : '0'}">
+        <button class="btn btn-danger btn-full" style="margin-top:0.5rem" onclick="uebungSpeichern('${id||''}','einsatz')">${u ? '💾 Speichern' : mitAlarm ? '🚨 Einsatz melden & Alarm senden' : '💾 Einsatz speichern'}</button>
       </div>`;
   } else {
     // Dienst: vollständiges Formular
@@ -527,7 +528,7 @@ registerPage('uebung-form', async (el, {id, typ: vorTyp}) => {
 
 window.uebungSpeichern = async (id, forcTyp) => {
   const titel   = document.getElementById('f-titel').value.trim();
-  const dauer_h = parseFloat(document.getElementById('f-dauer').value) || 0;
+  let dauer_h = parseFloat(document.getElementById('f-dauer').value) || 0;
   const typ     = forcTyp === 'einsatz' ? 'einsatz' : 'dienst';
   const isEinsatz = typ === 'einsatz';
 
@@ -557,7 +558,9 @@ window.uebungSpeichern = async (id, forcTyp) => {
       const ref = await fw.addDoc(col(typ), {...data, erstelltVon: fw.user.uid, erstelltAm: new Date()});
       uebungId = ref.id;
     }
-    if (isNeu) await benachrichtigeOrtswehr(typ, titel, datumStr, dauer_h, uebungId);
+    const mitAlarmFlag = document.getElementById('f-alarm')?.value === '1';
+  if (isNeu && mitAlarmFlag) await benachrichtigeOrtswehr(typ, titel, datumStr, dauer_h, uebungId);
+  else if (isNeu && !mitAlarmFlag && typ === 'dienst') await benachrichtigeOrtswehr(typ, titel, datumStr, dauer_h, uebungId);
     fw.toast(isEinsatz ? 'Einsatz gemeldet 🚨' : 'Gespeichert ✅');
     navigate(typ === 'einsatz' ? 'einsaetze' : 'dienste');
   } catch(e) { fw.toast(e.message, true); }
