@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v1.1.1
+// js/pages.js – alle Seiten v1.1.5
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -40,14 +40,9 @@ function getStats(anwesenheiten) {
 // ── Dashboard ─────────────────────────────────────────────
 registerPage('dashboard', async (el) => {
   fw.setTitle('Dashboard');
-  const [aSnap, uSnap] = await Promise.all([
-    fw.getDocs('anwesenheiten', fw.where('userId','==',fw.user.uid)),
-    fw.getDocs('uebungen', fw.orderBy('datum','desc')),
-  ]);
+  const aSnap = await fw.getDocs('anwesenheiten', fw.where('userId','==',fw.user.uid));
   const meine    = aSnap.docs.map(d => ({id:d.id,...d.data()}));
   const stats    = getStats(meine);
-  const eintraege = uSnap.docs.map(d => ({id:d.id,...d.data()})).slice(0,6);
-  const meineMap = new Map(meine.map(a => [a.uebungId, a.status]));
 
   let offen = 0;
   if (fw.isWehrfuehrer()) {
@@ -61,14 +56,6 @@ registerPage('dashboard', async (el) => {
         Hallo, ${fw.profil.vorname || fw.profil.email} 👋
       </div>
       <div class="muted" style="font-size:0.82rem">${fw.profil.dienstgrad||''} · ${fw.isWehrfuehrer()?'Wehrführer':'Kamerad'}</div>
-    </div>
-
-    <div id="status-bar" style="display:flex;gap:0.5rem;margin-bottom:0.8rem;padding:0.6rem 0.8rem;background:var(--card);border-radius:12px;align-items:center;font-size:0.78rem">
-      <div id="s-online"  style="display:flex;align-items:center;gap:0.3rem"><span style="width:10px;height:10px;border-radius:50%;background:#ccc;display:inline-block"></span>Online</div>
-      <div style="color:var(--border)">·</div>
-      <div id="s-notif"   style="display:flex;align-items:center;gap:0.3rem"><span style="width:10px;height:10px;border-radius:50%;background:#ccc;display:inline-block"></span>Benachrichtigungen</div>
-      <div style="color:var(--border)">·</div>
-      <div id="s-token"   style="display:flex;align-items:center;gap:0.3rem"><span style="width:10px;height:10px;border-radius:50%;background:#ccc;display:inline-block"></span>Push-Token</div>
     </div>
 
     <button class="alarm-btn" onclick="navigate('uebung-form',{typ:'einsatz'})">
@@ -93,62 +80,108 @@ registerPage('dashboard', async (el) => {
       </div>
     </div>
 
-    <div class="section-header">Aktuelle Einsätze & Dienste</div>
-    <div class="card">
-      ${eintraege.length===0 ? '<div class="empty">Keine Einträge</div>' :
-        eintraege.map(u => `
-          <div class="list-item" onclick="navigate('uebung-detail',{id:'${u.id}'})">
-            <div class="typ-dot typ-${u.typ}"></div>
-            <div class="list-item-body">
-              <div class="list-item-title">${u.titel}</div>
-              <div class="list-item-sub">${datum(u.datum)} · ${u.dauer_h||''}h</div>
-            </div>
-            <div class="list-item-right">${anwesenheitBadge(meineMap.get(u.id))}</div>
-            <div class="list-chevron">›</div>
-          </div>`).join('')}
-    </div>
-    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.1.1</div>
+
+    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.1.5</div>
   `;
   checkDeepLink();
-  pruefeStatus();
+  startStatusPruefung();
 });
 
+let _letzterStatus = null;
+let _statusInterval = null;
+let _statusWarnungGesendet = false; // Nur einmal warnen bis Status wieder grün
+
 async function pruefeStatus() {
-  function setLampe(id, ok, text) {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.innerHTML = `<span style="width:10px;height:10px;border-radius:50%;background:${ok?'#22c55e':'#ef4444'};display:inline-block;box-shadow:0 0 6px ${ok?'#22c55e':'#ef4444'}"></span>${text}`;
+  const lampe = document.getElementById('status-lampe');
+  if (!lampe) return;
+  const online   = navigator.onLine;
+  const notifOk  = Notification.permission === 'granted';
+  const snap     = await fw.getDoc('users/'+fw.user.uid);
+  const tokenOk  = !!(snap.data()?.fcmToken);
+  const allesOk  = online && notifOk && tokenOk;
+  const grund    = !online ? 'Kein Internet' : !notifOk ? 'Benachrichtigungen nicht erlaubt' : 'Kein Push-Token';
+
+  lampe.style.background = allesOk ? '#22c55e' : '#ef4444';
+  lampe.style.boxShadow  = `0 0 6px ${allesOk ? '#22c55e' : '#ef4444'}`;
+  lampe.title = allesOk ? 'Alles bereit ✓' : grund;
+
+  if (allesOk) {
+    // Status wieder OK → Warnung zurücksetzen damit sie beim nächsten Problem erneut kommt
+    _statusWarnungGesendet = false;
+  } else if (!_statusWarnungGesendet && fw.profil?.notif_status !== false) {
+    // Nur einmal warnen bis Status wieder grün wird
+    _statusWarnungGesendet = true;
+    // Echte Browser-Benachrichtigung senden (funktioniert auch wenn App im Hintergrund)
+    if (Notification.permission === 'granted') {
+      new Notification('⚠️ Ortswehr – Problem erkannt', {
+        body: grund + ' – Einsatzalarme können möglicherweise nicht empfangen werden!',
+        icon: '/ortswehr/icons/icon-192.png',
+        tag: 'status-warnung', // verhindert mehrfache Anzeige
+        requireInteraction: true,
+      });
+    }
   }
+  _letzterStatus = allesOk;
+}
 
-  // 1. Online?
-  const online = navigator.onLine;
-  setLampe('s-online', online, online ? 'Online' : 'Offline');
-
-  // 2. Benachrichtigungen erlaubt?
-  const perm = Notification.permission;
-  const notifOk = perm === 'granted';
-  setLampe('s-notif', notifOk, notifOk ? 'Benachrichtigungen ✓' : (perm === 'denied' ? 'Verweigert ✗' : 'Nicht erteilt'));
-
-  // 3. FCM-Token vorhanden?
-  const snap = await fw.getDoc('users/'+fw.user.uid);
-  const token = snap.data()?.fcmToken;
-  const tokenOk = !!(token && token.length > 10);
-  setLampe('s-token', tokenOk, tokenOk ? 'Push aktiv ✓' : 'Kein Token ✗');
+function startStatusPruefung() {
+  pruefeStatus();
+  if (_statusInterval) clearInterval(_statusInterval);
+  _statusInterval = setInterval(pruefeStatus, 30000);
+  window.addEventListener('online',  pruefeStatus);
+  window.addEventListener('offline', pruefeStatus);
 }
 
 // ── Hilfsfunktion: Liste rendern ─────────────────────────
+function renderEintrag(u, meineMap) {
+  return `<div class="list-item" onclick="navigate('uebung-detail',{id:'${u.id}'})">
+    <div class="typ-dot typ-${u.typ}"></div>
+    <div class="list-item-body">
+      <div class="list-item-title">${u.titel}</div>
+      <div class="list-item-sub">${datum(u.datum)} · ${u.dauer_h||''}h</div>
+    </div>
+    <div class="list-item-right">${anwesenheitBadge(meineMap.get(u.id))}</div>
+    <div class="list-chevron">›</div>
+  </div>`;
+}
+
 function renderEintragListe(liste, meineMap) {
   if (!liste.length) return '<div class="empty">Keine Einträge</div>';
-  return liste.map(u => `
-    <div class="list-item" onclick="navigate('uebung-detail',{id:'${u.id}'})">
-      <div class="typ-dot typ-${u.typ}"></div>
-      <div class="list-item-body">
-        <div class="list-item-title">${u.titel}</div>
-        <div class="list-item-sub">${datum(u.datum)} · ${u.dauer_h||''}h</div>
-      </div>
-      <div class="list-item-right">${anwesenheitBadge(meineMap.get(u.id))}</div>
-      <div class="list-chevron">›</div>
-    </div>`).join('');
+  const diesJahr = new Date().getFullYear();
+  const aktuell  = liste.filter(u => {
+    const d = u.datum?.toDate ? u.datum.toDate() : new Date(u.datum);
+    return d.getFullYear() >= diesJahr;
+  });
+  const archiv   = liste.filter(u => {
+    const d = u.datum?.toDate ? u.datum.toDate() : new Date(u.datum);
+    return d.getFullYear() < diesJahr;
+  });
+
+  // Nach Jahr gruppieren fürs Archiv
+  const archivJahre = {};
+  for (const u of archiv) {
+    const d = u.datum?.toDate ? u.datum.toDate() : new Date(u.datum);
+    const j = d.getFullYear();
+    if (!archivJahre[j]) archivJahre[j] = [];
+    archivJahre[j].push(u);
+  }
+
+  let html = aktuell.length
+    ? aktuell.map(u => renderEintrag(u, meineMap)).join('')
+    : '<div class="empty">Keine Einträge dieses Jahr</div>';
+
+  if (archiv.length) {
+    html += `<details style="margin-top:0.5rem">
+      <summary style="padding:0.6rem 0;cursor:pointer;color:var(--muted);font-size:0.85rem;list-style:none;display:flex;align-items:center;gap:0.4rem">
+        <span>▸</span> Archiv (${archiv.length} Einträge)
+      </summary>
+      ${Object.keys(archivJahre).sort((a,b)=>b-a).map(jahr => `
+        <div style="font-size:0.78rem;color:var(--muted);padding:0.4rem 0 0.2rem;font-weight:600">${jahr}</div>
+        ${archivJahre[jahr].map(u => renderEintrag(u, meineMap)).join('')}
+      `).join('')}
+    </details>`;
+  }
+  return html;
 }
 
 async function ladeVorschlaege(el) {
@@ -191,7 +224,6 @@ registerPage('einsaetze', async (el) => {
   const offen    = vSnap.size;
   el.innerHTML = `
     ${offen > 0 ? `<div class="section-header">⏳ Ausstehende Bestätigungen (${offen})</div><div class="card" id="vorschlaege-liste"></div>` : ''}
-    <div class="section-header">🚨 Alle Einsätze</div>
     <div class="card">${renderEintragListe(liste, meineMap)}</div>
   `;
   ladeVorschlaege(el);
@@ -211,7 +243,6 @@ registerPage('dienste', async (el) => {
   const offen    = vSnap.size;
   el.innerHTML = `
     ${offen > 0 ? `<div class="section-header">⏳ Ausstehende Bestätigungen (${offen})</div><div class="card" id="vorschlaege-liste"></div>` : ''}
-    <div class="section-header">📅 Alle Dienste</div>
     <div class="card">${renderEintragListe(liste, meineMap)}</div>
   `;
   ladeVorschlaege(el);
@@ -525,6 +556,10 @@ registerPage('profil', async (el) => {
         <div style="flex:1"><div style="font-weight:600">✅ Bestätigung</div><div class="muted" style="font-size:0.78rem">Wenn Teilnahme bestätigt wird</div></div>
         <input type="checkbox" id="n-best" style="width:24px;height:24px;accent-color:var(--red);cursor:pointer;flex-shrink:0">
       </div>
+      <div class="notif-row" style="display:flex;align-items:center;gap:0.8rem;padding:0.6rem 0;border-bottom:1px solid var(--border)">
+        <div style="flex:1"><div style="font-weight:600">⚠️ Status-Warnung</div><div class="muted" style="font-size:0.78rem">Wenn App offline oder Push nicht bereit</div></div>
+        <input type="checkbox" id="n-status" style="width:24px;height:24px;accent-color:var(--red);cursor:pointer;flex-shrink:0">
+      </div>
       ${fw.isWehrfuehrer() ? `
       <div class="notif-row" style="display:flex;align-items:center;gap:0.8rem;padding:0.6rem 0;border-bottom:1px solid var(--border)">
         <div style="flex:1"><div style="font-weight:600">🧪 Selbst benachrichtigen</div><div class="muted" style="font-size:0.78rem">Nur für Tests – Wehrführer erhält eigene Alarme</div></div>
@@ -558,7 +593,6 @@ registerPage('profil', async (el) => {
       <button class="btn btn-secondary btn-full" onclick="passwortAendern()">🔒 Passwort ändern</button>
     </div>
     <div class="card">
-      <button class="btn btn-secondary btn-full" style="margin-bottom:0.5rem" onclick="pushTesten()">🔔 Push-Registrierung testen</button>
       <button class="btn btn-danger btn-full" onclick="abmelden()">Abmelden</button>
     </div>
   `;
@@ -588,12 +622,9 @@ function initNotifCheckboxes() {
   if (u) u.checked = p.notif_uebung !== false;
   if (b) b.checked = p.notif_bestaetigung !== false;
   if (s) s.checked = p.notif_selbst === true;
+  const st = document.getElementById('n-status');
+  if (st) st.checked = p.notif_status !== false;
 }
-
-window.pushTesten = async () => {
-  fw.toast('Registriere Push...');
-  await fw.registerPush();
-};
 
 window.notifSpeichern = async () => {
   const selbstEl = document.getElementById('n-selbst');
@@ -602,6 +633,7 @@ window.notifSpeichern = async () => {
     notif_uebung:       document.getElementById('n-uebung').checked,
     notif_bestaetigung: document.getElementById('n-best').checked,
     notif_selbst:       selbstEl ? selbstEl.checked : false,
+    notif_status:       document.getElementById('n-status')?.checked ?? true,
   };
   await fw.setDoc('users/'+fw.user.uid, data);
   Object.assign(fw.profil, data);
