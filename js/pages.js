@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v1.2.1
+// js/pages.js – alle Seiten v1.2.2
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -85,18 +85,18 @@ registerPage('dashboard', async (el) => {
       </div>` : ''}
 
     <div class="stats-grid">
-      <div class="stat-card"><div class="stat-zahl">${stats.gesamtEinsatz}h</div><div class="stat-label">Einsatzstunden</div></div>
+      <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.gesamtEinsatz)}h</div><div class="stat-label">Einsatzstunden</div></div>
       <div class="stat-card"><div class="stat-zahl">${stats.einsaetze}</div><div class="stat-label">Einsätze</div></div>
-      <div class="stat-card"><div class="stat-zahl">${stats.gesamtDienst}h</div><div class="stat-label">Dienststunden</div></div>
+      <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.gesamtDienst)}h</div><div class="stat-label">Dienststunden</div></div>
       <div class="stat-card"><div class="stat-zahl">${stats.dienste}</div><div class="stat-label">Dienste</div></div>
       <div class="stat-card wide ${stats.ziel?'erreicht':'fehlt'}">
-        <div class="stat-zahl">${stats.stunden12m} / 40h</div>
+        <div class="stat-zahl">${dauerFormat(stats.stunden12m)} / 40:00h</div>
         <div class="stat-label">Letzte 12 Monate ${stats.ziel?'✅ Ziel erreicht':'⚠️ Noch nicht erreicht'}</div>
       </div>
     </div>
 
 
-    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.2.1</div>
+    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.2.2</div>
   `;
   checkDeepLink();
   startStatusPruefung();
@@ -578,12 +578,12 @@ registerPage('profil', async (el) => {
 
   el.innerHTML = `
     <div class="stats-grid">
-      <div class="stat-card"><div class="stat-zahl">${stats.gesamtEinsatz}h</div><div class="stat-label">Einsatzstunden</div></div>
+      <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.gesamtEinsatz)}h</div><div class="stat-label">Einsatzstunden</div></div>
       <div class="stat-card"><div class="stat-zahl">${stats.einsaetze}</div><div class="stat-label">Einsätze</div></div>
-      <div class="stat-card"><div class="stat-zahl">${stats.gesamtDienst}h</div><div class="stat-label">Dienststunden</div></div>
+      <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.gesamtDienst)}h</div><div class="stat-label">Dienststunden</div></div>
       <div class="stat-card"><div class="stat-zahl">${stats.dienste}</div><div class="stat-label">Dienste</div></div>
       <div class="stat-card wide ${stats.ziel?'erreicht':'fehlt'}">
-        <div class="stat-zahl">${stats.stunden12m} / 40h</div>
+        <div class="stat-zahl">${dauerFormat(stats.stunden12m)} / 40:00h</div>
         <div class="stat-label">Letzte 12 Monate ${stats.ziel?'✅ Ziel erreicht':'⚠️ Noch nicht erreicht'}</div>
       </div>
     </div>
@@ -770,12 +770,12 @@ registerPage('kamerad-detail', async (el, {id}) => {
 
   el.innerHTML = `
     <div class="stats-grid">
-      <div class="stat-card"><div class="stat-zahl">${stats.gesamtEinsatz}h</div><div class="stat-label">Einsatzstunden</div></div>
+      <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.gesamtEinsatz)}h</div><div class="stat-label">Einsatzstunden</div></div>
       <div class="stat-card"><div class="stat-zahl">${stats.einsaetze}</div><div class="stat-label">Einsätze</div></div>
-      <div class="stat-card"><div class="stat-zahl">${stats.gesamtDienst}h</div><div class="stat-label">Dienststunden</div></div>
+      <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.gesamtDienst)}h</div><div class="stat-label">Dienststunden</div></div>
       <div class="stat-card"><div class="stat-zahl">${stats.dienste}</div><div class="stat-label">Dienste</div></div>
       <div class="stat-card wide ${stats.ziel?'erreicht':'fehlt'}">
-        <div class="stat-zahl">${stats.stunden12m} / 40h</div>
+        <div class="stat-zahl">${dauerFormat(stats.stunden12m)} / 40:00h</div>
         <div class="stat-label">${stats.ziel?'✅ Ziel erreicht':'⚠️ Ziel nicht erreicht'}</div>
       </div>
     </div>
