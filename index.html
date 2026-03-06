@@ -60,6 +60,10 @@
 </div>
 
 <div id="toast"></div>
+<div id="update-banner" style="display:none;position:fixed;bottom:70px;left:50%;transform:translateX(-50%);z-index:999;background:#1e293b;color:#fff;border-radius:14px;padding:0.7rem 1.2rem;display:none;align-items:center;gap:0.8rem;box-shadow:0 4px 20px rgba(0,0,0,0.3);font-size:0.88rem;white-space:nowrap">
+  🆕 Neue Version verfügbar
+  <button id="update-btn" style="background:var(--red);color:#fff;border:none;border-radius:8px;padding:0.35rem 0.9rem;font-size:0.85rem;cursor:pointer;font-weight:600">Jetzt updaten</button>
+</div>
 
 <script type="module">
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
@@ -135,9 +139,10 @@
   };
 
   if (messaging) {
-    onMessage(messaging, p => {
-      const { title, body } = p.notification || {};
-      fw.toast('🔔 ' + (title||'') + ': ' + (body||''));
+    onMessage(messaging, payload => {
+      // App ist im Vordergrund: Service Worker zeigt die Benachrichtigung bereits
+      // Kein doppelter Toast nötig
+      console.log('FCM Vordergrund-Nachricht empfangen:', payload.notification?.title);
     });
   }
 
@@ -223,7 +228,32 @@
     return cred.user.uid;
   };
 
-  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
+  if ('serviceWorker' in navigator) {
+    const reg = await navigator.serviceWorker.register('/ortswehr/sw.js');
+
+    function zeigeUpdateBanner(worker) {
+      const banner = document.getElementById('update-banner');
+      if (banner) banner.style.display = 'flex';
+      document.getElementById('update-btn')?.addEventListener('click', () => {
+        worker.postMessage('SKIP_WAITING');
+      });
+    }
+
+    if (reg.waiting) zeigeUpdateBanner(reg.waiting);
+    reg.addEventListener('updatefound', () => {
+      const nw = reg.installing;
+      nw.addEventListener('statechange', () => {
+        if (nw.state === 'installed' && navigator.serviceWorker.controller) {
+          zeigeUpdateBanner(nw);
+        }
+      });
+    });
+
+    let reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!reloading) { reloading = true; window.location.reload(); }
+    });
+  }
 </script>
 <script src="js/pages.js" type="module" defer></script>
 </body>
