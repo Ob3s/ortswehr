@@ -168,13 +168,9 @@ registerPage('uebungen', async (el) => {
       </div>`).join('');
   }
 
-  // FAB für Wehrführer
+  // FAB für Wehrführer – Header-Action statt FAB (zuverlässiger)
   if (fw.isWehrfuehrer()) {
-    const fab = document.createElement('button');
-    fab.className = 'fab'; fab.textContent = '+';
-    fab.onclick = () => navigate('uebung-form', {});
-    document.getElementById('app').appendChild(fab);
-    el.addEventListener('click', () => fab.remove(), { once: true, capture: true });
+    fw.showHeaderAction('+ Neu', () => navigate('uebung-form', {}));
   }
 });
 
@@ -321,7 +317,7 @@ registerPage('uebung-form', async (el, { id }) => {
     const snap = await fw.getDoc(`uebungen/${id}`);
     if (snap.exists()) u = { id, ...snap.data() };
   }
-  fw.setTitle(u ? 'Bearbeiten' : 'Neue Übung');
+  fw.setTitle(u ? 'Bearbeiten' : 'Neue Übung / Einsatz');
   fw.showBack(() => navigate('uebungen'));
 
   const datumVal = u?.datum?.toDate ? u.datum.toDate().toISOString().slice(0,10) : '';
@@ -633,13 +629,21 @@ window.kameradSpeichern = async (id) => {
       fw.toast('Gespeichert ✅');
       navigate('kamerad-detail', { id });
     } else {
-      // Neuen Firebase Auth User anlegen via Admin geht nicht vom Frontend
-      // → Workaround: Kameraden legen sich selbst an, Wehrführer setzt Rolle
-      // Hier erstmal Hinweis anzeigen
-      const email = document.getElementById('k-email').value;
+      const email = document.getElementById('k-email').value.trim();
       const pw    = document.getElementById('k-pw').value;
-      const { createUserWithEmailAndPassword } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js');
-      const cred = await createUserWithEmailAndPassword(fw.auth, email, pw);
+      if (!email || !pw) { fw.toast('E-Mail und Passwort erforderlich', true); return; }
+      if (pw.length < 6) { fw.toast('Passwort mind. 6 Zeichen', true); return; }
+
+      // Zweite Firebase-App-Instanz damit der Wehrführer eingeloggt bleibt
+      const { initializeApp, getApp } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js');
+      const { getAuth, createUserWithEmailAndPassword } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js');
+      let tmpApp;
+      try { tmpApp = getApp('tmp'); } catch(e) {
+        tmpApp = initializeApp(fw.auth.app.options, 'tmp');
+      }
+      const tmpAuth = getAuth(tmpApp);
+      const cred = await createUserWithEmailAndPassword(tmpAuth, email, pw);
+      await tmpAuth.signOut();
       await fw.setDoc(`users/${cred.user.uid}`, { ...data, email, aktiv: true });
       fw.toast('Kamerad angelegt ✅');
       navigate('kameraden');

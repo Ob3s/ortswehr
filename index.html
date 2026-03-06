@@ -150,6 +150,27 @@
     }
   });
 
+  // Passwort vergessen
+  document.getElementById('pw-reset-link').addEventListener('click', e => {
+    e.preventDefault();
+    const box = document.getElementById('pw-reset-box');
+    box.style.display = box.style.display === 'none' ? 'block' : 'none';
+  });
+  document.getElementById('reset-btn').addEventListener('click', async () => {
+    const { sendPasswordResetEmail } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js');
+    const email = document.getElementById('reset-email').value.trim();
+    const msg = document.getElementById('reset-msg');
+    if (!email) { msg.textContent = 'Bitte E-Mail eingeben'; msg.style.color = 'var(--red)'; return; }
+    try {
+      await sendPasswordResetEmail(auth, email);
+      msg.textContent = '✅ Reset-Mail wurde gesendet!';
+      msg.style.color = 'var(--success)';
+    } catch(e) {
+      msg.textContent = 'E-Mail nicht gefunden';
+      msg.style.color = 'var(--red)';
+    }
+  });
+
   // Enter-Taste im Login
   ['login-email','login-pass'].forEach(id => {
     document.getElementById(id).addEventListener('keydown', e => {
