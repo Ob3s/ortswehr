@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v1.5.0
+// js/pages.js – alle Seiten v1.5.1
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -127,7 +127,7 @@ ${renderNaechsteDienste(naechster, naechsterOegeln)}
     </div>
 
 
-    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.5.0</div>
+    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.5.1</div>
   `;
   checkDeepLink();
   startStatusPruefung();
@@ -721,7 +721,7 @@ registerPage('profil', async (el) => {
       <button class="btn btn-secondary btn-full" style="margin-top:0.5rem" onclick="pruefeAufUpdate(true)">🔄 Auf Updates prüfen</button>
     </div>
   `;
-  initNotifCheckboxes();
+  setTimeout(initNotifCheckboxes, 0);
 });
 
 window.profilSpeichern = async () => {
@@ -764,9 +764,12 @@ window.notifSpeichern = async () => {
   await fw.setDoc('users/'+fw.user.uid, data);
   Object.assign(fw.profil, data);
   if (data.notif_einsatz || data.notif_uebung || data.notif_bestaetigung) {
-    await fw.registerPush();
+    const token = await fw.registerPush();
+    if (token) fw.toast('Gespeichert ✅ Push aktiv');
+    else fw.toast('Gespeichert – Push nicht verfügbar', true);
   } else {
     await fw.setDoc('users/'+fw.user.uid, { fcmToken: null });
+    fw.toast('Gespeichert ✅');
   }
   fw.toast('Einstellungen gespeichert ✅');
 };
