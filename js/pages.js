@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v1.3.0
+// js/pages.js – alle Seiten v1.3.1
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -11,7 +11,7 @@ function datum(d) {
   return ts.toLocaleDateString('de-DE', { day:'2-digit', month:'2-digit', year:'numeric' });
 }
 function dauerFormat(h) {
-  if (!h) return '';
+  if (h === null || h === undefined) return '';
   const gesamt = Math.round(h * 60);
   const std = Math.floor(gesamt / 60);
   const min = gesamt % 60;
@@ -96,7 +96,7 @@ registerPage('dashboard', async (el) => {
     </div>
 
 
-    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.3.0</div>
+    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.3.1</div>
   `;
   checkDeepLink();
   startStatusPruefung();
