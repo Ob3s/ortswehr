@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v1.1.6
+// js/pages.js – alle Seiten v1.1.7
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -81,7 +81,7 @@ registerPage('dashboard', async (el) => {
     </div>
 
 
-    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.1.6</div>
+    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.1.7</div>
   `;
   checkDeepLink();
   startStatusPruefung();
@@ -461,12 +461,11 @@ window.uebungLoeschen = async (id) => {
 // ── Push ──────────────────────────────────────────────────
 async function benachrichtigeOrtswehr(typ, titel, datumStr, dauer_h, uebungId) {
   const ortswehrId = fw.profil.ortswehrId;
-  let usersSnap;
-  if (ortswehrId) {
-    usersSnap = await fw.getDocs('users', fw.where('ortswehrId','==',ortswehrId), fw.where('aktiv','!=',false));
-  } else {
-    usersSnap = await fw.getDocs('users');
+  if (!ortswehrId) {
+    fw.toast('⚠️ Keine Ortswehr zugeordnet – niemand wird benachrichtigt!', true);
+    return;
   }
+  const usersSnap = await fw.getDocs('users', fw.where('ortswehrId','==',ortswehrId), fw.where('aktiv','!=',false));
   const isEinsatz = typ === 'einsatz';
   const tokens = [];
   for (const d of usersSnap.docs) {
@@ -539,6 +538,12 @@ registerPage('profil', async (el) => {
       <div class="form-row"><label>Telefon</label><input id="p-tel" type="tel" value="${me.telefon||''}"></div>
       <div class="form-row"><label>E-Mail</label><input id="p-mail" type="email" value="${me.email||''}"></div>
       <div class="form-row"><label>Führerscheinklassen (z.B. B, C, CE)</label><input id="p-fs" value="${me.fuehrerschein||''}"></div>
+      <div class="form-row"><label>Ortswehr</label>
+        <select id="p-ow">${await (async () => {
+          const s = await fw.getDocs('ortswehren');
+          return '<option value="">– Keine –</option>' + s.docs.map(d => `<option value="${d.id}" ${me.ortswehrId===d.id?'selected':''}>${d.data().name}</option>`).join('');
+        })()}</select>
+      </div>
       <button class="btn btn-primary btn-full" onclick="profilSpeichern()">💾 Speichern</button>
     </div>
 
@@ -606,6 +611,7 @@ window.profilSpeichern = async () => {
     telefon: document.getElementById('p-tel').value,
     email: document.getElementById('p-mail').value,
     fuehrerschein: document.getElementById('p-fs').value,
+    ortswehrId: document.getElementById('p-ow')?.value || fw.profil.ortswehrId || null,
   };
   await fw.setDoc('users/'+fw.user.uid, data);
   Object.assign(fw.profil, data);
