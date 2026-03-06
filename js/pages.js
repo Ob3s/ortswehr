@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v1.2.3
+// js/pages.js – alle Seiten v1.2.5
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -41,7 +41,7 @@ function getStats(anwesenheiten) {
     const d = a.datum?.toDate ? a.datum.toDate() : new Date(a.datum);
     if (a.typ === 'einsatz') { gesamtEinsatz += h; einsaetze++; }
     else                     { gesamtDienst  += h; dienste++;   }
-    if (d >= vor12m) stunden12m += h;
+    if (d >= vor12m && a.typ !== 'einsatz') stunden12m += h;
   }
   return {
     gesamtEinsatz: Math.round(gesamtEinsatz*10)/10,
@@ -96,7 +96,7 @@ registerPage('dashboard', async (el) => {
     </div>
 
 
-    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.2.3</div>
+    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.2.5</div>
   `;
   checkDeepLink();
   startStatusPruefung();
@@ -358,6 +358,9 @@ registerPage('uebung-detail', async (el, {id}) => {
       <div style="margin-top:0.6rem;font-weight:600;font-size:1.1rem">${u.titel}</div>
       <div style="margin-top:0.3rem;color:var(--muted);font-size:0.85rem">${datum(u.datum)}${zeitZeile(u) ? ' · '+zeitZeile(u) : ''}</div>
       ${u.beschreibung ? `<p class="muted" style="margin-top:0.4rem;font-size:0.85rem">${u.beschreibung}</p>` : ''}
+      ${isEinsatz && !u.zeitEnde && fw.isWehrfuehrer() ? `
+        <button class="btn btn-secondary btn-sm" style="margin-top:0.6rem" onclick="navigate('uebung-form',{id:'${u.id}'})">⏱ Endzeit nachtragen</button>
+      ` : ''}
     </div>
     <div class="section-header">Meine Anwesenheit</div>
     <div class="card">
@@ -443,19 +446,25 @@ registerPage('uebung-form', async (el, {id, typ: vorTyp}) => {
     : new Date().toISOString().slice(0,10);
 
   if (isEinsatz) {
-    // Einsatz: nur Stichwort, Datum automatisch, minimale Eingabe
+    const jetztH  = new Date().getHours().toString().padStart(2,'0');
+    const jetztM  = new Date().getMinutes().toString().padStart(2,'0');
+    const jetztZeit = `${jetztH}:${jetztM}`;
     el.innerHTML = `
       <div class="card">
         <div style="font-family:'DM Serif Display',serif;font-size:1.3rem;color:var(--red);margin-bottom:1rem">🚨 Einsatz</div>
         <div class="form-row">
           <label>Einsatzstichwort</label>
-          <input id="f-titel" placeholder="Brand, THL, Hilfeleistung…" autofocus>
+          <input id="f-titel" value="${u?.titel||''}" placeholder="Brand, THL, Hilfeleistung…" autofocus>
         </div>
         <div class="form-row">
-          <label>Dauer (Stunden)</label>
-          <input id="f-dauer" type="number" step="0.5" min="0.5" value="2">
+          <label>Beginn</label>
+          <input id="f-beginn" type="time" value="${u?.zeitBeginn||jetztZeit}">
         </div>
-        <button class="btn btn-danger btn-full" style="margin-top:0.5rem" onclick="uebungSpeichern('${id||''}','einsatz')">🚨 Einsatz melden & Alarm senden</button>
+        <div class="form-row">
+          <label>Ende (optional, kann nachgetragen werden)</label>
+          <input id="f-ende" type="time" value="${u?.zeitEnde||''}">
+        </div>
+        <button class="btn btn-danger btn-full" style="margin-top:0.5rem" onclick="uebungSpeichern('${id||''}','einsatz')">${u ? '💾 Speichern' : '🚨 Einsatz melden & Alarm senden'}</button>
       </div>`;
   } else {
     // Dienst: vollständiges Formular
@@ -465,7 +474,9 @@ registerPage('uebung-form', async (el, {id, typ: vorTyp}) => {
           <input id="f-titel" value="${u?.titel||''}" placeholder="Monatsübung April…">
         </div>
         <div class="form-row"><label>Datum</label><input id="f-datum" type="date" value="${datumVal}"></div>
-        <div class="form-row"><label>Dauer (Stunden)</label>
+        <div class="form-row"><label>Beginn</label><input id="f-beginn" type="time" value="${u?.zeitBeginn||''}"></div>
+        <div class="form-row"><label>Ende</label><input id="f-ende" type="time" value="${u?.zeitEnde||''}"></div>
+        <div class="form-row"><label>Dauer (Stunden, wird aus Zeiten berechnet)</label>
           <input id="f-dauer" type="number" step="0.5" min="0.5" value="${u?.dauer_h||2}">
         </div>
         <div class="form-row"><label>Beschreibung (optional)</label>
@@ -485,15 +496,23 @@ window.uebungSpeichern = async (id, forcTyp) => {
   const typ     = forcTyp === 'einsatz' ? 'einsatz' : 'dienst';
   const isEinsatz = typ === 'einsatz';
 
-  // Datum: bei Einsatz immer heute, sonst aus Formular
   const datumStr = isEinsatz
     ? new Date().toISOString().slice(0,10)
     : (document.getElementById('f-datum')?.value || new Date().toISOString().slice(0,10));
-  const beschr = document.getElementById('f-beschr')?.value?.trim() || '';
+  const beschr     = document.getElementById('f-beschr')?.value?.trim() || '';
+  const zeitBeginn = document.getElementById('f-beginn')?.value || null;
+  const zeitEnde   = document.getElementById('f-ende')?.value || null;
+
+  // Dauer aus Zeiten berechnen wenn vorhanden
+  if (isEinsatz && zeitBeginn && zeitEnde) {
+    const [bh, bm] = zeitBeginn.split(':').map(Number);
+    const [eh, em] = zeitEnde.split(':').map(Number);
+    dauer_h = Math.round(((eh*60+em) - (bh*60+bm)) / 60 * 100) / 100;
+  }
 
   if (!titel) { fw.toast('Stichwort erforderlich', true); return; }
 
-  const data = { titel, datum: new Date(datumStr), typ, dauer_h, beschreibung: beschr };
+  const data = { titel, datum: new Date(datumStr), typ, dauer_h, beschreibung: beschr, zeitBeginn, zeitEnde };
   const isNeu = !id;
   try {
     let uebungId = id;
