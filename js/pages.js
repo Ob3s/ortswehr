@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v1.1.5
+// js/pages.js – alle Seiten v1.1.6
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -51,11 +51,11 @@ registerPage('dashboard', async (el) => {
   }
 
   el.innerHTML = `
-    <div style="margin-bottom:0.8rem">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.8rem">
       <div style="font-family:'DM Serif Display',serif;font-size:1.3rem">
-        Hallo, ${fw.profil.vorname || fw.profil.email} 👋
+        Hallo, ${fw.profil.vorname || fw.profil.email}
       </div>
-      <div class="muted" style="font-size:0.82rem">${fw.profil.dienstgrad||''} · ${fw.isWehrfuehrer()?'Wehrführer':'Kamerad'}</div>
+      <span id="status-lampe" style="width:12px;height:12px;border-radius:50%;background:#ccc;display:inline-block;flex-shrink:0;cursor:default" title="Status wird geprüft..."></span>
     </div>
 
     <button class="alarm-btn" onclick="navigate('uebung-form',{typ:'einsatz'})">
@@ -81,7 +81,7 @@ registerPage('dashboard', async (el) => {
     </div>
 
 
-    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.1.5</div>
+    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.1.6</div>
   `;
   checkDeepLink();
   startStatusPruefung();

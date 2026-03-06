@@ -123,9 +123,8 @@
         const token = await getToken(messaging, { vapidKey: VAPID, serviceWorkerRegistration: swReg });
         if (token) {
           await this.setDoc('users/' + this.user.uid, { fcmToken: token });
-          this.toast('Push registriert ✅');
         } else {
-          this.toast('Push: Kein Token erhalten', true);
+          console.warn('Push: Kein Token erhalten');
         }
         return token;
       } catch(e) {
