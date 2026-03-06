@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="theme-color" content="#cc2200">
-  <meta name="app-version" content="1.4.3">
+  <meta name="app-version" content="1.4.4">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ortswehr">
@@ -152,11 +152,25 @@
 
   if (messaging) {
     onMessage(messaging, payload => {
-      // App im Vordergrund: explizit an Firebase-SW schicken (nicht sw.js)
-      console.log('FCM Vordergrund-Nachricht empfangen:', payload.notification?.title);
-      navigator.serviceWorker.getRegistration('/firebase-messaging-sw.js').then(reg => {
-        reg?.active?.postMessage({ type: 'SHOW_NOTIFICATION', payload });
-      });
+      // App im Vordergrund: Notification direkt anzeigen
+      const title    = payload.notification?.title || '🚒 Ortswehr';
+      const body     = payload.notification?.body  || '';
+      const alarm    = payload.data?.alarm === 'true';
+      const uebungId = payload.data?.uebungId || '';
+      console.log('FCM Vordergrund:', title);
+      if (Notification.permission === 'granted') {
+        const n = new Notification(title, {
+          body,
+          icon: '/ortswehr/icons/icon-192.png',
+          tag:  alarm ? 'einsatz' : 'allgemein',
+          requireInteraction: alarm,
+        });
+        n.onclick = () => {
+          window.focus();
+          if (uebungId) navigate('uebung-detail', { id: uebungId, typ: 'einsatz' });
+          n.close();
+        };
+      }
     });
   }
 
