@@ -374,7 +374,7 @@ async function benachrichtigeOrtswehr(typ, titel, datumStr, dauer_h, uebungId) {
   const tokens = [];
   for (const d of usersSnap.docs) {
     const u = d.data();
-    if (d.id === fw.user.uid) continue; // Wehrführer selbst nicht benachrichtigen
+    if (d.id === fw.user.uid && !fw.profil.notif_selbst) continue;
     if (!u.fcmToken) continue;
     if (isEinsatz && u.notif_einsatz !== false) tokens.push(u.fcmToken);
     if (!isEinsatz && u.notif_uebung !== false) tokens.push(u.fcmToken);
@@ -448,6 +448,14 @@ registerPage('profil', async (el) => {
         <input type="checkbox" id="n-best" style="width:20px;height:20px;accent-color:var(--red)">
         <div><div style="font-weight:600">✅ Bestätigung</div><div class="muted" style="font-size:0.78rem">Wenn Teilnahme bestätigt wird</div></div>
       </label>
+      ${fw.isWehrfuehrer() ? `
+      <label style="display:flex;align-items:center;gap:0.8rem;padding:0.5rem 0;border-top:1px solid var(--border);margin-top:0.3rem">
+        <input type="checkbox" id="n-selbst" style="width:20px;height:20px;accent-color:var(--red)">
+        <div>
+          <div style="font-weight:600">🧪 Selbst benachrichtigen</div>
+          <div class="muted" style="font-size:0.78rem">Nur für Tests – Wehrführer erhält eigene Alarme</div>
+        </div>
+      </label>` : ''}
       <button class="btn btn-secondary btn-full" style="margin-top:0.8rem" id="notif-save-btn">Einstellungen speichern</button>
     </div>
 
@@ -508,14 +516,18 @@ function initNotifCheckboxes() {
   if (e) e.checked = p.notif_einsatz !== false;
   if (u) u.checked = p.notif_uebung !== false;
   if (b) b.checked = p.notif_bestaetigung !== false;
+  const s = document.getElementById('n-selbst');
+  if (s) s.checked = p.notif_selbst === true;
 }
 setTimeout(initNotifCheckboxes, 50);
 
 window.notifSpeichern = async () => {
+  const selbstEl = document.getElementById('n-selbst');
   const data = {
     notif_einsatz:      document.getElementById('n-einsatz').checked,
     notif_uebung:       document.getElementById('n-uebung').checked,
     notif_bestaetigung: document.getElementById('n-best').checked,
+    notif_selbst:       selbstEl ? selbstEl.checked : false,
   };
   await fw.setDoc('users/'+fw.user.uid, data);
   Object.assign(fw.profil, data);
