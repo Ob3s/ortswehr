@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v1.0.9
+// js/pages.js – alle Seiten v1.1.0
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -68,7 +68,7 @@ registerPage('dashboard', async (el) => {
     </button>
 
     ${offen > 0 ? `
-      <div class="pending-banner" onclick="navigate('uebungen')">
+      <div class="pending-banner" onclick="navigate('einsaetze')">
         <div class="icon">⏳</div>
         <div class="text"><strong>${offen} ausstehende Anwesenheit${offen>1?'en':''}</strong>Zur Bestätigung tippen</div>
         <div>›</div>
@@ -99,76 +99,90 @@ registerPage('dashboard', async (el) => {
             <div class="list-chevron">›</div>
           </div>`).join('')}
     </div>
-    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.0.9</div>
+    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.1.0</div>
   `;
   checkDeepLink();
 });
 
-// ── Dienste & Einsätze ────────────────────────────────────
-registerPage('uebungen', async (el) => {
-  fw.setTitle('Einsätze & Dienste');
-  if (fw.isWehrfuehrer()) fw.showHeaderAction('+ Neu', () => navigate('uebung-form', {}));
+// ── Hilfsfunktion: Liste rendern ─────────────────────────
+function renderEintragListe(liste, meineMap) {
+  if (!liste.length) return '<div class="empty">Keine Einträge</div>';
+  return liste.map(u => `
+    <div class="list-item" onclick="navigate('uebung-detail',{id:'${u.id}'})">
+      <div class="typ-dot typ-${u.typ}"></div>
+      <div class="list-item-body">
+        <div class="list-item-title">${u.titel}</div>
+        <div class="list-item-sub">${datum(u.datum)} · ${u.dauer_h||''}h</div>
+      </div>
+      <div class="list-item-right">${anwesenheitBadge(meineMap.get(u.id))}</div>
+      <div class="list-chevron">›</div>
+    </div>`).join('');
+}
 
-  const [uSnap, aSnap] = await Promise.all([
-    fw.getDocs('uebungen', fw.orderBy('datum','desc')),
+async function ladeVorschlaege(el) {
+  if (!fw.isWehrfuehrer()) return;
+  const vSnap = await fw.getDocs('anwesenheiten', fw.where('status','==','vorgeschlagen'));
+  const vorschlaege = vSnap.docs.map(d => ({id:d.id,...d.data()}));
+  if (!vorschlaege.length) return;
+  const userIds = [...new Set(vorschlaege.map(v=>v.userId))];
+  const users = {};
+  await Promise.all(userIds.map(async uid => {
+    const s = await fw.getDoc('users/'+uid);
+    if (s.exists()) users[uid] = s.data();
+  }));
+  const vEl = document.getElementById('vorschlaege-liste');
+  if (!vEl) return;
+  vEl.innerHTML = vorschlaege.map(v => `
+    <div class="list-item">
+      <div class="list-item-body">
+        <div class="list-item-title">${users[v.userId]?.vorname||''} ${users[v.userId]?.nachname||''}</div>
+        <div class="list-item-sub">${v.uebungTitel||''} · ${datum(v.datum)}</div>
+      </div>
+      <div style="display:flex;gap:0.4rem">
+        <button class="btn btn-sm btn-success" onclick="bestaetigen('${v.id}','${v.uebungId}','${v.userId}','${(users[v.userId]?.vorname||'')+' '+(users[v.userId]?.nachname||'')}')">✅</button>
+        <button class="btn btn-sm btn-danger"  onclick="ablehnen('${v.id}')">❌</button>
+      </div>
+    </div>`).join('');
+}
+
+// ── Einsätze ──────────────────────────────────────────────
+registerPage('einsaetze', async (el) => {
+  fw.setTitle('Einsätze');
+  fw.showHeaderAction('+ Einsatz', () => navigate('uebung-form', {typ:'einsatz'}));
+  const [uSnap, aSnap, vSnap] = await Promise.all([
+    fw.getDocs('uebungen', fw.where('typ','==','einsatz'), fw.orderBy('datum','desc')),
     fw.getDocs('anwesenheiten', fw.where('userId','==',fw.user.uid)),
+    fw.isWehrfuehrer() ? fw.getDocs('anwesenheiten', fw.where('status','==','vorgeschlagen')) : Promise.resolve({size:0, docs:[]}),
   ]);
-  const alle     = uSnap.docs.map(d => ({id:d.id,...d.data()}));
+  const liste    = uSnap.docs.map(d => ({id:d.id,...d.data()}));
   const meineMap = new Map(aSnap.docs.map(d => [d.data().uebungId, d.data().status]));
-  const einsaetze = alle.filter(u => u.typ === 'einsatz');
-  const dienste   = alle.filter(u => u.typ !== 'einsatz');
-
-  let vorschlaege = [];
-  if (fw.isWehrfuehrer()) {
-    const vSnap = await fw.getDocs('anwesenheiten', fw.where('status','==','vorgeschlagen'));
-    vorschlaege = vSnap.docs.map(d => ({id:d.id,...d.data()}));
-  }
-
-  function renderListe(liste) {
-    if (!liste.length) return '<div class="empty">Keine Einträge</div>';
-    return liste.map(u => `
-      <div class="list-item" onclick="navigate('uebung-detail',{id:'${u.id}'})">
-        <div class="typ-dot typ-${u.typ}"></div>
-        <div class="list-item-body">
-          <div class="list-item-title">${u.titel}</div>
-          <div class="list-item-sub">${datum(u.datum)} · ${u.dauer_h||''}h</div>
-        </div>
-        <div class="list-item-right">${anwesenheitBadge(meineMap.get(u.id))}</div>
-        <div class="list-chevron">›</div>
-      </div>`).join('');
-  }
-
+  const offen    = vSnap.size;
   el.innerHTML = `
-    ${vorschlaege.length > 0 ? `
-      <div class="section-header">⏳ Ausstehende Bestätigungen (${vorschlaege.length})</div>
-      <div class="card" id="vorschlaege-liste"></div>
-    ` : ''}
-    <div class="section-header">🚨 Einsätze</div>
-    <div class="card">${renderListe(einsaetze)}</div>
-    <div class="section-header">📅 Dienste</div>
-    <div class="card">${renderListe(dienste)}</div>
+    ${offen > 0 ? `<div class="section-header">⏳ Ausstehende Bestätigungen (${offen})</div><div class="card" id="vorschlaege-liste"></div>` : ''}
+    <div class="section-header">🚨 Alle Einsätze</div>
+    <div class="card">${renderEintragListe(liste, meineMap)}</div>
   `;
+  ladeVorschlaege(el);
+});
 
-  if (vorschlaege.length > 0) {
-    const vEl = document.getElementById('vorschlaege-liste');
-    const userIds = [...new Set(vorschlaege.map(v=>v.userId))];
-    const users = {};
-    await Promise.all(userIds.map(async uid => {
-      const s = await fw.getDoc('users/'+uid);
-      if (s.exists()) users[uid] = s.data();
-    }));
-    vEl.innerHTML = vorschlaege.map(v => `
-      <div class="list-item">
-        <div class="list-item-body">
-          <div class="list-item-title">${users[v.userId]?.vorname||''} ${users[v.userId]?.nachname||''}</div>
-          <div class="list-item-sub">${v.uebungTitel||''} · ${datum(v.datum)}</div>
-        </div>
-        <div style="display:flex;gap:0.4rem">
-          <button class="btn btn-sm btn-success" onclick="bestaetigen('${v.id}','${v.uebungId}','${v.userId}','${(users[v.userId]?.vorname||'')+' '+(users[v.userId]?.nachname||'')}')">✅</button>
-          <button class="btn btn-sm btn-danger"  onclick="ablehnen('${v.id}')">❌</button>
-        </div>
-      </div>`).join('');
-  }
+// ── Dienste ───────────────────────────────────────────────
+registerPage('dienste', async (el) => {
+  fw.setTitle('Dienste');
+  if (fw.isWehrfuehrer()) fw.showHeaderAction('+ Dienst', () => navigate('uebung-form', {typ:'dienst'}));
+  const [uSnap, aSnap, vSnap] = await Promise.all([
+    fw.getDocs('uebungen', fw.where('typ','==','dienst'), fw.orderBy('datum','desc')),
+    fw.getDocs('anwesenheiten', fw.where('userId','==',fw.user.uid)),
+    fw.isWehrfuehrer() ? fw.getDocs('anwesenheiten', fw.where('status','==','vorgeschlagen')) : Promise.resolve({size:0, docs:[]}),
+  ]);
+  const liste    = uSnap.docs.map(d => ({id:d.id,...d.data()}));
+  const meineMap = new Map(aSnap.docs.map(d => [d.data().uebungId, d.data().status]));
+  const offen    = vSnap.size;
+  el.innerHTML = `
+    ${offen > 0 ? `<div class="section-header">⏳ Ausstehende Bestätigungen (${offen})</div><div class="card" id="vorschlaege-liste"></div>` : ''}
+    <div class="section-header">📅 Alle Dienste</div>
+    <div class="card">${renderEintragListe(liste, meineMap)}</div>
+  `;
+  ladeVorschlaege(el);
 });
 
 window.bestaetigen = async (aId, uId, userId, name) => {
@@ -192,7 +206,7 @@ registerPage('uebung-detail', async (el, {id}) => {
   const u = {id,...snap.data()};
   const isEinsatz = u.typ === 'einsatz';
   fw.setTitle(isEinsatz ? 'Einsatz' : 'Dienst');
-  fw.showBack(() => navigate('uebungen'));
+  fw.showBack(() => navigate(u.typ === 'einsatz' ? 'einsaetze' : 'dienste'));
   if (fw.isWehrfuehrer()) fw.showHeaderAction('✏️ Edit', () => navigate('uebung-form',{id}));
 
   const aSnap = await fw.getDocs('anwesenheiten',
