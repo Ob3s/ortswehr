@@ -117,8 +117,9 @@
       try {
         const perm = await Notification.requestPermission();
         if (perm !== 'granted') { console.warn('Push: Berechtigung verweigert'); return null; }
-        // Firebase Messaging braucht seinen eigenen Service Worker
-        const swReg = await navigator.serviceWorker.register('/ortswehr/firebase-messaging-sw.js');
+        // Service Worker mit scope registrieren
+        const swReg = await navigator.serviceWorker.register('/ortswehr/firebase-messaging-sw.js', { scope: '/ortswehr/' });
+        await navigator.serviceWorker.ready;
         const token = await getToken(messaging, { vapidKey: VAPID, serviceWorkerRegistration: swReg });
         if (token) {
           await this.setDoc('users/' + this.user.uid, { fcmToken: token });

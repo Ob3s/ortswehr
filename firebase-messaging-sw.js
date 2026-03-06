@@ -1,5 +1,4 @@
 // firebase-messaging-sw.js
-// Dieser Service Worker MUSS im Root-Verzeichnis liegen und so heißen!
 importScripts('https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging-compat.js');
 
@@ -14,7 +13,6 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
-// Hintergrund-Nachrichten empfangen
 messaging.onBackgroundMessage(payload => {
   const { title, body } = payload.notification || {};
   const alarm = payload.data?.alarm === 'true';
@@ -25,5 +23,6 @@ messaging.onBackgroundMessage(payload => {
     tag: alarm ? 'einsatz' : 'allgemein',
     vibrate: alarm ? [200,100,200,100,200,100,400] : [200,100,200],
     requireInteraction: alarm,
+    data: { url: 'https://ob3s.github.io/ortswehr/' }
   });
 });
