@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v1.1.7
+// js/pages.js – alle Seiten v1.2.0
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -81,7 +81,7 @@ registerPage('dashboard', async (el) => {
     </div>
 
 
-    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.1.7</div>
+    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.2.0</div>
   `;
   checkDeepLink();
   startStatusPruefung();
@@ -244,9 +244,50 @@ registerPage('dienste', async (el) => {
   el.innerHTML = `
     ${offen > 0 ? `<div class="section-header">⏳ Ausstehende Bestätigungen (${offen})</div><div class="card" id="vorschlaege-liste"></div>` : ''}
     <div class="card">${renderEintragListe(liste, meineMap)}</div>
+    ${fw.isWehrfuehrer() ? `
+    <div style="margin-top:1rem">
+      <button class="btn btn-secondary btn-full" onclick="kalenderImportieren()" id="kal-btn">📅 Aus Google Kalender importieren</button>
+      <div id="kal-status" class="muted" style="font-size:0.8rem;text-align:center;margin-top:0.4rem"></div>
+    </div>` : ''}
   `;
   ladeVorschlaege(el);
 });
+
+window.kalenderImportieren = async () => {
+  const btn    = document.getElementById('kal-btn');
+  const status = document.getElementById('kal-status');
+  btn.disabled = true; btn.textContent = '⏳ Wird geladen...';
+  try {
+    const res = await fetch('https://europe-west3-ffw-oegeln-791ca.cloudfunctions.net/kalenderImport',
+      { headers: { 'x-uid': fw.user.uid } });
+    const { events, error } = await res.json();
+    if (error) throw new Error(error);
+
+    // Duplikate vermeiden
+    const snap = await fw.getDocs('uebungen', fw.where('typ','==','dienst'));
+    const vorhandene = new Set(snap.docs.map(d =>
+      d.data().titel + '_' + d.data().datum?.toDate?.().toISOString().slice(0,10)));
+
+    let neu = 0, skip = 0;
+    for (const e of events) {
+      if (vorhandene.has(e.titel + '_' + e.datum)) { skip++; continue; }
+      await fw.addDoc('uebungen', {
+        titel: e.titel, datum: new Date(e.datum),
+        dauer_h: e.dauer_h, beschreibung: e.beschreibung || '',
+        typ: 'dienst', erstelltVon: fw.user.uid, erstelltAm: new Date(),
+      });
+      neu++;
+    }
+    status.textContent = `${neu} Dienste importiert, ${skip} bereits vorhanden`;
+    btn.textContent = '📅 Aus Google Kalender importieren';
+    btn.disabled = false;
+    if (neu > 0) setTimeout(() => navigate('dienste'), 1000);
+  } catch(e) {
+    status.textContent = 'Fehler: ' + e.message;
+    btn.textContent = '📅 Aus Google Kalender importieren';
+    btn.disabled = false;
+  }
+};
 
 window.bestaetigen = async (aId, uId, userId, name) => {
   await fw.updateDoc('anwesenheiten/'+aId, { status:'bestaetigt', bestaetigtAm: new Date() });
