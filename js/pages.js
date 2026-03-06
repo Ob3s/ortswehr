@@ -437,18 +437,18 @@ registerPage('profil', async (el) => {
     <div class="section-header">🔔 Benachrichtigungen</div>
     <div class="card">
       <label style="display:flex;align-items:center;gap:0.8rem;padding:0.5rem 0;border-bottom:1px solid var(--border)">
-        <input type="checkbox" id="n-einsatz" ${me.notif_einsatz!==false?'checked':''} style="width:20px;height:20px;accent-color:var(--red)">
+        <input type="checkbox" id="n-einsatz" style="width:20px;height:20px;accent-color:var(--red)">
         <div><div style="font-weight:600">🚨 Einsatzalarm</div><div class="muted" style="font-size:0.78rem">Bei neuen Einsätzen</div></div>
       </label>
       <label style="display:flex;align-items:center;gap:0.8rem;padding:0.5rem 0;border-bottom:1px solid var(--border)">
-        <input type="checkbox" id="n-uebung" ${me.notif_uebung!==false?'checked':''} style="width:20px;height:20px;accent-color:var(--red)">
+        <input type="checkbox" id="n-uebung" style="width:20px;height:20px;accent-color:var(--red)">
         <div><div style="font-weight:600">📅 Neue Übung</div><div class="muted" style="font-size:0.78rem">Bei neuen Übungen</div></div>
       </label>
       <label style="display:flex;align-items:center;gap:0.8rem;padding:0.5rem 0">
-        <input type="checkbox" id="n-best" ${me.notif_bestaetigung!==false?'checked':''} style="width:20px;height:20px;accent-color:var(--red)">
+        <input type="checkbox" id="n-best" style="width:20px;height:20px;accent-color:var(--red)">
         <div><div style="font-weight:600">✅ Bestätigung</div><div class="muted" style="font-size:0.78rem">Wenn Teilnahme bestätigt wird</div></div>
       </label>
-      <button class="btn btn-secondary btn-full" style="margin-top:0.8rem" onclick="notifSpeichern()">Einstellungen speichern</button>
+      <button class="btn btn-secondary btn-full" style="margin-top:0.8rem" id="notif-save-btn">Einstellungen speichern</button>
     </div>
 
     <div class="section-header">Dienstlich</div>
@@ -493,6 +493,23 @@ window.profilSpeichern = async () => {
   Object.assign(fw.profil, data);
   fw.toast('Gespeichert ✅');
 };
+
+// Listener für Notif-Button (onclick funktioniert nicht in ES-Modulen)
+document.addEventListener('click', e => {
+  if (e.target.id === 'notif-save-btn') notifSpeichern();
+});
+
+// Checkbox-Status nach dem Rendern setzen
+function initNotifCheckboxes() {
+  const p = fw.profil;
+  const e = document.getElementById('n-einsatz');
+  const u = document.getElementById('n-uebung');
+  const b = document.getElementById('n-best');
+  if (e) e.checked = p.notif_einsatz !== false;
+  if (u) u.checked = p.notif_uebung !== false;
+  if (b) b.checked = p.notif_bestaetigung !== false;
+}
+setTimeout(initNotifCheckboxes, 50);
 
 window.notifSpeichern = async () => {
   const data = {
