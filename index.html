@@ -117,8 +117,8 @@
       try {
         const perm = await Notification.requestPermission();
         if (perm !== 'granted') { console.warn('Push: Berechtigung verweigert'); return null; }
-        // Service Worker mit scope registrieren
-        const swReg = await navigator.serviceWorker.register('/ortswehr/firebase-messaging-sw.js', { scope: '/ortswehr/' });
+        // Firebase Messaging SW muss im Root liegen
+        const swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
         await navigator.serviceWorker.ready;
         const token = await getToken(messaging, { vapidKey: VAPID, serviceWorkerRegistration: swReg });
         if (token) {
