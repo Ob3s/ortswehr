@@ -37,22 +37,6 @@ self.addEventListener('message', e => {
   if (e.data === 'SKIP_WAITING') self.skipWaiting();
 });
 
-// ── Push ──────────────────────────────────────────────────
-self.addEventListener('push', e => {
-  const data = e.data?.json() || {};
-  const alarm = data.alarm === true || data.alarm === 'true';
-  const title = data.title || '🚒 Ortswehr';
-  e.waitUntil(self.registration.showNotification(title, {
-    body:    data.body || '',
-    icon:    '/ortswehr/icons/icon-192.png',
-    badge:   '/ortswehr/icons/icon-192.png',
-    tag:     alarm ? 'einsatz' : 'allgemein',
-    vibrate: alarm ? [200,100,200,100,200,100,400] : [200,100,200],
-    data:    { url: 'https://ob3s.github.io/ortswehr/', uebungId: data.uebungId || '' },
-    requireInteraction: alarm,
-  }));
-});
-
 self.addEventListener('notificationclick', e => {
   e.notification.close();
   const url = e.notification.data?.url || '/ortswehr/';
