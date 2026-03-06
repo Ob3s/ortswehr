@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v1.2.0
+// js/pages.js – alle Seiten v1.2.1
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -10,6 +10,21 @@ function datum(d) {
   if (isNaN(ts)) return '–';
   return ts.toLocaleDateString('de-DE', { day:'2-digit', month:'2-digit', year:'numeric' });
 }
+function dauerFormat(h) {
+  if (!h) return '';
+  const gesamt = Math.round(h * 60);
+  const std = Math.floor(gesamt / 60);
+  const min = gesamt % 60;
+  return min === 0 ? `${std}:00` : `${std}:${String(min).padStart(2,'0')}`;
+}
+function zeitZeile(u) {
+  const z = u.zeitBeginn && u.zeitEnde
+    ? `${u.zeitBeginn} – ${u.zeitEnde} Uhr`
+    : u.zeitBeginn ? `ab ${u.zeitBeginn} Uhr` : '';
+  const d = u.dauer_h ? dauerFormat(u.dauer_h) + 'h' : '';
+  return [z, d].filter(Boolean).join(' · ');
+}
+
 function anwesenheitBadge(s) {
   if (!s)                   return '<span class="badge badge-gray">–</span>';
   if (s==='bestaetigt')     return '<span class="badge badge-green">✅ Bestätigt</span>';
@@ -81,7 +96,7 @@ registerPage('dashboard', async (el) => {
     </div>
 
 
-    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.2.0</div>
+    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.2.1</div>
   `;
   checkDeepLink();
   startStatusPruefung();
@@ -138,7 +153,7 @@ function renderEintrag(u, meineMap) {
     <div class="typ-dot typ-${u.typ}"></div>
     <div class="list-item-body">
       <div class="list-item-title">${u.titel}</div>
-      <div class="list-item-sub">${datum(u.datum)} · ${u.dauer_h||''}h</div>
+      <div class="list-item-sub">${datum(u.datum)}${zeitZeile(u) ? ' · '+zeitZeile(u) : ''}</div>
     </div>
     <div class="list-item-right">${anwesenheitBadge(meineMap.get(u.id))}</div>
     <div class="list-chevron">›</div>
@@ -274,6 +289,7 @@ window.kalenderImportieren = async () => {
       await fw.addDoc('uebungen', {
         titel: e.titel, datum: new Date(e.datum),
         dauer_h: e.dauer_h, beschreibung: e.beschreibung || '',
+        zeitBeginn: e.zeitBeginn || null, zeitEnde: e.zeitEnde || null,
         typ: 'dienst', erstelltVon: fw.user.uid, erstelltAm: new Date(),
       });
       neu++;
@@ -340,7 +356,7 @@ registerPage('uebung-detail', async (el, {id}) => {
     <div class="card">
       <span class="badge ${isEinsatz?'badge-red':'badge-blue'}">${isEinsatz?'⚡ Einsatz':'📅 Dienst'}</span>
       <div style="margin-top:0.6rem;font-weight:600;font-size:1.1rem">${u.titel}</div>
-      <div style="margin-top:0.3rem;color:var(--muted);font-size:0.85rem">${datum(u.datum)}${u.dauer_h ? ' · '+u.dauer_h+'h' : ''}</div>
+      <div style="margin-top:0.3rem;color:var(--muted);font-size:0.85rem">${datum(u.datum)}${zeitZeile(u) ? ' · '+zeitZeile(u) : ''}</div>
       ${u.beschreibung ? `<p class="muted" style="margin-top:0.4rem;font-size:0.85rem">${u.beschreibung}</p>` : ''}
     </div>
     <div class="section-header">Meine Anwesenheit</div>
@@ -520,7 +536,7 @@ async function benachrichtigeOrtswehr(typ, titel, datumStr, dauer_h, uebungId) {
   const title = isEinsatz ? '🚨 EINSATZ ALARM' : '🔔 Neuer Dienst';
   const body  = isEinsatz
     ? titel
-    : `${titel} am ${new Date(datumStr).toLocaleDateString('de-DE')} (${dauer_h}h)`;
+    : `${titel} am ${new Date(datumStr).toLocaleDateString('de-DE')} (${dauerFormat(dauer_h)}h)`;
   await sendPush(tokens, title, body, isEinsatz, uebungId);
 }
 
