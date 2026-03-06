@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v1.2.9
+// js/pages.js – alle Seiten v1.3.0
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -96,7 +96,7 @@ registerPage('dashboard', async (el) => {
     </div>
 
 
-    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.2.9</div>
+    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.3.0</div>
   `;
   checkDeepLink();
   startStatusPruefung();
@@ -149,7 +149,7 @@ function startStatusPruefung() {
 
 // ── Hilfsfunktion: Liste rendern ─────────────────────────
 function renderEintrag(u, meineMap) {
-  return `<div class="list-item" onclick="navigate('uebung-detail',{id:'${u.id}'})">
+  return `<div class="list-item" onclick="navigate('uebung-detail',{id:'${u.id}',typ:'${u.typ}'})">
     <div class="typ-dot typ-${u.typ}"></div>
     <div class="list-item-body">
       <div class="list-item-title">${u.titel}</div>
@@ -225,12 +225,15 @@ async function ladeVorschlaege(el) {
     </div>`).join('');
 }
 
+// Collection je nach Typ
+function col(typ) { return typ === 'einsatz' ? 'einsaetze' : 'dienste'; }
+
 // ── Einsätze ──────────────────────────────────────────────
 registerPage('einsaetze', async (el) => {
   fw.setTitle('Einsätze');
   fw.showHeaderAction('+ Einsatz', () => navigate('uebung-form', {typ:'einsatz'}));
   const [uSnap, aSnap, vSnap] = await Promise.all([
-    fw.getDocs('uebungen', fw.where('typ','==','einsatz'), fw.orderBy('datum','desc')),
+    fw.getDocs('einsaetze', fw.orderBy('datum','desc')),
     fw.getDocs('anwesenheiten', fw.where('userId','==',fw.user.uid)),
     fw.isWehrfuehrer() ? fw.getDocs('anwesenheiten', fw.where('status','==','vorgeschlagen')) : Promise.resolve({size:0, docs:[]}),
   ]);
@@ -249,7 +252,7 @@ registerPage('dienste', async (el) => {
   fw.setTitle('Dienste');
   if (fw.isWehrfuehrer()) fw.showHeaderAction('+ Dienst', () => navigate('uebung-form', {typ:'dienst'}));
   const [uSnap, aSnap, vSnap] = await Promise.all([
-    fw.getDocs('uebungen', fw.where('typ','==','dienst'), fw.orderBy('datum','desc')),
+    fw.getDocs('dienste', fw.orderBy('datum','desc')),
     fw.getDocs('anwesenheiten', fw.where('userId','==',fw.user.uid)),
     fw.isWehrfuehrer() ? fw.getDocs('anwesenheiten', fw.where('status','==','vorgeschlagen')) : Promise.resolve({size:0, docs:[]}),
   ]);
@@ -279,14 +282,14 @@ window.kalenderImportieren = async () => {
     if (error) throw new Error(error);
 
     // Duplikate vermeiden
-    const snap = await fw.getDocs('uebungen', fw.where('typ','==','dienst'));
+    const snap = await fw.getDocs('dienste');
     const vorhandene = new Set(snap.docs.map(d =>
       d.data().titel + '_' + d.data().datum?.toDate?.().toISOString().slice(0,10)));
 
     let neu = 0, skip = 0;
     for (const e of events) {
       if (vorhandene.has(e.titel + '_' + e.datum)) { skip++; continue; }
-      await fw.addDoc('uebungen', {
+      await fw.addDoc('dienste', {
         titel: e.titel, datum: new Date(e.datum),
         dauer_h: e.dauer_h, beschreibung: e.beschreibung || '',
         zeitBeginn: e.zeitBeginn || null, zeitEnde: e.zeitEnde || null,
@@ -312,22 +315,22 @@ window.bestaetigen = async (aId, uId, userId, name) => {
   if (u?.notif_bestaetigung && u?.fcmToken) {
     await sendPush([u.fcmToken], '✅ Teilnahme bestätigt', 'Deine Anwesenheit wurde bestätigt.', false);
   }
-  fw.toast('Bestätigt ✅'); navigate('uebungen');
+  fw.toast('Bestätigt ✅'); navigate('dienste');
 };
 window.ablehnen = async (aId) => {
   await fw.updateDoc('anwesenheiten/'+aId, { status:'abgelehnt' });
-  fw.toast('Abgelehnt'); navigate('uebungen');
+  fw.toast('Abgelehnt'); navigate('dienste');
 };
 
 // ── Detail ────────────────────────────────────────────────
-registerPage('uebung-detail', async (el, {id}) => {
-  const snap = await fw.getDoc('uebungen/'+id);
+registerPage('uebung-detail', async (el, {id, typ}) => {
+  const snap = await fw.getDoc(col(typ||'dienst')+'/'+id);
   if (!snap.exists()) { el.innerHTML='<div class="empty">Nicht gefunden</div>'; return; }
   const u = {id,...snap.data()};
   const isEinsatz = u.typ === 'einsatz';
   fw.setTitle(isEinsatz ? 'Einsatz' : 'Dienst');
   fw.showBack(() => navigate(u.typ === 'einsatz' ? 'einsaetze' : 'dienste'));
-  if (fw.isWehrfuehrer()) fw.showHeaderAction('✏️ Edit', () => navigate('uebung-form',{id}));
+  if (fw.isWehrfuehrer()) fw.showHeaderAction('✏️ Edit', () => navigate('uebung-form',{id, typ: u.typ}));
 
   const aSnap = await fw.getDocs('anwesenheiten',
     fw.where('uebungId','==',id), fw.where('userId','==',fw.user.uid));
@@ -388,12 +391,12 @@ window.teilnahmeMelden = async (uebungId, titel, dauer_h, typ, datumStr) => {
     dauer_h, typ, datum: new Date(datumStr), vorgeschlagenAm: new Date(),
   });
   fw.toast('Teilnahme gemeldet ⏳');
-  navigate('uebung-detail', {id: uebungId});
+  navigate('uebung-detail', {id: uebungId, typ});
 };
 window.teilnehmerEntfernen = async (aId, uebungId) => {
   if (!confirm('Anwesenheit entfernen?')) return;
   await fw.deleteDoc('anwesenheiten/'+aId);
-  fw.toast('Entfernt'); navigate('uebung-detail', {id: uebungId});
+  fw.toast('Entfernt'); navigate('uebung-detail', {id: uebungId, typ});
 };
 
 // ── Kamerad direkt eintragen ──────────────────────────────
@@ -430,17 +433,17 @@ window.direktEintragen = async (uebungId, userId, name, dauer_h, typ, datumStr) 
     dauer_h, typ, datum: new Date(datumStr), bestaetigtAm: new Date(),
   });
   fw.toast(name+' eingetragen ✅');
-  navigate('uebung-detail', {id: uebungId});
+  navigate('uebung-detail', {id: uebungId, typ});
 };
 
 // ── Einsatz / Dienst Form ─────────────────────────────────
 registerPage('uebung-form', async (el, {id, typ: vorTyp}) => {
   let u = null;
-  if (id) { const s = await fw.getDoc('uebungen/'+id); if (s.exists()) u={id,...s.data()}; }
+  if (id) { const s = await fw.getDoc(col(vorTyp||'dienst')+'/'+id); if (!s.exists()) { const s2 = await fw.getDoc(col('einsatz')+'/'+id); if(s2.exists()) u={id,...s2.data()}; } else { u={id,...s.data()}; } }
   const selTyp = u?.typ || vorTyp || 'dienst';
   const isEinsatz = selTyp === 'einsatz';
   fw.setTitle(u ? 'Bearbeiten' : (isEinsatz ? 'Einsatz melden' : 'Neuer Dienst'));
-  fw.showBack(() => navigate('uebungen'));
+  fw.showBack(() => navigate(selTyp === 'einsatz' ? 'einsaetze' : 'dienste'));
 
   const datumVal = u?.datum?.toDate ? u.datum.toDate().toISOString().slice(0,10)
     : new Date().toISOString().slice(0,10);
@@ -517,21 +520,21 @@ window.uebungSpeichern = async (id, forcTyp) => {
   try {
     let uebungId = id;
     if (id) {
-      await fw.updateDoc('uebungen/'+id, data);
+      await fw.updateDoc(col(typ)+'/'+id, data);
     } else {
-      const ref = await fw.addDoc('uebungen', {...data, erstelltVon: fw.user.uid, erstelltAm: new Date()});
+      const ref = await fw.addDoc(col(typ), {...data, erstelltVon: fw.user.uid, erstelltAm: new Date()});
       uebungId = ref.id;
     }
     if (isNeu) await benachrichtigeOrtswehr(typ, titel, datumStr, dauer_h, uebungId);
     fw.toast(isEinsatz ? 'Einsatz gemeldet 🚨' : 'Gespeichert ✅');
-    navigate('uebungen');
+    navigate(typ === 'einsatz' ? 'einsaetze' : 'dienste');
   } catch(e) { fw.toast(e.message, true); }
 };
 
-window.uebungLoeschen = async (id) => {
+window.uebungLoeschen = async (id, typ) => {
   if (!confirm('Wirklich löschen?')) return;
-  await fw.deleteDoc('uebungen/'+id);
-  fw.toast('Gelöscht'); navigate('uebungen');
+  await fw.deleteDoc(col(typ)+'/'+id);
+  fw.toast('Gelöscht'); navigate(typ === 'einsatz' ? 'einsaetze' : 'dienste');
 };
 
 // ── Push ──────────────────────────────────────────────────
