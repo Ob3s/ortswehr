@@ -431,8 +431,6 @@ registerPage('profil', async (el) => {
       <div class="form-row"><label>Telefon</label><input id="p-tel" type="tel" value="${me.telefon||''}"></div>
       <div class="form-row"><label>E-Mail</label><input id="p-mail" type="email" value="${me.email||''}"></div>
       <div class="form-row"><label>Führerscheinklassen (z.B. B, C, CE)</label><input id="p-fs" value="${me.fuehrerschein||''}"></div>
-      <div class="form-row"><label>Notfallkontakt Name</label><input id="p-nkn" value="${me.notfallkontakt_name||''}"></div>
-      <div class="form-row"><label>Notfallkontakt Telefon</label><input id="p-nkt" type="tel" value="${me.notfallkontakt_tel||''}"></div>
       <button class="btn btn-primary btn-full" onclick="profilSpeichern()">💾 Speichern</button>
     </div>
 
@@ -490,8 +488,6 @@ window.profilSpeichern = async () => {
     telefon: document.getElementById('p-tel').value,
     email: document.getElementById('p-mail').value,
     fuehrerschein: document.getElementById('p-fs').value,
-    notfallkontakt_name: document.getElementById('p-nkn').value,
-    notfallkontakt_tel: document.getElementById('p-nkt').value,
   };
   await fw.setDoc('users/'+fw.user.uid, data);
   Object.assign(fw.profil, data);
@@ -590,7 +586,6 @@ registerPage('kamerad-detail', async (el, {id}) => {
         ${[['Dienstgrad',u.dienstgrad],['Ortswehr',wehrName],
            ['Eingetreten',datum(u.eintrittsdatum)],['Telefon',u.telefon],
            ['E-Mail',u.email],['Führerschein',u.fuehrerschein],
-           ['Notfallkontakt',u.notfallkontakt_name?(u.notfallkontakt_name+' · '+u.notfallkontakt_tel):'–'],
         ].map(([l,v]) => `<div><div class="muted" style="font-size:0.72rem">${l}</div><div style="font-size:0.88rem">${v||'–'}</div></div>`).join('')}
       </div>
     </div>
@@ -669,8 +664,6 @@ registerPage('kamerad-form', async (el, {id}) => {
       <div class="form-row"><label>Telefon</label><input id="k-tel" type="tel" value="${u?.telefon||''}"></div>
       <div class="form-row"><label>E-Mail</label><input id="k-mail" type="email" value="${u?.email||''}"></div>
       <div class="form-row"><label>Führerscheinklassen</label><input id="k-fs" value="${u?.fuehrerschein||''}"></div>
-      <div class="form-row"><label>Notfallkontakt Name</label><input id="k-nkn" value="${u?.notfallkontakt_name||''}"></div>
-      <div class="form-row"><label>Notfallkontakt Tel</label><input id="k-nkt" type="tel" value="${u?.notfallkontakt_tel||''}"></div>
       <div class="btn-row">
         <button class="btn btn-primary" onclick="kameradSpeichern('${id||''}')">💾 Speichern</button>
       </div>
@@ -688,8 +681,6 @@ window.kameradSpeichern = async (id) => {
     telefon: document.getElementById('k-tel').value,
     email: document.getElementById('k-mail').value,
     fuehrerschein: document.getElementById('k-fs').value,
-    notfallkontakt_name: document.getElementById('k-nkn').value,
-    notfallkontakt_tel: document.getElementById('k-nkt').value,
   };
   try {
     if (id) {
