@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="theme-color" content="#cc2200">
-  <meta name="app-version" content="1.3.1">
+  <meta name="app-version" content="1.3.2">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ortswehr">
@@ -119,12 +119,22 @@
     hideHeaderAction() { document.getElementById('header-action').classList.add('hidden'); },
 
     async registerPush() {
-      if (!messaging) { this.toast('Push: messaging nicht verfügbar', true); return null; }
+      if (!messaging) { console.warn('Push: messaging nicht verfügbar'); return null; }
       try {
         const perm = await Notification.requestPermission();
         if (perm !== 'granted') { this.toast('Push: Berechtigung verweigert', true); return null; }
+        // Firebase SW registrieren und warten bis er aktiv ist
         const swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
-        await navigator.serviceWorker.ready;
+        await new Promise(resolve => {
+          if (swReg.active) { resolve(); return; }
+          const sw = swReg.installing || swReg.waiting;
+          if (sw) { sw.addEventListener('statechange', e => { if (e.target.state === 'activated') resolve(); }); }
+          else { swReg.addEventListener('updatefound', () => {
+            swReg.installing.addEventListener('statechange', e => { if (e.target.state === 'activated') resolve(); });
+          }); }
+          // Fallback nach 3s
+          setTimeout(resolve, 3000);
+        });
         const token = await getToken(messaging, { vapidKey: VAPID, serviceWorkerRegistration: swReg });
         if (token) {
           await this.setDoc('users/' + this.user.uid, { fcmToken: token });
@@ -133,7 +143,8 @@
         }
         return token;
       } catch(e) {
-        this.toast('Push Fehler: ' + e.code, true);
+        console.error('Push Fehler:', e);
+        this.toast('Push: ' + (e.message || e.code), true);
         return null;
       }
     },
