@@ -436,26 +436,23 @@ registerPage('profil', async (el) => {
 
     <div class="section-header">🔔 Benachrichtigungen</div>
     <div class="card">
-      <label style="display:flex;align-items:center;gap:0.8rem;padding:0.5rem 0;border-bottom:1px solid var(--border)">
-        <input type="checkbox" id="n-einsatz" style="width:20px;height:20px;accent-color:var(--red)">
-        <div><div style="font-weight:600">🚨 Einsatzalarm</div><div class="muted" style="font-size:0.78rem">Bei neuen Einsätzen</div></div>
-      </label>
-      <label style="display:flex;align-items:center;gap:0.8rem;padding:0.5rem 0;border-bottom:1px solid var(--border)">
-        <input type="checkbox" id="n-uebung" style="width:20px;height:20px;accent-color:var(--red)">
-        <div><div style="font-weight:600">📅 Neue Übung</div><div class="muted" style="font-size:0.78rem">Bei neuen Übungen</div></div>
-      </label>
-      <label style="display:flex;align-items:center;gap:0.8rem;padding:0.5rem 0">
-        <input type="checkbox" id="n-best" style="width:20px;height:20px;accent-color:var(--red)">
-        <div><div style="font-weight:600">✅ Bestätigung</div><div class="muted" style="font-size:0.78rem">Wenn Teilnahme bestätigt wird</div></div>
-      </label>
+      <div class="notif-row" style="display:flex;align-items:center;gap:0.8rem;padding:0.6rem 0;border-bottom:1px solid var(--border)">
+        <div style="flex:1"><div style="font-weight:600">🚨 Einsatzalarm</div><div class="muted" style="font-size:0.78rem">Bei neuen Einsätzen</div></div>
+        <input type="checkbox" id="n-einsatz" style="width:24px;height:24px;accent-color:var(--red);cursor:pointer;flex-shrink:0">
+      </div>
+      <div class="notif-row" style="display:flex;align-items:center;gap:0.8rem;padding:0.6rem 0;border-bottom:1px solid var(--border)">
+        <div style="flex:1"><div style="font-weight:600">📅 Neue Übung</div><div class="muted" style="font-size:0.78rem">Bei neuen Übungen</div></div>
+        <input type="checkbox" id="n-uebung" style="width:24px;height:24px;accent-color:var(--red);cursor:pointer;flex-shrink:0">
+      </div>
+      <div class="notif-row" style="display:flex;align-items:center;gap:0.8rem;padding:0.6rem 0;border-bottom:1px solid var(--border)">
+        <div style="flex:1"><div style="font-weight:600">✅ Bestätigung</div><div class="muted" style="font-size:0.78rem">Wenn Teilnahme bestätigt wird</div></div>
+        <input type="checkbox" id="n-best" style="width:24px;height:24px;accent-color:var(--red);cursor:pointer;flex-shrink:0">
+      </div>
       ${fw.isWehrfuehrer() ? `
-      <label style="display:flex;align-items:center;gap:0.8rem;padding:0.5rem 0;border-top:1px solid var(--border);margin-top:0.3rem">
-        <input type="checkbox" id="n-selbst" style="width:20px;height:20px;accent-color:var(--red)">
-        <div>
-          <div style="font-weight:600">🧪 Selbst benachrichtigen</div>
-          <div class="muted" style="font-size:0.78rem">Nur für Tests – Wehrführer erhält eigene Alarme</div>
-        </div>
-      </label>` : ''}
+      <div class="notif-row" style="display:flex;align-items:center;gap:0.8rem;padding:0.6rem 0;border-bottom:1px solid var(--border)">
+        <div style="flex:1"><div style="font-weight:600">🧪 Selbst benachrichtigen</div><div class="muted" style="font-size:0.78rem">Nur für Tests – Wehrführer erhält eigene Alarme</div></div>
+        <input type="checkbox" id="n-selbst" style="width:24px;height:24px;accent-color:var(--red);cursor:pointer;flex-shrink:0">
+      </div>` : ''}
       <button class="btn btn-secondary btn-full" style="margin-top:0.8rem" id="notif-save-btn">Einstellungen speichern</button>
     </div>
 
