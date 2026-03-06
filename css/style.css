@@ -268,3 +268,24 @@ hr       { border: none; border-top: 1px solid var(--border); margin: 1rem 0; }
 .pending-banner .icon { font-size: 1.3rem; }
 .pending-banner .text { flex: 1; font-size: 0.85rem; }
 .pending-banner .text strong { display: block; }
+
+/* ── Alarm Button ── */
+.alarm-btn {
+  display: block; width: 100%;
+  background: var(--red);
+  color: #fff; border: none;
+  border-radius: 16px;
+  padding: 1.1rem;
+  font-family: 'DM Sans', sans-serif;
+  font-size: 1.1rem; font-weight: 700;
+  letter-spacing: 0.04em;
+  cursor: pointer; margin-bottom: 1rem;
+  box-shadow: 0 4px 20px rgba(204,34,0,0.4);
+  animation: pulse 2s infinite;
+  -webkit-tap-highlight-color: transparent;
+}
+.alarm-btn:active { transform: scale(0.97); }
+@keyframes pulse {
+  0%, 100% { box-shadow: 0 4px 20px rgba(204,34,0,0.4); }
+  50%       { box-shadow: 0 4px 32px rgba(204,34,0,0.7); }
+}

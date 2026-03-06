@@ -1,5 +1,5 @@
-// sw.js – Service Worker für PWA
-const CACHE = 'ortswehr-v1';
+// sw.js – Service Worker mit Push-Unterstützung
+const CACHE = 'ortswehr-v3';
 const ASSETS = ['/', '/index.html', '/css/style.css', '/js/pages.js', '/manifest.json'];
 
 self.addEventListener('install', e => {
@@ -15,9 +15,38 @@ self.addEventListener('activate', e => {
 });
 
 self.addEventListener('fetch', e => {
-  // Firebase-Requests nicht cachen
-  if (e.request.url.includes('firestore') || e.request.url.includes('googleapis')) return;
+  if (e.request.url.includes('firestore') || e.request.url.includes('googleapis') ||
+      e.request.url.includes('firebase')) return;
   e.respondWith(
     caches.match(e.request).then(cached => cached || fetch(e.request))
   );
+});
+
+// ── Push-Nachrichten empfangen ────────────────────────────
+self.addEventListener('push', e => {
+  const data = e.data?.json() || {};
+  const title = data.title || '🚒 Ortswehr';
+  const options = {
+    body:    data.body || '',
+    icon:    '/icons/icon-192.png',
+    badge:   '/icons/icon-192.png',
+    tag:     data.tag || 'ortswehr',
+    vibrate: data.alarm ? [200, 100, 200, 100, 200, 100, 400] : [200, 100, 200],
+    data:    { url: data.url || '/' },
+    actions: data.actions || [],
+    requireInteraction: data.alarm || false,
+  };
+  e.waitUntil(self.registration.showNotification(title, options));
+});
+
+// ── Notification Click ────────────────────────────────────
+self.addEventListener('notificationclick', e => {
+  e.notification.close();
+  const url = e.notification.data?.url || '/';
+  e.waitUntil(clients.matchAll({ type: 'window' }).then(wins => {
+    for (const win of wins) {
+      if (win.url.includes(self.location.origin)) { win.focus(); return; }
+    }
+    return clients.openWindow(url);
+  }));
 });

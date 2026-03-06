@@ -19,7 +19,7 @@
   <div class="login-box">
     <div class="login-logo">🚒</div>
     <h1>Ortswehr</h1>
-    <p class="sub">FFW Ögeln</p>
+    <p class="sub">Freiwillige Feuerwehr</p>
     <div class="form-row">
       <label>E-Mail</label>
       <input id="login-email" type="email" placeholder="name@beispiel.de" autocomplete="email">
@@ -43,47 +43,31 @@
 
 <!-- App Shell -->
 <div id="app" class="hidden">
-
-  <!-- Header -->
   <header>
-    <button id="back-btn" class="header-back hidden">‹</button>
+    <button id="back-btn" class="header-back hidden">&#8249;</button>
     <h1 id="page-title">Dashboard</h1>
     <button id="header-action" class="header-action hidden"></button>
   </header>
-
-  <!-- Content -->
   <main id="main-content"></main>
-
-  <!-- Bottom Nav -->
   <nav class="bottom-nav">
-    <button class="nav-btn aktiv" data-page="dashboard">
-      <span class="nav-icon">🏠</span>
-      <span>Start</span>
-    </button>
-    <button class="nav-btn" data-page="uebungen">
-      <span class="nav-icon">📅</span>
-      <span>Übungen</span>
-    </button>
-    <button class="nav-btn" data-page="profil">
-      <span class="nav-icon">👤</span>
-      <span>Profil</span>
-    </button>
-    <button class="nav-btn hidden" data-page="kameraden" id="nav-kameraden">
-      <span class="nav-icon">👥</span>
-      <span>Kameraden</span>
-    </button>
+    <button class="nav-btn aktiv" data-page="dashboard"><span class="nav-icon">🏠</span><span>Start</span></button>
+    <button class="nav-btn" data-page="uebungen"><span class="nav-icon">📅</span><span>Übungen</span></button>
+    <button class="nav-btn" data-page="profil"><span class="nav-icon">👤</span><span>Profil</span></button>
+    <button class="nav-btn hidden" data-page="kameraden" id="nav-kameraden"><span class="nav-icon">👥</span><span>Kameraden</span></button>
+    <button class="nav-btn hidden" data-page="ortswehren" id="nav-ortswehren"><span class="nav-icon">🏘️</span><span>Wehren</span></button>
   </nav>
 </div>
 
 <div id="toast"></div>
 
-<!-- Firebase -->
 <script type="module">
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
-  import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, updatePassword, EmailAuthProvider, reauthenticateWithCredential }
+  import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail }
     from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
   import { getFirestore, collection, doc, getDoc, getDocs, addDoc, setDoc, updateDoc, deleteDoc, query, where, orderBy, Timestamp }
     from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
+  import { getMessaging, getToken, onMessage }
+    from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging.js';
 
   const firebaseConfig = {
     apiKey: "AIzaSyDwV6LJUnL660nQnnlQ47QZnBc_bXzIezU",
@@ -93,31 +77,27 @@
     messagingSenderId: "170034438620",
     appId: "1:170034438620:web:f2e40bf21b6a9b6987ef19"
   };
+  const VAPID = 'BDpa4LsgE1SlkshoyiVWt7EQbSi2YVp0Z_27N1Ms6sxGA4qogEPI3PWcRTwn3vvsYAhT8b1mD3Hpj6plCx5CySg';
 
   const firebaseApp = initializeApp(firebaseConfig);
-  const auth  = getAuth(firebaseApp);
-  const db    = getFirestore(firebaseApp);
+  const auth      = getAuth(firebaseApp);
+  const db        = getFirestore(firebaseApp);
+  let   messaging = null;
+  try { messaging = getMessaging(firebaseApp); } catch(e) {}
 
-  // ── Globale Helfer ────────────────────────────────────────
   window.fw = {
-    auth, db,
-    user: null,
-    profil: null,
+    auth, db, messaging, user: null, profil: null,
 
-    // Firestore Helfer
-    async getDoc(path)         { return getDoc(doc(db, path)); },
-    async setDoc(path, data)   { return setDoc(doc(db, path), data, { merge: true }); },
-    async updateDoc(path, data){ return updateDoc(doc(db, path), data); },
-    async deleteDoc(path)      { return deleteDoc(doc(db, path)); },
-    async addDoc(col, data)    { return addDoc(collection(db, col), data); },
-    async getDocs(col, ...constraints) {
-      const q = constraints.length
-        ? query(collection(db, col), ...constraints)
-        : collection(db, col);
+    async getDoc(path)          { return getDoc(doc(db, path)); },
+    async setDoc(path, data)    { return setDoc(doc(db, path), data, { merge: true }); },
+    async updateDoc(path, data) { return updateDoc(doc(db, path), data); },
+    async deleteDoc(path)       { return deleteDoc(doc(db, path)); },
+    async addDoc(col, data)     { return addDoc(collection(db, col), data); },
+    async getDocs(col, ...c) {
+      const q = c.length ? query(collection(db, col), ...c) : collection(db, col);
       return getDocs(q);
     },
     where, orderBy, Timestamp,
-
     isWehrfuehrer() { return this.profil?.rolle === 'wehrfuehrer'; },
 
     toast(msg, isError = false) {
@@ -126,36 +106,43 @@
       t.className = 'show' + (isError ? ' error' : '');
       setTimeout(() => t.className = '', 2800);
     },
-
-    setTitle(title) { document.getElementById('page-title').textContent = title; },
-
-    showBack(cb) {
-      const btn = document.getElementById('back-btn');
-      btn.classList.remove('hidden');
-      btn.onclick = cb;
-    },
-    hideBack() { document.getElementById('back-btn').classList.add('hidden'); },
-
-    showHeaderAction(label, cb) {
-      const btn = document.getElementById('header-action');
-      btn.classList.remove('hidden');
-      btn.textContent = label;
-      btn.onclick = cb;
-    },
+    setTitle(t)  { document.getElementById('page-title').textContent = t; },
+    showBack(cb) { const b=document.getElementById('back-btn'); b.classList.remove('hidden'); b.onclick=cb; },
+    hideBack()   { document.getElementById('back-btn').classList.add('hidden'); },
+    showHeaderAction(label, cb) { const b=document.getElementById('header-action'); b.classList.remove('hidden'); b.textContent=label; b.onclick=cb; },
     hideHeaderAction() { document.getElementById('header-action').classList.add('hidden'); },
+
+    async registerPush() {
+      if (!messaging) return null;
+      try {
+        const perm = await Notification.requestPermission();
+        if (perm !== 'granted') return null;
+        const token = await getToken(messaging, { vapidKey: VAPID });
+        if (token) await this.setDoc('users/' + this.user.uid, { fcmToken: token });
+        return token;
+      } catch(e) { console.warn('Push:', e); return null; }
+    },
   };
 
-  // ── Auth ──────────────────────────────────────────────────
+  if (messaging) {
+    onMessage(messaging, p => {
+      const { title, body } = p.notification || {};
+      fw.toast('🔔 ' + (title||'') + ': ' + (body||''));
+    });
+  }
+
+  // Login
   document.getElementById('login-btn').addEventListener('click', async () => {
     const email = document.getElementById('login-email').value.trim();
     const pass  = document.getElementById('login-pass').value;
-    const errEl = document.getElementById('login-error');
-    errEl.textContent = '';
-    try {
-      await signInWithEmailAndPassword(auth, email, pass);
-    } catch(e) {
-      errEl.textContent = 'E-Mail oder Passwort falsch';
-    }
+    document.getElementById('login-error').textContent = '';
+    try { await signInWithEmailAndPassword(auth, email, pass); }
+    catch(e) { document.getElementById('login-error').textContent = 'E-Mail oder Passwort falsch'; }
+  });
+  ['login-email','login-pass'].forEach(id => {
+    document.getElementById(id).addEventListener('keydown', e => {
+      if (e.key === 'Enter') document.getElementById('login-btn').click();
+    });
   });
 
   // Passwort vergessen
@@ -165,84 +152,68 @@
     box.style.display = box.style.display === 'none' ? 'block' : 'none';
   });
   document.getElementById('reset-btn').addEventListener('click', async () => {
-    const { sendPasswordResetEmail } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js');
     const email = document.getElementById('reset-email').value.trim();
-    const msg = document.getElementById('reset-msg');
-    if (!email) { msg.textContent = 'Bitte E-Mail eingeben'; msg.style.color = 'var(--red)'; return; }
+    const msg   = document.getElementById('reset-msg');
+    if (!email) { msg.textContent='Bitte E-Mail eingeben'; msg.style.color='var(--red)'; return; }
     try {
       await sendPasswordResetEmail(auth, email);
-      msg.textContent = '✅ Reset-Mail wurde gesendet!';
-      msg.style.color = 'var(--success)';
-    } catch(e) {
-      msg.textContent = 'E-Mail nicht gefunden';
-      msg.style.color = 'var(--red)';
-    }
+      msg.textContent = '✅ Reset-Mail gesendet!'; msg.style.color = 'var(--success)';
+    } catch(e) { msg.textContent = 'E-Mail nicht gefunden'; msg.style.color = 'var(--red)'; }
   });
 
-  // Enter-Taste im Login
-  ['login-email','login-pass'].forEach(id => {
-    document.getElementById(id).addEventListener('keydown', e => {
-      if (e.key === 'Enter') document.getElementById('login-btn').click();
-    });
-  });
-
+  // Auth State
   onAuthStateChanged(auth, async (user) => {
     if (user) {
       fw.user = user;
-      // Profil laden
       const snap = await getDoc(doc(db, 'users', user.uid));
       if (snap.exists()) {
         fw.profil = { id: user.uid, ...snap.data() };
       } else {
-        // Erster Login – Basisprofil anlegen
         fw.profil = { id: user.uid, email: user.email, rolle: 'kamerad',
-                      vorname: '', nachname: '', dienstgrad: '' };
+          vorname: '', nachname: '', dienstgrad: '',
+          notif_einsatz: true, notif_uebung: true, notif_bestaetigung: true };
         await setDoc(doc(db, 'users', user.uid), fw.profil);
       }
-      showApp();
+      if (fw.isWehrfuehrer()) {
+        document.getElementById('nav-kameraden').classList.remove('hidden');
+        document.getElementById('nav-ortswehren').classList.remove('hidden');
+      }
+      if (fw.profil.notif_einsatz || fw.profil.notif_uebung || fw.profil.notif_bestaetigung) {
+        fw.registerPush();
+      }
+      document.getElementById('login-page').classList.add('hidden');
+      document.getElementById('app').classList.remove('hidden');
+      navigate('dashboard');
     } else {
-      fw.user = null;
-      fw.profil = null;
-      showLogin();
+      fw.user = null; fw.profil = null;
+      document.getElementById('login-page').classList.remove('hidden');
+      document.getElementById('app').classList.add('hidden');
     }
   });
 
-  function showLogin() {
-    document.getElementById('login-page').classList.remove('hidden');
-    document.getElementById('app').classList.add('hidden');
-  }
-
-  function showApp() {
-    document.getElementById('login-page').classList.add('hidden');
-    document.getElementById('app').classList.remove('hidden');
-    if (fw.isWehrfuehrer()) {
-      document.getElementById('nav-kameraden').classList.remove('hidden');
-    }
-    navigate('dashboard');
-  }
-
-  // ── Router ────────────────────────────────────────────────
   window.navigate = function(page, params = {}) {
-    document.querySelectorAll('.nav-btn').forEach(b =>
-      b.classList.toggle('aktiv', b.dataset.page === page));
-    fw.hideBack();
-    fw.hideHeaderAction();
-    const main = document.getElementById('main-content');
-    main.innerHTML = '<div class="loading">⏳</div>';
-    window._pages[page]?.(main, params);
+    document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('aktiv', b.dataset.page === page));
+    fw.hideBack(); fw.hideHeaderAction();
+    document.getElementById('main-content').innerHTML = '<div class="loading">⏳</div>';
+    window._pages[page]?.(document.getElementById('main-content'), params);
   };
-
   window._pages = {};
   window.registerPage = (name, fn) => { window._pages[name] = fn; };
+  document.querySelectorAll('.nav-btn').forEach(b => b.addEventListener('click', () => navigate(b.dataset.page)));
 
-  document.querySelectorAll('.nav-btn').forEach(btn => {
-    btn.addEventListener('click', () => navigate(btn.dataset.page));
-  });
+  // Neuen Kamerad anlegen ohne Wehrführer auszuloggen
+  window.createKamerad = async (email, pw, data) => {
+    const { initializeApp: iApp, getApp } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js');
+    const { getAuth: gAuth, createUserWithEmailAndPassword: createUser } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js');
+    let tmp; try { tmp = getApp('tmp'); } catch(e) { tmp = iApp(firebaseConfig, 'tmp'); }
+    const ta = gAuth(tmp);
+    const cred = await createUser(ta, email, pw);
+    await ta.signOut();
+    await setDoc(doc(db, 'users', cred.user.uid), { ...data, email, aktiv: true, notif_einsatz: true, notif_uebung: true, notif_bestaetigung: true });
+    return cred.user.uid;
+  };
 
-  // Service Worker registrieren
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('sw.js').catch(() => {});
-  }
+  if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 </script>
 <script src="js/pages.js" type="module" defer></script>
 </body>
