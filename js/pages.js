@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v1.3.3
+// js/pages.js – alle Seiten v1.3.4
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -55,8 +55,19 @@ function getStats(anwesenheiten) {
 // ── Dashboard ─────────────────────────────────────────────
 registerPage('dashboard', async (el) => {
   fw.setTitle('Dashboard');
-  const aSnap = await fw.getDocs('anwesenheiten', fw.where('userId','==',fw.user.uid));
+  const [aSnap, diensteSnap] = await Promise.all([
+    fw.getDocs('anwesenheiten', fw.where('userId','==',fw.user.uid)),
+    fw.getDocs('dienste', fw.orderBy('datum','asc')),
+  ]);
   const meine    = aSnap.docs.map(d => ({id:d.id,...d.data()}));
+  const heute    = new Date(); heute.setHours(0,0,0,0);
+  const alleDienste = diensteSnap.docs.map(d => ({id:d.id,...d.data()}));
+  const kuenftige   = alleDienste.filter(d => {
+    const dt = d.datum?.toDate ? d.datum.toDate() : new Date(d.datum);
+    return dt >= heute;
+  });
+  const naechster       = kuenftige[0] || null;
+  const naechsterOegeln = kuenftige.find(d => d.ort?.toLowerCase().includes('oegeln')) || null;
   const stats    = getStats(meine);
 
   let offen = 0;
@@ -77,6 +88,20 @@ registerPage('dashboard', async (el) => {
       🚨 Einsatz
     </button>
 
+    ${naechster ? `
+    <div class="card" style="margin-bottom:0.5rem" onclick="navigate('uebung-detail',{id:'${naechster.id}',typ:'dienst'})">
+      <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.2rem">📅 Nächster Dienst</div>
+      <div style="font-weight:600">${naechster.titel}</div>
+      <div style="font-size:0.83rem;color:var(--muted)">${datum(naechster.datum)}${naechster.zeitBeginn ? ' · '+naechster.zeitBeginn+' Uhr' : ''}${naechster.ort ? ' · '+naechster.ort : ''}</div>
+    </div>
+    ${naechsterOegeln && naechsterOegeln.id !== naechster.id ? `
+    <div class="card" style="margin-bottom:0.5rem" onclick="navigate('uebung-detail',{id:'${naechsterOegeln.id}',typ:'dienst'})">
+      <div style="font-size:0.72rem;color:var(--muted);margin-bottom:0.2rem">📅 Nächster Dienst in Oegeln</div>
+      <div style="font-weight:600">${naechsterOegeln.titel}</div>
+      <div style="font-size:0.83rem;color:var(--muted)">${datum(naechsterOegeln.datum)}${naechsterOegeln.zeitBeginn ? ' · '+naechsterOegeln.zeitBeginn+' Uhr' : ''}${naechsterOegeln.ort ? ' · '+naechsterOegeln.ort : ''}</div>
+    </div>` : ''}
+    ` : '<div class="card muted" style="font-size:0.85rem;text-align:center">Keine bevorstehenden Dienste</div>'}
+
     ${offen > 0 ? `
       <div class="pending-banner" onclick="navigate('einsaetze')">
         <div class="icon">⏳</div>
@@ -96,7 +121,7 @@ registerPage('dashboard', async (el) => {
     </div>
 
 
-    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.3.3</div>
+    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.3.4</div>
   `;
   checkDeepLink();
   startStatusPruefung();
@@ -293,6 +318,7 @@ window.kalenderImportieren = async () => {
         titel: e.titel, datum: new Date(e.datum),
         dauer_h: e.dauer_h, beschreibung: e.beschreibung || '',
         zeitBeginn: e.zeitBeginn || null, zeitEnde: e.zeitEnde || null,
+        ort: e.ort || null,
         typ: 'dienst', erstelltVon: fw.user.uid, erstelltAm: new Date(),
       });
       neu++;
