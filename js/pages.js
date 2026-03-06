@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v1.3.8
+// js/pages.js – alle Seiten v1.3.9
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -127,7 +127,7 @@ ${renderNaechsteDienste(naechster, naechsterOegeln)}
     </div>
 
 
-    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.3.8</div>
+    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.3.9</div>
   `;
   checkDeepLink();
   startStatusPruefung();
@@ -559,6 +559,7 @@ window.uebungSpeichern = async (id, forcTyp) => {
       uebungId = ref.id;
     }
     const mitAlarmFlag = document.getElementById('f-alarm')?.value === '1';
+  console.log('Push: mitAlarmFlag =', mitAlarmFlag, 'isNeu =', isNeu, 'typ =', typ);
   if (isNeu && mitAlarmFlag) await benachrichtigeOrtswehr(typ, titel, datumStr, dauer_h, uebungId);
   else if (isNeu && !mitAlarmFlag && typ === 'dienst') await benachrichtigeOrtswehr(typ, titel, datumStr, dauer_h, uebungId);
     fw.toast(isEinsatz ? 'Einsatz gemeldet 🚨' : 'Gespeichert ✅');
@@ -575,21 +576,25 @@ window.uebungLoeschen = async (id, typ) => {
 // ── Push ──────────────────────────────────────────────────
 async function benachrichtigeOrtswehr(typ, titel, datumStr, dauer_h, uebungId) {
   const ortswehrId = fw.profil.ortswehrId;
+  console.log('Push: ortswehrId =', ortswehrId);
   if (!ortswehrId) {
     fw.toast('⚠️ Keine Ortswehr zugeordnet – niemand wird benachrichtigt!', true);
     return;
   }
   const usersSnap = await fw.getDocs('users', fw.where('ortswehrId','==',ortswehrId), fw.where('aktiv','!=',false));
+  console.log('Push: Nutzer in Ortswehr:', usersSnap.docs.length);
   const isEinsatz = typ === 'einsatz';
   const tokens = [];
   for (const d of usersSnap.docs) {
     const u = d.data();
-    if (d.id === fw.user.uid && !fw.profil.notif_selbst) continue;
-    if (!u.fcmToken) continue;
+    console.log('Push: Nutzer', d.id, 'fcmToken:', !!u.fcmToken, 'notif_einsatz:', u.notif_einsatz, 'selbst:', d.id === fw.user.uid);
+    if (d.id === fw.user.uid && !fw.profil.notif_selbst) { console.log('Push: Selbst übersprungen'); continue; }
+    if (!u.fcmToken) { console.log('Push: Kein Token für', d.id); continue; }
     if (isEinsatz && u.notif_einsatz !== false) tokens.push(u.fcmToken);
     if (!isEinsatz && u.notif_uebung !== false) tokens.push(u.fcmToken);
   }
-  if (tokens.length === 0) return;
+  console.log('Push: Tokens gefunden:', tokens.length);
+  if (tokens.length === 0) { fw.toast('⚠️ Keine Push-Empfänger gefunden', true); return; }
   const title = isEinsatz ? '🚨 EINSATZ ALARM' : '🔔 Neuer Dienst';
   const body  = isEinsatz
     ? titel
