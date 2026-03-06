@@ -95,9 +95,22 @@ registerPage('dashboard', async (el) => {
             <div class="list-chevron">›</div>
           </div>`).join('')}
     </div>
-    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.0.7</div>
+    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.0.8</div>
   `;
+  // Deep Link prüfen
+  checkDeepLink();
 });
+
+// ── Deep Link: URL-Parameter beim Start prüfen ────────────
+function checkDeepLink() {
+  const params = new URLSearchParams(window.location.search);
+  const uebungId = params.get('uebung');
+  if (uebungId) {
+    // URL bereinigen ohne Reload
+    window.history.replaceState({}, '', window.location.pathname);
+    navigate('uebung-detail', { id: uebungId });
+  }
+}
 
 // ── Übungen ───────────────────────────────────────────────
 registerPage('uebungen', async (el) => {
@@ -388,15 +401,16 @@ async function benachrichtigeOrtswehr(typ, titel, datumStr, dauer_h, uebungId) {
     ? `${titel} – Sofort zum Gerätehaus!`
     : `${titel} am ${new Date(datumStr).toLocaleDateString('de-DE')} (${dauer_h}h)`;
 
-  await sendPush(tokens, title, body, isEinsatz);
+  await sendPush(tokens, title, body, isEinsatz, uebungId);
 }
 
-async function sendPush(tokens, title, body, alarm = false) {
+async function sendPush(tokens, title, body, alarm = false, uebungId = null) {
   try {
     console.log('Push wird gesendet an', tokens.length, 'Empfänger...');
     await fw.addDoc('push_queue', {
       tokens, title, body,
       alarm: alarm,
+      uebungId: uebungId,
       erstelltAm: new Date(),
       erstelltVon: fw.user.uid,
     });
@@ -459,7 +473,6 @@ registerPage('profil', async (el) => {
         <input type="checkbox" id="n-selbst" style="width:24px;height:24px;accent-color:var(--red);cursor:pointer;flex-shrink:0">
       </div>` : ''}
       <button class="btn btn-secondary btn-full" style="margin-top:0.8rem" id="notif-save-btn" onclick="notifSpeichern()">Einstellungen speichern</button>
-      <button class="btn btn-ghost" style="margin-top:0.4rem;font-size:0.8rem" onclick="pushTesten()">🔔 Push-Registrierung testen</button>
     </div>
 
     <div class="section-header">Dienstlich</div>
@@ -487,6 +500,7 @@ registerPage('profil', async (el) => {
       <button class="btn btn-secondary btn-full" onclick="passwortAendern()">🔒 Passwort ändern</button>
     </div>
     <div class="card">
+      <button class="btn btn-secondary btn-full" style="margin-bottom:0.5rem" onclick="pushTesten()">🔔 Push-Registrierung testen</button>
       <button class="btn btn-danger btn-full" onclick="abmelden()">Abmelden</button>
     </div>
   `;
