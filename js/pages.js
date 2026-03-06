@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v1.3.9
+// js/pages.js – alle Seiten v1.4.0
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -127,7 +127,7 @@ ${renderNaechsteDienste(naechster, naechsterOegeln)}
     </div>
 
 
-    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.3.9</div>
+    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.4.0</div>
   `;
   checkDeepLink();
   startStatusPruefung();
@@ -581,7 +581,7 @@ async function benachrichtigeOrtswehr(typ, titel, datumStr, dauer_h, uebungId) {
     fw.toast('⚠️ Keine Ortswehr zugeordnet – niemand wird benachrichtigt!', true);
     return;
   }
-  const usersSnap = await fw.getDocs('users', fw.where('ortswehrId','==',ortswehrId), fw.where('aktiv','!=',false));
+  const usersSnap = await fw.getDocs('users', fw.where('ortswehrId','==',ortswehrId));
   console.log('Push: Nutzer in Ortswehr:', usersSnap.docs.length);
   const isEinsatz = typ === 'einsatz';
   const tokens = [];
