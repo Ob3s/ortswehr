@@ -96,7 +96,7 @@ registerPage('dashboard', async (el) => {
           </div>`).join('')}
     </div>
     <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.0.7</div>
-  \`;
+  `;
 });
 
 // ── Übungen ───────────────────────────────────────────────
