@@ -116,11 +116,18 @@
       if (!messaging) return null;
       try {
         const perm = await Notification.requestPermission();
-        if (perm !== 'granted') return null;
-        const token = await getToken(messaging, { vapidKey: VAPID });
-        if (token) await this.setDoc('users/' + this.user.uid, { fcmToken: token });
+        if (perm !== 'granted') { console.warn('Push: Berechtigung verweigert'); return null; }
+        // Firebase Messaging braucht seinen eigenen Service Worker
+        const swReg = await navigator.serviceWorker.register('/ortswehr/firebase-messaging-sw.js');
+        const token = await getToken(messaging, { vapidKey: VAPID, serviceWorkerRegistration: swReg });
+        if (token) {
+          await this.setDoc('users/' + this.user.uid, { fcmToken: token });
+          console.log('FCM Token gespeichert:', token.slice(0,20)+'...');
+        } else {
+          console.warn('Push: Kein Token erhalten');
+        }
         return token;
-      } catch(e) { console.warn('Push:', e); return null; }
+      } catch(e) { console.warn('Push Fehler:', e); return null; }
     },
   };
 
