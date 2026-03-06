@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="theme-color" content="#cc2200">
-  <meta name="app-version" content="1.4.1">
+  <meta name="app-version" content="1.4.2">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ortswehr">
@@ -152,22 +152,11 @@
 
   if (messaging) {
     onMessage(messaging, payload => {
-      // App im Vordergrund: SW zeigt keine Notification → manuell anzeigen
-      const title = payload.notification?.title || '🚒 Ortswehr';
-      const body  = payload.notification?.body  || '';
-      console.log('FCM Vordergrund-Nachricht empfangen:', title);
-      if (Notification.permission === 'granted') {
-        const alarm = payload.data?.alarm === 'true';
-        const uebungId = payload.data?.uebungId;
-        const n = new Notification(title, {
-          body,
-          icon: '/ortswehr/icons/icon-192.png',
-          tag: 'ortswehr-vordergrund',
-          requireInteraction: alarm,
-          vibrate: alarm ? [200,100,200,100,200,100,400] : [200,100,200],
-        });
-        if (uebungId) n.onclick = () => { navigate('uebung-detail', {id: uebungId, typ: 'einsatz'}); n.close(); };
-      }
+      // App im Vordergrund: Nachricht an SW schicken → zeigt native Notification (funktioniert auf Android)
+      console.log('FCM Vordergrund-Nachricht empfangen:', payload.notification?.title);
+      navigator.serviceWorker.ready.then(reg => {
+        reg.active?.postMessage({ type: 'SHOW_NOTIFICATION', payload });
+      });
     });
   }
 
@@ -229,6 +218,15 @@
       fw.user = null; fw.profil = null;
       document.getElementById('login-page').classList.remove('hidden');
       document.getElementById('app').classList.add('hidden');
+    }
+  });
+
+  // Nachrichten vom Service Worker empfangen (z.B. nach Notification-Klick)
+  navigator.serviceWorker.addEventListener('message', e => {
+    if (e.data?.type === 'NAVIGATE') {
+      const url = new URL(e.data.url);
+      const uebungId = url.searchParams.get('uebung');
+      if (uebungId) navigate('uebung-detail', { id: uebungId, typ: 'einsatz' });
     }
   });
 
