@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="theme-color" content="#cc2200">
-  <meta name="app-version" content="1.4.0">
+  <meta name="app-version" content="1.4.1">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ortswehr">
@@ -152,9 +152,22 @@
 
   if (messaging) {
     onMessage(messaging, payload => {
-      // App ist im Vordergrund: Service Worker zeigt die Benachrichtigung bereits
-      // Kein doppelter Toast nötig
-      console.log('FCM Vordergrund-Nachricht empfangen:', payload.notification?.title);
+      // App im Vordergrund: SW zeigt keine Notification → manuell anzeigen
+      const title = payload.notification?.title || '🚒 Ortswehr';
+      const body  = payload.notification?.body  || '';
+      console.log('FCM Vordergrund-Nachricht empfangen:', title);
+      if (Notification.permission === 'granted') {
+        const alarm = payload.data?.alarm === 'true';
+        const uebungId = payload.data?.uebungId;
+        const n = new Notification(title, {
+          body,
+          icon: '/ortswehr/icons/icon-192.png',
+          tag: 'ortswehr-vordergrund',
+          requireInteraction: alarm,
+          vibrate: alarm ? [200,100,200,100,200,100,400] : [200,100,200],
+        });
+        if (uebungId) n.onclick = () => { navigate('uebung-detail', {id: uebungId, typ: 'einsatz'}); n.close(); };
+      }
     });
   }
 
