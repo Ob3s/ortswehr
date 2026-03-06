@@ -4,6 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="theme-color" content="#cc2200">
+  <meta name="app-version" content="1.2.6">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ortswehr">
@@ -253,6 +254,24 @@
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (!reloading) { reloading = true; window.location.reload(); }
     });
+
+    // Einmalig beim Start prüfen ob neue Version auf GitHub
+    pruefeGithubVersion();
+  }
+
+  async function pruefeGithubVersion() {
+    try {
+      const res = await fetch('/ortswehr/version.json?t=' + Date.now());
+      const { version } = await res.json();
+      const lokal = document.querySelector('meta[name="app-version"]')?.content;
+      if (lokal && version && version !== lokal) {
+        const banner = document.getElementById('update-banner');
+        if (banner) banner.style.display = 'flex';
+        document.getElementById('update-btn')?.addEventListener('click', () => {
+          window.location.reload(true);
+        });
+      }
+    } catch(e) { /* kein Internet oder Fehler – ignorieren */ }
   }
 </script>
 <script src="js/pages.js" type="module" defer></script>
