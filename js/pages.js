@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v1.3.7
+// js/pages.js – alle Seiten v1.3.8
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -127,7 +127,7 @@ ${renderNaechsteDienste(naechster, naechsterOegeln)}
     </div>
 
 
-    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.3.7</div>
+    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.3.8</div>
   `;
   checkDeepLink();
   startStatusPruefung();
@@ -528,7 +528,7 @@ registerPage('uebung-form', async (el, {id, typ: vorTyp, alarm: mitAlarm}) => {
 
 window.uebungSpeichern = async (id, forcTyp) => {
   const titel   = document.getElementById('f-titel').value.trim();
-  let dauer_h = parseFloat(document.getElementById('f-dauer').value) || 0;
+  let dauer_h = parseFloat(document.getElementById('f-dauer')?.value) || 0;
   const typ     = forcTyp === 'einsatz' ? 'einsatz' : 'dienst';
   const isEinsatz = typ === 'einsatz';
 
