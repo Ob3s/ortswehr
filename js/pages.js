@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v2.1.3
+// js/pages.js – alle Seiten v2.1.4
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -10,6 +10,10 @@ function datum(d) {
   if (isNaN(ts)) return '–';
   return ts.toLocaleDateString('de-DE', { day:'2-digit', month:'2-digit', year:'numeric' });
 }
+function plural(n, singular, plural_) {
+  return n + ' ' + (n === 1 ? singular : plural_);
+}
+
 function dauerFormat(h) {
   if (h === null || h === undefined) return '';
   const gesamt = Math.round(h * 60);
@@ -866,9 +870,9 @@ registerPage('profil', async (el) => {
   el.innerHTML = `
     <div class="stats-grid">
       <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.gesamtEinsatz)}h</div><div class="stat-label">Einsatzstunden</div></div>
-      <div class="stat-card"><div class="stat-zahl">${stats.einsaetze}</div><div class="stat-label">Einsätze</div></div>
+      <div class="stat-card"><div class="stat-zahl">${stats.einsaetze}</div><div class="stat-label">${stats.einsaetze===1?'Einsatz':'Einsätze'}</div></div>
       <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.gesamtDienst)}h</div><div class="stat-label">Dienststunden</div></div>
-      <div class="stat-card"><div class="stat-zahl">${stats.dienste}</div><div class="stat-label">Dienste</div></div>
+      <div class="stat-card"><div class="stat-zahl">${stats.dienste}</div><div class="stat-label">${stats.dienste===1?'Dienst':'Dienste'}</div></div>
       <div class="stat-card wide ${stats.ziel?'erreicht':'fehlt'}">
         <div class="stat-zahl">${dauerFormat(stats.stunden12m)} / 40:00h</div>
         <div class="stat-label">${stats.ziel?'✅ Ziel erreicht':'⚠️ Ziel nicht erreicht'}</div>
@@ -1134,15 +1138,17 @@ registerPage('statistik', async (el) => {
   }
 
   // Pro-Kamerad-Tabelle
-  const kRows = users.map(u => {
-    const dAkt = stunden(u.id,'dienst',jahrAkt);
-    const dVor = stunden(u.id,'dienst',jahrVor);
-    const lAkt = lehrgangStunden(u.id,jahrAkt);
-    const lVor = lehrgangStunden(u.id,jahrVor);
-    const eAkt = einsatzAnzahl(u.id,jahrAkt);
-    const eVor = einsatzAnzahl(u.id,jahrVor);
-    return {u, dAkt, dVor, lAkt, lVor, eAkt, eVor};
-  }); // alle Kameraden zeigen
+  const kRows = users
+    .sort((a,b) => (a.nachname||'').localeCompare(b.nachname||'', 'de') || (a.vorname||'').localeCompare(b.vorname||'', 'de'))
+    .map(u => {
+      const dAkt = stunden(u.id,'dienst',jahrAkt);
+      const dVor = stunden(u.id,'dienst',jahrVor);
+      const lAkt = lehrgangStunden(u.id,jahrAkt);
+      const lVor = lehrgangStunden(u.id,jahrVor);
+      const eAkt = einsatzAnzahl(u.id,jahrAkt);
+      const eVor = einsatzAnzahl(u.id,jahrVor);
+      return {u, dAkt, dVor, lAkt, lVor, eAkt, eVor};
+    }); // nur aktive Kameraden, alphabetisch
 
   const sumD = (jahr) => kRows.reduce((s,r) => s+(jahr===jahrAkt?r.dAkt:r.dVor),0);
   const sumL = (jahr) => kRows.reduce((s,r) => s+(jahr===jahrAkt?r.lAkt:r.lVor),0);
@@ -1360,9 +1366,9 @@ registerPage('kamerad-detail', async (el, {id}) => {
   el.innerHTML = `
     <div class="stats-grid">
       <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.gesamtEinsatz)}h</div><div class="stat-label">Einsatzstunden</div></div>
-      <div class="stat-card"><div class="stat-zahl">${stats.einsaetze}</div><div class="stat-label">Einsätze</div></div>
+      <div class="stat-card"><div class="stat-zahl">${stats.einsaetze}</div><div class="stat-label">${stats.einsaetze===1?'Einsatz':'Einsätze'}</div></div>
       <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.gesamtDienst)}h</div><div class="stat-label">Dienststunden</div></div>
-      <div class="stat-card"><div class="stat-zahl">${stats.dienste}</div><div class="stat-label">Dienste</div></div>
+      <div class="stat-card"><div class="stat-zahl">${stats.dienste}</div><div class="stat-label">${stats.dienste===1?'Dienst':'Dienste'}</div></div>
       <div class="stat-card wide ${stats.ziel?'erreicht':'fehlt'}">
         <div class="stat-zahl">${dauerFormat(stats.stunden12m)} / 40:00h</div>
         <div class="stat-label">${stats.ziel?'✅ Ziel erreicht':'⚠️ Ziel nicht erreicht'}</div>
