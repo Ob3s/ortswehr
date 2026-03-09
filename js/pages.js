@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v2.0.5
+// js/pages.js – alle Seiten v2.0.6
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -64,6 +64,28 @@ function getStats(anwesenheiten, dienstMap, einsatzMap) {
   };
 }
 
+
+// ── Dienst-Sichtbarkeit ───────────────────────────────────
+function dienstSichtbar(d, profil, qualis) {
+  const titel = (d.titel || '').toLowerCase();
+  const qs = (qualis || []).map(q => (q.bezeichnung || q.titel || q.name || '').toLowerCase());
+  // AGT-Termine
+  const agtTitel = ['belastungslauf', 'wärmeübung', 'fortbildungstag agt'];
+  if (agtTitel.some(t => titel.includes(t))) {
+    return qs.some(q => q.includes('agt'));
+  }
+  // Maschinist
+  if (titel.includes('maschinist')) {
+    return qs.some(q => q.includes('maschinist'));
+  }
+  // Führungskräfte
+  const fuehTitel = ['führungskräfte', 'gruppenführersitzung', 'zugführersitzung', 'zug- und gruppenführer'];
+  if (fuehTitel.some(t => titel.includes(t))) {
+    const rolle = profil?.rolle || '';
+    return ['gruppenführer','zugführer','wehrfuehrer'].includes(rolle);
+  }
+  return true; // alle anderen sichtbar
+}
 // ── Nächste Dienste ──────────────────────────────────────
 function dienstKarte(d, label) {
   return `<div class="card" style="margin-bottom:0.5rem;cursor:pointer" onclick="navigate('uebung-detail',{id:'${d.id}',typ:'dienst'})">
@@ -72,35 +94,36 @@ function dienstKarte(d, label) {
     <div style="font-size:0.83rem;color:var(--muted)">${datum(d.datum)}${d.zeitBeginn ? ' · '+d.zeitBeginn+' Uhr' : ''}${d.ort ? ' · '+d.ort : ''}</div>
   </div>`;
 }
-function renderNaechsteDienste(naechster, naechsterOegeln) {
+function renderNaechsteDienste(naechster, zweiter) {
   if (!naechster) return '<div class="card" style="font-size:0.85rem;text-align:center;color:var(--muted)">Keine bevorstehenden Dienste</div>';
   let html = dienstKarte(naechster, '📅 Nächster Dienst');
-  // Oegeln extra anzeigen wenn der nächste Dienst nicht in Oegeln ist
-  if (naechsterOegeln && naechsterOegeln.id !== naechster.id) {
-    html += dienstKarte(naechsterOegeln, '📅 Nächster Dienst in Oegeln');
-  }
+  if (zweiter) html += dienstKarte(zweiter, '📅 Weiterer Dienst');
   return html;
 }
 
 // ── Dashboard ─────────────────────────────────────────────
 registerPage('dashboard', async (el) => {
   fw.setTitle('Dashboard');
-  const [aSnap, diensteSnap, einsaetzeSnap] = await Promise.all([
+  const [aSnap, diensteSnap, einsaetzeSnap, qualiSnap] = await Promise.all([
     fw.getDocs('anwesenheiten', fw.where('userId','==',fw.user.uid)),
     fw.getDocs('dienste', fw.orderBy('datum','asc')),
     fw.getDocs('einsaetze'),
+    fw.getDocs('users/'+fw.user.uid+'/qualifikationen'),
   ]);
   const meine       = aSnap.docs.map(d => ({id:d.id,...d.data()}));
   const dienstMap   = new Map(diensteSnap.docs.map(d => [d.id, d.data()]));
   const einsatzMap  = new Map(einsaetzeSnap.docs.map(d => [d.id, d.data()]));
+  const meineQualis = qualiSnap.docs.map(d => d.data());
   const heute    = new Date(); heute.setHours(0,0,0,0);
   const alleDienste = diensteSnap.docs.map(d => ({id:d.id,...d.data()}));
   const kuenftige   = alleDienste.filter(d => {
     const dt = d.datum?.toDate ? d.datum.toDate() : new Date(d.datum);
-    return dt >= heute;
+    return dt >= heute && dienstSichtbar(d, fw.profil, meineQualis);
   });
-  const naechster       = kuenftige[0] || null;
-  const naechsterOegeln = kuenftige.find(d => d.ort?.toLowerCase().includes('oegeln')) || null;
+  // Oegeln-Logik: exakt "Oegeln" im Ort → 1 anzeigen, sonst 2
+  const naechsterOegeln = kuenftige.find(d => d.ort === 'Oegeln') || null;
+  const naechster = naechsterOegeln || kuenftige[0] || null;
+  const zweiter = naechsterOegeln && kuenftige[0] && kuenftige[0].id !== naechsterOegeln.id ? kuenftige[0] : null;
   const stats    = getStats(meine, dienstMap, einsatzMap);
 
   el.innerHTML = `
@@ -113,7 +136,7 @@ registerPage('dashboard', async (el) => {
 
     <button class="alarm-btn" onclick="navigate('uebung-form',{typ:'einsatz',alarm:true})">🚨 Einsatz</button>
 
-${renderNaechsteDienste(naechster, naechsterOegeln)}
+${renderNaechsteDienste(naechster, zweiter)}
 
     <div id="news-feed" style="margin-top:0.5rem"></div>
 
@@ -356,10 +379,6 @@ registerPage('einsaetze', async (el) => {
   ]);
   const liste    = uSnap.docs.map(d => ({id:d.id,...d.data()}));
   const meineMap = new Map(aSnap.docs.map(d => [d.data().uebungId, d.data().status]));
-  console.log('[Dienste] meineMap:', meineMap.size, 'Einträge, Liste:', liste.length);
-  meineMap.forEach((v,k) => console.log(' →', k, '=', v));
-  console.log('[Einsätze] meineMap:', meineMap.size, 'Einträge, Liste:', liste.length);
-  meineMap.forEach((v,k) => console.log(' →', k, '=', v));
   el.innerHTML = `<div class="card">${renderEintragListe(liste, meineMap)}</div>`;
 });
 
@@ -367,14 +386,14 @@ registerPage('einsaetze', async (el) => {
 registerPage('dienste', async (el) => {
   fw.setTitle('Dienste');
   if (fw.isWehrfuehrer()) fw.showHeaderAction('+ Dienst', () => navigate('uebung-form', {typ:'dienst'}));
-  const [uSnap, aSnap] = await Promise.all([
+  const [uSnap, aSnap, dQualiSnap] = await Promise.all([
     fw.getDocs('dienste', fw.orderBy('datum','desc')),
     fw.getDocs('anwesenheiten', fw.where('userId','==',fw.user.uid)),
+    fw.getDocs('users/'+fw.user.uid+'/qualifikationen'),
   ]);
-  const liste    = uSnap.docs.map(d => ({id:d.id,...d.data()}));
+  const dQualis  = dQualiSnap.docs.map(d => d.data());
+  const liste    = uSnap.docs.map(d => ({id:d.id,...d.data()})).filter(d => dienstSichtbar(d, fw.profil, dQualis));
   const meineMap = new Map(aSnap.docs.map(d => [d.data().uebungId, d.data().status]));
-  console.log('[Dienste] meineMap:', meineMap.size, 'Einträge, Liste:', liste.length);
-  meineMap.forEach((v,k) => console.log(' →', k, '=', v));
   el.innerHTML = `
     <div class="card">${renderEintragListe(liste, meineMap)}</div>
     ${fw.isWehrfuehrer() ? `
