@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v1.7.3
+// js/pages.js – alle Seiten v1.7.4
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -127,7 +127,7 @@ ${renderNaechsteDienste(naechster, naechsterOegeln)}
     </div>
 
 
-    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.7.3</div>
+    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.7.4</div>
   `;
   checkDeepLink();
   startStatusPruefung();
@@ -474,6 +474,42 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
     </div>
     ${teilnehmerHTML}
   `;
+
+  // Live-Listener für Einsatz-Reaktionen
+  if (isEinsatz) {
+    _einsatzListener = fw.onQuerySnapshot(
+      'anwesenheiten',
+      (snap) => {
+        const alle = snap.docs.map(d => ({id:d.id,...d.data()}));
+        const kommen      = alle.filter(a => a.status === 'kommt');
+        const kommenNicht = alle.filter(a => a.status === 'kommt_nicht');
+        const meineR      = alle.find(a => a.userId === fw.user.uid);
+
+        const zaehler = document.getElementById('einsatz-zaehler');
+        if (zaehler) zaehler.textContent = `👍 ${kommen.length}  👎 ${kommenNicht.length}`;
+
+        const container = document.getElementById('einsatz-reaktionen');
+        if (container) {
+          const rows = [...kommen, ...kommenNicht].map(a => `
+            <div style="display:flex;align-items:center;gap:0.6rem;padding:0.4rem 0;border-bottom:1px solid var(--border)">
+              <span style="font-size:1.1rem">${a.status==='kommt'?'👍':'👎'}</span>
+              <span style="flex:1;font-weight:${a.userId===fw.user.uid?'600':'400'}">${a.userName||'Kamerad'}</span>
+            </div>`).join('');
+          container.innerHTML = rows || '<div class="muted" style="text-align:center;font-size:0.85rem;padding:0.5rem">Noch keine Rückmeldungen</div>';
+        }
+
+        const btnK  = document.getElementById('btn-kommt');
+        const btnKN = document.getElementById('btn-kommt-nicht');
+        if (btnK && btnKN) {
+          btnK.style.opacity  = meineR?.status === 'kommt'       ? '1' : '0.5';
+          btnKN.style.opacity = meineR?.status === 'kommt_nicht' ? '1' : '0.5';
+        }
+      },
+      fw.where('uebungId','==',id)
+    );
+    // Listener auch in window damit navigate() ihn aufräumen kann
+    window._einsatzListener = _einsatzListener;
+  }
 });
 
 window.teilnahmeMelden = async (uebungId, titel, dauer_h, typ, datumStr) => {
