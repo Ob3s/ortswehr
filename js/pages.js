@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v1.7.5
+// js/pages.js – alle Seiten v2.0.0
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -25,19 +25,31 @@ function zeitZeile(u) {
   return [z, d].filter(Boolean).join(' · ');
 }
 
+
+function kurzName(vorname, nachname) {
+  const v = (vorname||'').trim();
+  const n = (nachname||'').trim();
+  if (!n && !v) return 'Kamerad';
+  if (!n) return v;
+  if (!v) return n;
+  return n + ', ' + v.charAt(0) + '.';
+}
 function anwesenheitBadge(s) {
   if (!s)                               return '';
   if (s==='bestaetigt' || s==='kommt')  return '<span style="color:#16a34a;font-size:1.1rem">✅</span>';
   if (s==='abgelehnt'  || s==='kommt_nicht') return '<span style="color:#dc2626;font-size:1.1rem">❌</span>';
   return '';
 }
-function getStats(anwesenheiten) {
+function getStats(anwesenheiten, dienstMap, einsatzMap) {
   const vor12m = new Date(); vor12m.setFullYear(vor12m.getFullYear()-1);
   let gesamtEinsatz=0, gesamtDienst=0, einsaetze=0, dienste=0, stunden12m=0;
   for (const a of anwesenheiten) {
-    if (a.status !== 'bestaetigt' && a.status !== 'kommt' && a.status !== 'kommt_nicht') continue; // kommt_nicht = Einsatz ohne Teilnahme, für Zähler nicht
-    if (a.status === 'kommt_nicht') continue;
-    const h = a.dauer_h || 0;
+    if (a.status !== 'bestaetigt' && a.status !== 'kommt') continue;
+    // Stunden aus der Quell-Collection holen (zuverlässiger als in anwesenheiten)
+    const eintrag = a.typ==='einsatz'
+      ? (einsatzMap?.get(a.uebungId) || null)
+      : (dienstMap?.get(a.uebungId)  || null);
+    const h = eintrag?.dauer_h ?? a.dauer_h ?? 0;
     const d = a.datum?.toDate ? a.datum.toDate() : new Date(a.datum);
     if (a.typ === 'einsatz') { gesamtEinsatz += h; einsaetze++; }
     else                     { gesamtDienst  += h; dienste++;   }
@@ -73,11 +85,14 @@ function renderNaechsteDienste(naechster, naechsterOegeln) {
 // ── Dashboard ─────────────────────────────────────────────
 registerPage('dashboard', async (el) => {
   fw.setTitle('Dashboard');
-  const [aSnap, diensteSnap] = await Promise.all([
+  const [aSnap, diensteSnap, einsaetzeSnap] = await Promise.all([
     fw.getDocs('anwesenheiten', fw.where('userId','==',fw.user.uid)),
     fw.getDocs('dienste', fw.orderBy('datum','asc')),
+    fw.getDocs('einsaetze'),
   ]);
-  const meine    = aSnap.docs.map(d => ({id:d.id,...d.data()}));
+  const meine       = aSnap.docs.map(d => ({id:d.id,...d.data()}));
+  const dienstMap   = new Map(diensteSnap.docs.map(d => [d.id, d.data()]));
+  const einsatzMap  = new Map(einsaetzeSnap.docs.map(d => [d.id, d.data()]));
   const heute    = new Date(); heute.setHours(0,0,0,0);
   const alleDienste = diensteSnap.docs.map(d => ({id:d.id,...d.data()}));
   const kuenftige   = alleDienste.filter(d => {
@@ -86,7 +101,7 @@ registerPage('dashboard', async (el) => {
   });
   const naechster       = kuenftige[0] || null;
   const naechsterOegeln = kuenftige.find(d => d.ort?.toLowerCase().includes('oegeln')) || null;
-  const stats    = getStats(meine);
+  const stats    = getStats(meine, dienstMap, einsatzMap);
 
   el.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.8rem">
@@ -96,30 +111,93 @@ registerPage('dashboard', async (el) => {
       <span id="status-lampe" style="width:12px;height:12px;border-radius:50%;background:#ccc;display:inline-block;flex-shrink:0;cursor:default" title="Status wird geprüft..."></span>
     </div>
 
-    <button class="alarm-btn" onclick="navigate('uebung-form',{typ:'einsatz',alarm:true})">
-      🚨 Einsatz
-    </button>
+    <div style="display:flex;gap:0.6rem;margin-bottom:0.6rem">
+      <button class="alarm-btn" style="flex:1" onclick="navigate('uebung-form',{typ:'einsatz',alarm:true})">🚨 Einsatz</button>
+      ${fw.isWehrfuehrer() ? `<button class="btn btn-secondary" style="flex-shrink:0" onclick="navigate('news-form')">📝 Beitrag</button>` : ''}
+    </div>
 
 ${renderNaechsteDienste(naechster, naechsterOegeln)}
 
     <div class="stats-grid">
       <div class="stat-card">
-        <div class="stat-zahl">${dauerFormat(stats.gesamtEinsatz)}h <span style="font-weight:400;font-size:0.8rem;color:var(--muted)">/ ${stats.einsaetze}</span></div>
+        <div class="stat-zahl">${dauerFormat(stats.gesamtEinsatz)}h / ${stats.einsaetze}</div>
         <div class="stat-label">Einsatzstunden / Einsätze</div>
       </div>
       <div class="stat-card" style="border-top: 3px solid ${stats.stunden12m>=40?'#16a34a':stats.stunden12m>=25?'#f59e0b':stats.stunden12m>=10?'#fb923c':'#e5e7eb'}">
-        <div class="stat-zahl">${dauerFormat(stats.gesamtDienst)}h <span style="font-weight:400;font-size:0.8rem;color:var(--muted)">/ ${stats.dienste}</span></div>
+        <div class="stat-zahl">${dauerFormat(stats.gesamtDienst)}h / ${stats.dienste} ${stats.ziel?'✅':'⚠️'}</div>
         <div class="stat-label">Dienststunden / Dienste</div>
-        <div style="font-size:0.7rem;color:var(--muted);margin-top:0.2rem">${dauerFormat(stats.stunden12m)} / 40:00h (12 Mon.)</div>
       </div>
     </div>
 
+
+    <div id="news-feed" style="margin-top:1rem"></div>
 
     <div style="text-align:center;color:#374151;font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">${document.querySelector('meta[name="app-version"]')?.content||''}</div>
   `;
   checkDeepLink();
   startStatusPruefung();
+  ladeNewsFeed();
 });
+
+async function ladeNewsFeed() {
+  const el = document.getElementById('news-feed');
+  if (!el) return;
+  const snap = await fw.getDocs('news', fw.orderBy('erstelltAm','desc'));
+  const beitraege = snap.docs.map(d => ({id:d.id,...d.data()}));
+  if (!beitraege.length) { el.innerHTML = ''; return; }
+
+  el.innerHTML = '<div class="section-header">Neuigkeiten</div>' + beitraege.map(b => {
+    const hat = b.abstimmung?.optionen?.some(o => o.stimmen?.includes(fw.user.uid));
+    const gesamt = b.abstimmung?.optionen?.reduce((s,o) => s+(o.stimmen?.length||0), 0) || 0;
+    return `<div class="card" style="margin-bottom:0.6rem">
+      <div style="font-weight:600;margin-bottom:0.3rem">${b.titel||''}</div>
+      <div style="font-size:0.88rem;color:var(--muted);white-space:pre-wrap">${b.inhalt||''}</div>
+      ${b.abstimmung ? `
+        <div style="margin-top:0.8rem;border-top:1px solid var(--border);padding-top:0.6rem">
+          <div style="font-weight:600;font-size:0.88rem;margin-bottom:0.5rem">🗳️ ${b.abstimmung.frage}</div>
+          ${b.abstimmung.optionen.map((o,i) => {
+            const pct = gesamt ? Math.round((o.stimmen?.length||0)/gesamt*100) : 0;
+            const meineStimme = o.stimmen?.includes(fw.user.uid);
+            return hat
+              ? `<div style="margin-bottom:0.4rem">
+                  <div style="display:flex;justify-content:space-between;font-size:0.83rem;margin-bottom:0.2rem">
+                    <span>${meineStimme?'✅ ':''} ${o.text}</span>
+                    <span style="color:var(--muted)">${o.stimmen?.length||0} (${pct}%)</span>
+                  </div>
+                  <div style="height:6px;background:#e5e7eb;border-radius:3px">
+                    <div style="height:6px;background:${meineStimme?'#16a34a':'#dc2626'};border-radius:3px;width:${pct}%"></div>
+                  </div>
+                 </div>`
+              : `<button class="btn btn-secondary btn-sm" style="width:100%;margin-bottom:0.4rem;text-align:left"
+                   onclick="newsAbstimmen('${b.id}',${i})">${o.text}</button>`;
+          }).join('')}
+          <div style="font-size:0.75rem;color:var(--muted);margin-top:0.3rem">${gesamt} Stimme${gesamt!==1?'n':''}</div>
+        </div>` : ''}
+      <div style="font-size:0.72rem;color:var(--muted);margin-top:0.5rem">${datum(b.erstelltAm)}</div>
+      ${fw.isWehrfuehrer() ? `<button onclick="newsLoeschen('${b.id}')" style="background:none;border:none;color:#9ca3af;font-size:0.75rem;cursor:pointer;padding:0;margin-top:0.3rem">🗑 Löschen</button>` : ''}
+    </div>`;
+  }).join('');
+}
+
+window.newsAbstimmen = async (newsId, optionIndex) => {
+  const snap = await fw.getDoc('news/'+newsId);
+  if (!snap.exists()) return;
+  const b = snap.data();
+  const optionen = b.abstimmung.optionen.map((o,i) => ({
+    ...o,
+    stimmen: i===optionIndex
+      ? [...(o.stimmen||[]), fw.user.uid]
+      : (o.stimmen||[]).filter(uid => uid !== fw.user.uid)
+  }));
+  await fw.updateDoc('news/'+newsId, {'abstimmung.optionen': optionen});
+  ladeNewsFeed();
+};
+
+window.newsLoeschen = async (id) => {
+  if (!confirm('Beitrag löschen?')) return;
+  await fw.deleteDoc('news/'+id);
+  ladeNewsFeed();
+};
 
 let _letzterStatus = null;
 let _statusInterval = null;
@@ -284,6 +362,10 @@ registerPage('dienste', async (el) => {
       <button class="btn btn-secondary btn-full" onclick="kalenderImportieren()" id="kal-btn">📅 Aus Google Kalender importieren</button>
       <div id="kal-status" class="muted" style="font-size:0.8rem;text-align:center;margin-top:0.4rem"></div>
     </div>` : ''}
+    <div style="font-size:0.75rem;color:var(--muted);margin-top:1rem;padding:0 0.2rem;line-height:1.6">
+      ✅ = 40 Dienststunden in 12 Monaten erreicht &nbsp;·&nbsp; ⚠️ = Ziel noch nicht erreicht<br>
+      Farbbalken: je grüner, desto näher am Ziel
+    </div>
   `;
 });
 
@@ -337,7 +419,7 @@ window.rolleGeaendert = (rolle) => {
 };
 
 window.einsatzReagieren = async (uebungId, status) => {
-  const name = ((fw.profil.vorname||'') + ' ' + (fw.profil.nachname||'')).trim();
+  const name = kurzName(fw.profil.vorname, fw.profil.nachname);
   const snap = await fw.getDocs('anwesenheiten',
     fw.where('uebungId','==',uebungId), fw.where('userId','==',fw.user.uid));
   if (snap.docs.length > 0) {
@@ -437,7 +519,7 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
               : '';
             return `<div style="display:flex;align-items:center;gap:0.6rem;padding:0.4rem 0;border-bottom:1px solid var(--border)">
               <span style="font-size:1.1rem">${a.status==='kommt'?'👍':'👎'}${lkw?'🚛':''}</span>
-              <span style="flex:1;font-weight:${a.userId===fw.user.uid?'600':'400'}">${a.userName||'Kamerad'}</span>
+              <span style="flex:1;font-weight:${a.userId===fw.user.uid?'600':'400'}">${kurzName(usersMap.get(a.userId)?.vorname, usersMap.get(a.userId)?.nachname) || a.userName || 'Kamerad'}</span>
               ${loeschBtn}
             </div>`;
           }).join('');
@@ -459,7 +541,7 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
 });
 
 window.teilnahmeMelden = async (uebungId, titel, dauer_h, typ, datumStr) => {
-  const name = (fw.profil.vorname+' '+fw.profil.nachname).trim() || fw.profil.email;
+  const name = kurzName(fw.profil.vorname, fw.profil.nachname);
   await fw.addDoc('anwesenheiten', {
     uebungId, userId: fw.user.uid, userName: name,
     status: 'vorgeschlagen', uebungTitel: titel,
@@ -497,7 +579,7 @@ registerPage('uebung-eintragen', async (el, {id, titel, dauer, typ, datumStr}) =
               <div class="list-item-title">${u.nachname||''}, ${u.vorname||''}</div>
               <div class="list-item-sub">${u.dienstgrad||'–'}</div>
             </div>
-            <button class="btn btn-sm btn-success" onclick="direktEintragen('${id}','${u.id}','${(u.vorname+' '+u.nachname).trim()}',${dauer},'${typ}','${datumStr}')">Eintragen</button>
+            <button class="btn btn-sm btn-success" onclick="direktEintragen('${id}','${u.id}','${kurzName(u.vorname,u.nachname)}',${dauer},'${typ}','${datumStr}')">Eintragen</button>
           </div>`).join('')}
     </div>`;
 });
@@ -669,15 +751,31 @@ function checkDeepLink() {
 registerPage('profil', async (el) => {
   fw.setTitle('Mein Profil');
   // Immer frisch laden damit notif-Felder aktuell sind
-  const [meSnap, qSnap] = await Promise.all([
+  const [meSnap, qSnap, aSnap, pDiensteSnap, pEinsaetzeSnap] = await Promise.all([
     fw.getDoc('users/'+fw.user.uid),
     fw.getDocs('users/'+fw.user.uid+'/qualifikationen'),
+    fw.getDocs('anwesenheiten', fw.where('userId','==',fw.user.uid)),
+    fw.getDocs('dienste'),
+    fw.getDocs('einsaetze'),
   ]);
   const me = meSnap.data() || fw.profil;
   Object.assign(fw.profil, me);
   const qualis = qSnap.docs.map(d => ({id:d.id,...d.data()}));
+  const pDienstMap  = new Map(pDiensteSnap.docs.map(d => [d.id, d.data()]));
+  const pEinsatzMap = new Map(pEinsaetzeSnap.docs.map(d => [d.id, d.data()]));
+  const stats  = getStats(aSnap.docs.map(d => d.data()), pDienstMap, pEinsatzMap);
 
   el.innerHTML = `
+    <div class="stats-grid">
+      <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.gesamtEinsatz)}h</div><div class="stat-label">Einsatzstunden</div></div>
+      <div class="stat-card"><div class="stat-zahl">${stats.einsaetze}</div><div class="stat-label">Einsätze</div></div>
+      <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.gesamtDienst)}h</div><div class="stat-label">Dienststunden</div></div>
+      <div class="stat-card"><div class="stat-zahl">${stats.dienste}</div><div class="stat-label">Dienste</div></div>
+      <div class="stat-card wide ${stats.ziel?'erreicht':'fehlt'}">
+        <div class="stat-zahl">${dauerFormat(stats.stunden12m)} / 40:00h</div>
+        <div class="stat-label">${stats.ziel?'✅ Ziel erreicht':'⚠️ Ziel nicht erreicht'}</div>
+      </div>
+    </div>
     <div class="section-header">Persönliche Daten</div>
     <div class="card">
       <div class="form-row"><label>Vorname</label><input id="p-vn" value="${me.vorname||''}"></div>
@@ -972,7 +1070,7 @@ registerPage('statistik', async (el) => {
         <tbody>
           ${kRows.map(r => `
           <tr style="border-top:1px solid var(--border)">
-            <td style="padding:0.4rem 0.25rem;font-weight:500">${r.u.vorname} ${r.u.nachname}</td>
+            <td style="padding:0.4rem 0.25rem;font-weight:500">${kurzName(r.u.vorname, r.u.nachname)}</td>
             <td style="text-align:right;padding:0.4rem 0.25rem;border-left:1px solid var(--border);color:var(--muted)">${dauerFormat(r.dVor)}h</td>
             <td style="text-align:right;padding:0.4rem 0.25rem">${dauerFormat(r.dAkt)}h</td>
             <td style="text-align:right;padding:0.4rem 0.25rem;border-left:1px solid var(--border);color:var(--muted)">${r.lVor}</td>
@@ -995,6 +1093,63 @@ registerPage('statistik', async (el) => {
       </table>
     </div>
   `;
+});
+
+
+// ── News erstellen ────────────────────────────────────────
+registerPage('news-form', async (el) => {
+  fw.setTitle('Beitrag erstellen');
+  fw.showBack(() => navigate('dashboard'));
+  let optionen = ['', ''];
+
+  const render = () => {
+    el.innerHTML = `
+      <div class="card">
+        <div class="form-row"><label>Titel</label><input id="nf-titel" placeholder="Überschrift" value="${document.getElementById('nf-titel')?.value||''}"></div>
+        <div class="form-row"><label>Text</label><textarea id="nf-inhalt" rows="4" style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;font-size:0.9rem;resize:vertical">${document.getElementById('nf-inhalt')?.value||''}</textarea></div>
+        <div style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0">
+          <input type="checkbox" id="nf-abstimmung-cb" style="width:20px;height:20px" ${document.getElementById('nf-abstimmung-cb')?.checked?'checked':''}>
+          <label for="nf-abstimmung-cb" style="font-size:0.88rem">Abstimmung hinzufügen</label>
+        </div>
+        <div id="nf-abstimmung-block" style="display:${document.getElementById('nf-abstimmung-cb')?.checked?'block':'none'}">
+          <div class="form-row"><label>Frage</label><input id="nf-frage" value="${document.getElementById('nf-frage')?.value||''}"></div>
+          ${optionen.map((o,i) => `<div class="form-row"><label>Option ${i+1}</label><input class="nf-opt" data-i="${i}" value="${o}"></div>`).join('')}
+          <button class="btn btn-secondary btn-sm" onclick="nfAddOption()">+ Option</button>
+        </div>
+        <div class="btn-row" style="margin-top:1rem">
+          <button class="btn btn-primary" onclick="newsSpeichern()">💾 Veröffentlichen</button>
+        </div>
+      </div>`;
+    document.getElementById('nf-abstimmung-cb')?.addEventListener('change', e => {
+      document.getElementById('nf-abstimmung-block').style.display = e.target.checked ? 'block' : 'none';
+    });
+    document.querySelectorAll('.nf-opt').forEach(inp => {
+      inp.addEventListener('input', e => { optionen[+e.target.dataset.i] = e.target.value; });
+    });
+  };
+  render();
+
+  window.nfAddOption = () => { optionen.push(''); render(); };
+  window.newsSpeichern = async () => {
+    const titel  = document.getElementById('nf-titel').value.trim();
+    const inhalt = document.getElementById('nf-inhalt').value.trim();
+    if (!titel) { fw.toast('Titel fehlt', true); return; }
+    const hatAbst = document.getElementById('nf-abstimmung-cb')?.checked;
+    const data = {
+      titel, inhalt,
+      erstelltAm: new Date(),
+      erstelltVon: fw.user.uid,
+    };
+    if (hatAbst) {
+      const frage = document.getElementById('nf-frage').value.trim();
+      const opts  = optionen.filter(o => o.trim());
+      if (!frage || opts.length < 2) { fw.toast('Frage und mind. 2 Optionen erforderlich', true); return; }
+      data.abstimmung = { frage, optionen: opts.map(text => ({text, stimmen:[]})) };
+    }
+    await fw.addDoc('news', data);
+    fw.toast('Veröffentlicht ✅');
+    navigate('dashboard');
+  };
 });
 
 // ── Kameraden ─────────────────────────────────────────────
