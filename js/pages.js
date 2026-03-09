@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v2.0.8
+// js/pages.js – alle Seiten v2.0.9
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -120,10 +120,12 @@ registerPage('dashboard', async (el) => {
     const dt = d.datum?.toDate ? d.datum.toDate() : new Date(d.datum);
     return dt >= heute && dienstSichtbar(d, fw.profil, meineQualis);
   });
-  // Oegeln-Logik: exakt "Oegeln" im Ort → 1 anzeigen, sonst 2
+  // Oegeln-Logik: chronologisch nächster immer oben
+  // nächster Dienst ≠ Oegeln → 2 anzeigen (nächster + nächster Oegeln-Dienst)
+  // nächster Dienst = Oegeln → nur 1 anzeigen
+  const naechster = kuenftige[0] || null;
   const naechsterOegeln = kuenftige.find(d => d.ort === 'Oegeln') || null;
-  const naechster = naechsterOegeln || kuenftige[0] || null;
-  const zweiter = naechsterOegeln && kuenftige[0] && kuenftige[0].id !== naechsterOegeln.id ? kuenftige[0] : null;
+  const zweiter = naechster && naechsterOegeln && naechsterOegeln.id !== naechster.id ? naechsterOegeln : null;
   const stats    = getStats(meine, dienstMap, einsatzMap);
 
   el.innerHTML = `
