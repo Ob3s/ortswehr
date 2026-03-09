@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v1.5.2
+// js/pages.js – alle Seiten v1.5.3
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -127,7 +127,7 @@ ${renderNaechsteDienste(naechster, naechsterOegeln)}
     </div>
 
 
-    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.5.2</div>
+    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.5.3</div>
   `;
   checkDeepLink();
   startStatusPruefung();
@@ -630,11 +630,14 @@ function checkDeepLink() {
 // ── Profil ────────────────────────────────────────────────
 registerPage('profil', async (el) => {
   fw.setTitle('Mein Profil');
-  const me = fw.profil;
-  const [aSnap, qSnap] = await Promise.all([
+  // Immer frisch laden damit notif-Felder aktuell sind
+  const [meSnap, aSnap, qSnap] = await Promise.all([
+    fw.getDoc('users/'+fw.user.uid),
     fw.getDocs('anwesenheiten', fw.where('userId','==',fw.user.uid)),
     fw.getDocs('users/'+fw.user.uid+'/qualifikationen'),
   ]);
+  const me = meSnap.data() || fw.profil;
+  Object.assign(fw.profil, me); // Cache aktualisieren
   const stats  = getStats(aSnap.docs.map(d => d.data()));
   const qualis = qSnap.docs.map(d => ({id:d.id,...d.data()}));
 
