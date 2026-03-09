@@ -30,15 +30,15 @@ function anwesenheitBadge(s) {
   if (s==='bestaetigt')     return '<span class="badge badge-green">✅ Bestätigt</span>';
   if (s==='vorgeschlagen')  return '<span class="badge badge-orange">⏳ Ausstehend</span>';
   if (s==='abgelehnt')      return '<span class="badge badge-red">❌ Abgelehnt</span>';
-  if (s==='kommt')          return '<span style="font-size:1.1rem">👍</span>';
-  if (s==='kommt_nicht')    return '<span style="font-size:1.1rem">👎</span>';
+  if (s==='kommt')          return '<span style="color:#16a34a;font-size:1.1rem">✅</span>';
+  if (s==='kommt_nicht')    return '<span style="color:#dc2626;font-size:1.1rem">❌</span>';
   return '';
 }
 function getStats(anwesenheiten) {
   const vor12m = new Date(); vor12m.setFullYear(vor12m.getFullYear()-1);
   let gesamtEinsatz=0, gesamtDienst=0, einsaetze=0, dienste=0, stunden12m=0;
   for (const a of anwesenheiten) {
-    if (a.status !== 'bestaetigt') continue;
+    if (a.status !== 'bestaetigt' && a.status !== 'kommt') continue;
     const h = a.dauer_h || 0;
     const d = a.datum?.toDate ? a.datum.toDate() : new Date(a.datum);
     if (a.typ === 'einsatz') { gesamtEinsatz += h; einsaetze++; }
@@ -90,12 +90,6 @@ registerPage('dashboard', async (el) => {
   const naechsterOegeln = kuenftige.find(d => d.ort?.toLowerCase().includes('oegeln')) || null;
   const stats    = getStats(meine);
 
-  let offen = 0;
-  if (fw.isWehrfuehrer()) {
-    const offSnap = await fw.getDocs('anwesenheiten', fw.where('status','==','vorgeschlagen'));
-    offen = offSnap.size;
-  }
-
   el.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.8rem">
       <div style="font-family:'DM Serif Display',serif;font-size:1.3rem">
@@ -109,13 +103,6 @@ registerPage('dashboard', async (el) => {
     </button>
 
 ${renderNaechsteDienste(naechster, naechsterOegeln)}
-
-    ${offen > 0 ? `
-      <div class="pending-banner" onclick="navigate('einsaetze')">
-        <div class="icon">⏳</div>
-        <div class="text"><strong>${offen} ausstehende Anwesenheit${offen>1?'en':''}</strong>Zur Bestätigung tippen</div>
-        <div>›</div>
-      </div>` : ''}
 
     <div class="stats-grid">
       <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.gesamtEinsatz)}h</div><div class="stat-label">Einsatzstunden</div></div>
@@ -264,31 +251,6 @@ function renderEintragListe(liste, meineMap) {
   return html;
 }
 
-async function ladeVorschlaege(el) {
-  if (!fw.isWehrfuehrer()) return;
-  const vSnap = await fw.getDocs('anwesenheiten', fw.where('status','==','vorgeschlagen'));
-  const vorschlaege = vSnap.docs.map(d => ({id:d.id,...d.data()}));
-  if (!vorschlaege.length) return;
-  const userIds = [...new Set(vorschlaege.map(v=>v.userId))];
-  const users = {};
-  await Promise.all(userIds.map(async uid => {
-    const s = await fw.getDoc('users/'+uid);
-    if (s.exists()) users[uid] = s.data();
-  }));
-  const vEl = document.getElementById('vorschlaege-liste');
-  if (!vEl) return;
-  vEl.innerHTML = vorschlaege.map(v => `
-    <div class="list-item">
-      <div class="list-item-body">
-        <div class="list-item-title">${users[v.userId]?.vorname||''} ${users[v.userId]?.nachname||''}</div>
-        <div class="list-item-sub">${v.uebungTitel||''} · ${datum(v.datum)}</div>
-      </div>
-      <div style="display:flex;gap:0.4rem">
-        <button class="btn btn-sm btn-success" onclick="bestaetigen('${v.id}','${v.uebungId}','${v.userId}','${(users[v.userId]?.vorname||'')+' '+(users[v.userId]?.nachname||'')}')">✅</button>
-        <button class="btn btn-sm btn-danger"  onclick="ablehnen('${v.id}')">❌</button>
-      </div>
-    </div>`).join('');
-}
 
 // Collection je nach Typ
 function col(typ) { return typ === 'einsatz' ? 'einsaetze' : 'dienste'; }
@@ -297,35 +259,26 @@ function col(typ) { return typ === 'einsatz' ? 'einsaetze' : 'dienste'; }
 registerPage('einsaetze', async (el) => {
   fw.setTitle('Einsätze');
   fw.showHeaderAction('+ Einsatz', () => navigate('uebung-form', {typ:'einsatz', alarm:false}));
-  const [uSnap, aSnap, vSnap] = await Promise.all([
+  const [uSnap, aSnap] = await Promise.all([
     fw.getDocs('einsaetze', fw.orderBy('datum','desc')),
     fw.getDocs('anwesenheiten', fw.where('userId','==',fw.user.uid)),
-    fw.isWehrfuehrer() ? fw.getDocs('anwesenheiten', fw.where('status','==','vorgeschlagen')) : Promise.resolve({size:0, docs:[]}),
   ]);
   const liste    = uSnap.docs.map(d => ({id:d.id,...d.data()}));
   const meineMap = new Map(aSnap.docs.map(d => [d.data().uebungId, d.data().status]));
-  const offen    = vSnap.size;
-  el.innerHTML = `
-    ${offen > 0 ? `<div class="section-header">⏳ Ausstehende Bestätigungen (${offen})</div><div class="card" id="vorschlaege-liste"></div>` : ''}
-    <div class="card">${renderEintragListe(liste, meineMap)}</div>
-  `;
-  ladeVorschlaege(el);
+  el.innerHTML = `<div class="card">${renderEintragListe(liste, meineMap)}</div>`;
 });
 
 // ── Dienste ───────────────────────────────────────────────
 registerPage('dienste', async (el) => {
   fw.setTitle('Dienste');
   if (fw.isWehrfuehrer()) fw.showHeaderAction('+ Dienst', () => navigate('uebung-form', {typ:'dienst'}));
-  const [uSnap, aSnap, vSnap] = await Promise.all([
+  const [uSnap, aSnap] = await Promise.all([
     fw.getDocs('dienste', fw.orderBy('datum','desc')),
     fw.getDocs('anwesenheiten', fw.where('userId','==',fw.user.uid)),
-    fw.isWehrfuehrer() ? fw.getDocs('anwesenheiten', fw.where('status','==','vorgeschlagen')) : Promise.resolve({size:0, docs:[]}),
   ]);
   const liste    = uSnap.docs.map(d => ({id:d.id,...d.data()}));
   const meineMap = new Map(aSnap.docs.map(d => [d.data().uebungId, d.data().status]));
-  const offen    = vSnap.size;
   el.innerHTML = `
-    ${offen > 0 ? `<div class="section-header">⏳ Ausstehende Bestätigungen (${offen})</div><div class="card" id="vorschlaege-liste"></div>` : ''}
     <div class="card">${renderEintragListe(liste, meineMap)}</div>
     ${fw.isWehrfuehrer() ? `
     <div style="margin-top:1rem">
@@ -333,7 +286,6 @@ registerPage('dienste', async (el) => {
       <div id="kal-status" class="muted" style="font-size:0.8rem;text-align:center;margin-top:0.4rem"></div>
     </div>` : ''}
   `;
-  ladeVorschlaege(el);
 });
 
 window.kalenderImportieren = async () => {
@@ -401,19 +353,6 @@ window.einsatzReagieren = async (uebungId, status) => {
   }
 };
 
-window.bestaetigen = async (aId, uId, userId, name) => {
-  await fw.updateDoc('anwesenheiten/'+aId, { status:'bestaetigt', bestaetigtAm: new Date() });
-  const uSnap = await fw.getDoc('users/'+userId);
-  const u = uSnap.data();
-  if (u?.notif_bestaetigung && u?.fcmToken) {
-    await sendPush([u.fcmToken], '✅ Teilnahme bestätigt', 'Deine Anwesenheit wurde bestätigt.', false);
-  }
-  fw.toast('Bestätigt ✅'); navigate('dienste');
-};
-window.ablehnen = async (aId) => {
-  await fw.updateDoc('anwesenheiten/'+aId, { status:'abgelehnt' });
-  fw.toast('Abgelehnt'); navigate('dienste');
-};
 
 // ── Detail ────────────────────────────────────────────────
 let _einsatzListener = null; // aktiver onSnapshot Listener
@@ -888,6 +827,171 @@ window.abmelden = async () => {
   await signOut(fw.auth);
 };
 
+
+// ── Statistik ─────────────────────────────────────────────
+registerPage('statistik', async (el) => {
+  fw.setTitle('Statistik');
+  el.innerHTML = '<div class="empty">⏳ Lade...</div>';
+
+  const jetzt    = new Date();
+  const jahrAkt  = jetzt.getFullYear();
+  const jahrVor  = jahrAkt - 1;
+
+  // Alle Daten laden
+  const [usersSnap, anwSnap, einsaetzeSnap, diensteSnap] = await Promise.all([
+    fw.getDocs('users'),
+    fw.getDocs('anwesenheiten'),
+    fw.getDocs('einsaetze'),
+    fw.getDocs('dienste'),
+  ]);
+
+  const users     = usersSnap.docs.map(d => ({id:d.id,...d.data()})).filter(u => u.aktiv !== false && u.vorname);
+  const anw       = anwSnap.docs.map(d => d.data()).filter(a => a.status==='kommt' || a.status==='bestaetigt');
+  const einsaetze = einsaetzeSnap.docs.map(d => ({id:d.id,...d.data()}));
+  const dienste   = diensteSnap.docs.map(d => ({id:d.id,...d.data()}));
+
+  // Hilfsfunktionen
+  const jahrvon = (datum, jahr) => {
+    const d = datum?.toDate ? datum.toDate() : new Date(datum);
+    return d.getFullYear() === jahr;
+  };
+
+  // Lehrgänge per User laden
+  const qualiSnaps = await Promise.all(users.map(u => fw.getDocs('users/'+u.id+'/qualifikationen')));
+  const qualiPerUser = {};
+  users.forEach((u, i) => {
+    qualiPerUser[u.id] = qualiSnaps[i].docs.map(d => d.data());
+  });
+
+  // Stunden-Berechnung
+  function stunden(userId, typ, jahr) {
+    return anw
+      .filter(a => a.userId===userId && a.typ===typ && jahrvon(a.datum, jahr))
+      .reduce((s, a) => s + (a.dauer_h||0), 0);
+  }
+  function einsatzAnzahl(userId, jahr) {
+    return anw.filter(a => a.userId===userId && a.typ==='einsatz' && jahrvon(a.datum, jahr)).length;
+  }
+  function lehrgangStunden(userId, jahr) {
+    return (qualiPerUser[userId]||[])
+      .filter(q => q.datum && jahrvon(q.datum, jahr))
+      .length; // Anzahl Lehrgänge (keine Stunden gespeichert)
+  }
+
+  // Jahresvergleich gesamt
+  const gesamt = (jahr) => ({
+    einsaetze: einsaetze.filter(e => jahrvon(e.datum, jahr)).length,
+    dienststunden: users.reduce((s,u) => s + stunden(u.id,'dienst',jahr), 0),
+    lehrgangsanzahl: users.reduce((s,u) => s + lehrgangStunden(u.id,jahr), 0),
+  });
+  const gAkt = gesamt(jahrAkt);
+  const gVor = gesamt(jahrVor);
+
+  function diff(a, b, einheit='') {
+    const d = a - b;
+    const col = d > 0 ? '#16a34a' : d < 0 ? '#dc2626' : '#6b7280';
+    const pfeil = d > 0 ? '▲' : d < 0 ? '▼' : '=';
+    return `<span style="color:${col};font-size:0.8rem">${pfeil} ${Math.abs(d)}${einheit}</span>`;
+  }
+
+  // Pro-Kamerad-Tabelle
+  const kRows = users.map(u => {
+    const dAkt = stunden(u.id,'dienst',jahrAkt);
+    const dVor = stunden(u.id,'dienst',jahrVor);
+    const lAkt = lehrgangStunden(u.id,jahrAkt);
+    const lVor = lehrgangStunden(u.id,jahrVor);
+    const eAkt = einsatzAnzahl(u.id,jahrAkt);
+    const eVor = einsatzAnzahl(u.id,jahrVor);
+    return {u, dAkt, dVor, lAkt, lVor, eAkt, eVor};
+  }).filter(r => r.dAkt+r.dVor+r.lAkt+r.lVor+r.eAkt+r.eVor > 0);
+
+  const sumD = (jahr) => kRows.reduce((s,r) => s+(jahr===jahrAkt?r.dAkt:r.dVor),0);
+  const sumL = (jahr) => kRows.reduce((s,r) => s+(jahr===jahrAkt?r.lAkt:r.lVor),0);
+  const sumE = (jahr) => kRows.reduce((s,r) => s+(jahr===jahrAkt?r.eAkt:r.eVor),0);
+
+  el.innerHTML = `
+    <div class="section-header">Jahresvergleich</div>
+    <div class="card">
+      <table style="width:100%;border-collapse:collapse;font-size:0.85rem">
+        <thead>
+          <tr style="color:var(--muted);font-size:0.75rem">
+            <th style="text-align:left;padding:0.4rem 0.3rem"></th>
+            <th style="text-align:right;padding:0.4rem 0.3rem">${jahrVor}</th>
+            <th style="text-align:right;padding:0.4rem 0.3rem">${jahrAkt}</th>
+            <th style="text-align:right;padding:0.4rem 0.3rem">Diff</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr style="border-top:1px solid var(--border)">
+            <td style="padding:0.5rem 0.3rem">Einsätze</td>
+            <td style="text-align:right;padding:0.5rem 0.3rem">${gVor.einsaetze}</td>
+            <td style="text-align:right;padding:0.5rem 0.3rem;font-weight:600">${gAkt.einsaetze}</td>
+            <td style="text-align:right;padding:0.5rem 0.3rem">${diff(gAkt.einsaetze,gVor.einsaetze)}</td>
+          </tr>
+          <tr style="border-top:1px solid var(--border)">
+            <td style="padding:0.5rem 0.3rem">Dienststunden</td>
+            <td style="text-align:right;padding:0.5rem 0.3rem">${dauerFormat(gVor.dienststunden)}h</td>
+            <td style="text-align:right;padding:0.5rem 0.3rem;font-weight:600">${dauerFormat(gAkt.dienststunden)}h</td>
+            <td style="text-align:right;padding:0.5rem 0.3rem">${diff(gAkt.dienststunden,gVor.dienststunden,'h')}</td>
+          </tr>
+          <tr style="border-top:1px solid var(--border)">
+            <td style="padding:0.5rem 0.3rem">Lehrgänge</td>
+            <td style="text-align:right;padding:0.5rem 0.3rem">${gVor.lehrgangsanzahl}</td>
+            <td style="text-align:right;padding:0.5rem 0.3rem;font-weight:600">${gAkt.lehrgangsanzahl}</td>
+            <td style="text-align:right;padding:0.5rem 0.3rem">${diff(gAkt.lehrgangsanzahl,gVor.lehrgangsanzahl)}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="section-header">Pro Kamerad</div>
+    <div class="card" style="overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:0.78rem;min-width:340px">
+        <thead>
+          <tr style="color:var(--muted);font-size:0.72rem">
+            <th style="text-align:left;padding:0.35rem 0.25rem">Kamerad</th>
+            <th colspan="2" style="text-align:center;padding:0.35rem 0.25rem;border-left:1px solid var(--border)">Dienste</th>
+            <th colspan="2" style="text-align:center;padding:0.35rem 0.25rem;border-left:1px solid var(--border)">Lehrgänge</th>
+            <th colspan="2" style="text-align:center;padding:0.35rem 0.25rem;border-left:1px solid var(--border)">Einsätze</th>
+          </tr>
+          <tr style="color:var(--muted);font-size:0.7rem">
+            <th style="padding:0.2rem 0.25rem"></th>
+            <th style="text-align:right;padding:0.2rem 0.25rem;border-left:1px solid var(--border)">${jahrVor}</th>
+            <th style="text-align:right;padding:0.2rem 0.25rem">${jahrAkt}</th>
+            <th style="text-align:right;padding:0.2rem 0.25rem;border-left:1px solid var(--border)">${jahrVor}</th>
+            <th style="text-align:right;padding:0.2rem 0.25rem">${jahrAkt}</th>
+            <th style="text-align:right;padding:0.2rem 0.25rem;border-left:1px solid var(--border)">${jahrVor}</th>
+            <th style="text-align:right;padding:0.2rem 0.25rem">${jahrAkt}</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${kRows.map(r => `
+          <tr style="border-top:1px solid var(--border)">
+            <td style="padding:0.4rem 0.25rem;font-weight:500">${r.u.vorname} ${r.u.nachname}</td>
+            <td style="text-align:right;padding:0.4rem 0.25rem;border-left:1px solid var(--border);color:var(--muted)">${dauerFormat(r.dVor)}h</td>
+            <td style="text-align:right;padding:0.4rem 0.25rem">${dauerFormat(r.dAkt)}h</td>
+            <td style="text-align:right;padding:0.4rem 0.25rem;border-left:1px solid var(--border);color:var(--muted)">${r.lVor}</td>
+            <td style="text-align:right;padding:0.4rem 0.25rem">${r.lAkt}</td>
+            <td style="text-align:right;padding:0.4rem 0.25rem;border-left:1px solid var(--border);color:var(--muted)">${r.eVor}</td>
+            <td style="text-align:right;padding:0.4rem 0.25rem">${r.eAkt}</td>
+          </tr>`).join('')}
+        </tbody>
+        <tfoot>
+          <tr style="border-top:2px solid var(--border);font-weight:700">
+            <td style="padding:0.4rem 0.25rem">Gesamt</td>
+            <td style="text-align:right;padding:0.4rem 0.25rem;border-left:1px solid var(--border);color:var(--muted)">${dauerFormat(sumD(jahrVor))}h</td>
+            <td style="text-align:right;padding:0.4rem 0.25rem">${dauerFormat(sumD(jahrAkt))}h</td>
+            <td style="text-align:right;padding:0.4rem 0.25rem;border-left:1px solid var(--border);color:var(--muted)">${sumL(jahrVor)}</td>
+            <td style="text-align:right;padding:0.4rem 0.25rem">${sumL(jahrAkt)}</td>
+            <td style="text-align:right;padding:0.4rem 0.25rem;border-left:1px solid var(--border);color:var(--muted)">${sumE(jahrVor)}</td>
+            <td style="text-align:right;padding:0.4rem 0.25rem">${sumE(jahrAkt)}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+  `;
+});
+
 // ── Kameraden ─────────────────────────────────────────────
 registerPage('kameraden', async (el) => {
   fw.setTitle('Kameraden');
@@ -906,8 +1010,39 @@ registerPage('kameraden', async (el) => {
           </div>
           <div class="list-chevron">›</div>
         </div>`).join('')}
-    </div>`;
+    </div>
+    ${fw.isWehrfuehrer() ? `
+    <details style="background:var(--card);border-radius:10px;padding:0.8rem;margin-top:0.8rem">
+      <summary style="font-weight:600;cursor:pointer;list-style:none;display:flex;align-items:center;gap:0.5rem">🏘️ Ortswehren verwalten</summary>
+      <div id="ortswehr-inline" style="margin-top:0.8rem">⏳ Lade...</div>
+    </details>` : ''}
+  `;
+  if (fw.isWehrfuehrer()) ladeOrtswehrenInline();
 });
+
+async function ladeOrtswehrenInline() {
+  const snap = await fw.getDocs('ortswehren');
+  const wehren = snap.docs.map(d => ({id:d.id,...d.data()}));
+  const el = document.getElementById('ortswehr-inline');
+  if (!el) return;
+  el.innerHTML = `
+    ${wehren.map(w => `
+      <div class="list-item">
+        <div class="list-item-body"><div class="list-item-title">${w.name}</div></div>
+        <div style="display:flex;gap:0.4rem">
+          <button class="btn btn-sm btn-secondary" onclick="navigate('ortswehr-form',{id:'${w.id}'})">✏️</button>
+          <button class="btn btn-sm btn-danger" onclick="ortswehrLoeschenInline('${w.id}')">🗑</button>
+        </div>
+      </div>`).join('') || '<p class="muted" style="font-size:0.85rem">Noch keine Ortswehren</p>'}
+    <div style="margin-top:0.6rem">
+      <button class="btn btn-secondary btn-sm" onclick="navigate('ortswehr-form',{})">+ Neue Ortswehr</button>
+    </div>`;
+}
+window.ortswehrLoeschenInline = async (id) => {
+  if (!confirm('Ortswehr wirklich löschen?')) return;
+  await fw.deleteDoc('ortswehren/'+id);
+  fw.toast('Gelöscht'); ladeOrtswehrenInline();
+};
 
 registerPage('kamerad-detail', async (el, {id}) => {
   const snap = await fw.getDoc('users/'+id);
@@ -942,7 +1077,7 @@ registerPage('kamerad-detail', async (el, {id}) => {
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.7rem">
         ${[['Dienstgrad',u.dienstgrad],['Ortswehr',wehrName],
            ['Eingetreten',datum(u.eintrittsdatum)],['Telefon',u.telefon],
-           ['E-Mail',u.email],['Führerschein',u.fuehrerschein],
+           ['Führerschein',u.fuehrerschein],
         ].map(([l,v]) => `<div><div class="muted" style="font-size:0.72rem">${l}</div><div style="font-size:0.88rem">${v||'–'}</div></div>`).join('')}
       </div>
     </div>
@@ -1075,8 +1210,6 @@ registerPage('kamerad-form', async (el, {id}) => {
           </select>
         </div>
       </div>
-      <div class="form-row"><label>Telefon</label><input id="k-tel" type="tel" value="${u?.telefon||''}"></div>
-      <div class="form-row"><label>E-Mail</label><input id="k-mail" type="email" value="${u?.email||''}"></div>
       <div class="form-row"><label>Führerscheinklassen</label><input id="k-fs" value="${u?.fuehrerschein||''}"></div>
       <div class="btn-row">
         <button class="btn btn-primary" onclick="kameradSpeichern('${id||''}')">💾 Speichern</button>
@@ -1095,8 +1228,6 @@ window.kameradSpeichern = async (id) => {
     stärkeRolle: document.getElementById('k-rolle').value === 'wehrfuehrer'
       ? (document.getElementById('k-staerke-rolle')?.value || 'kamerad')
       : document.getElementById('k-rolle').value,
-    telefon: document.getElementById('k-tel').value,
-    email: document.getElementById('k-mail').value,
     fuehrerschein: document.getElementById('k-fs').value,
   };
   try {

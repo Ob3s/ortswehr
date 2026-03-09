@@ -58,7 +58,7 @@
     <button class="nav-btn" data-page="dienste"><span class="nav-icon">📅</span><span>Dienste</span></button>
     <button class="nav-btn" data-page="profil"><span class="nav-icon">👤</span><span>Profil</span></button>
     <button class="nav-btn hidden" data-page="kameraden" id="nav-kameraden"><span class="nav-icon">👥</span><span>Kameraden</span></button>
-    <button class="nav-btn hidden" data-page="ortswehren" id="nav-ortswehren"><span class="nav-icon">🏘️</span><span>Wehren</span></button>
+    <button class="nav-btn hidden" data-page="statistik" id="nav-statistik"><span class="nav-icon">📊</span><span>Statistik</span></button>
   </nav>
 </div>
 
@@ -236,7 +236,7 @@
       }
       if (fw.isWehrfuehrer()) {
         document.getElementById('nav-kameraden').classList.remove('hidden');
-        document.getElementById('nav-ortswehren').classList.remove('hidden');
+        document.getElementById('nav-statistik').classList.remove('hidden');
       }
       if (fw.profil.notif_einsatz || fw.profil.notif_uebung || fw.profil.notif_bestaetigung) {
         // Warten bis SW bereit ist bevor Push registriert wird
@@ -248,7 +248,7 @@
     } else {
       fw.user = null; fw.profil = null;
       document.getElementById('nav-kameraden').classList.add('hidden');
-      document.getElementById('nav-ortswehren').classList.add('hidden');
+      document.getElementById('nav-statistik').classList.add('hidden');
       document.getElementById('login-page').classList.remove('hidden');
       document.getElementById('app').classList.add('hidden');
     }
