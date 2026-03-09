@@ -26,10 +26,12 @@ function zeitZeile(u) {
 }
 
 function anwesenheitBadge(s) {
-  if (!s)                   return '<span class="badge badge-gray">–</span>';
+  if (!s)                   return '';
   if (s==='bestaetigt')     return '<span class="badge badge-green">✅ Bestätigt</span>';
   if (s==='vorgeschlagen')  return '<span class="badge badge-orange">⏳ Ausstehend</span>';
   if (s==='abgelehnt')      return '<span class="badge badge-red">❌ Abgelehnt</span>';
+  if (s==='kommt')          return '<span style="font-size:1.1rem">👍</span>';
+  if (s==='kommt_nicht')    return '<span style="font-size:1.1rem">👎</span>';
   return '';
 }
 function getStats(anwesenheiten) {
@@ -438,7 +440,7 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
 
   el.innerHTML = `
     <div class="card">
-      <span class="badge ${isEinsatz?'badge-red':'badge-blue'}">${isEinsatz?'⚡ Einsatz':'📅 Dienst'}</span>
+      <span class="badge badge-blue">${isEinsatz?'⚡ Einsatz':'📅 Dienst'}</span>
       <div style="margin-top:0.6rem;font-weight:600;font-size:1.1rem">${u.titel}</div>
       <div style="margin-top:0.3rem;color:var(--muted);font-size:0.85rem">${datum(u.datum)}${zeitZeile(u) ? ' · '+zeitZeile(u) : ''}</div>
       ${u.beschreibung ? `<p class="muted" style="margin-top:0.4rem;font-size:0.85rem">${u.beschreibung}</p>` : ''}
