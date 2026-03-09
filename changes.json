@@ -1,9 +1,8 @@
 {
-  "version": "2.1.4",
+  "version": "2.1.5",
   "datum": "09.03.2026",
   "punkte": [
-    "Statistik: Namen alphabetisch sortiert",
-    "Statistik: Nur aktive Kameraden werden angezeigt",
-    "Singular/Plural überall korrekt: 1 Einsatz / 2 Einsätze, 1 Dienst / 2 Dienste"
+    "Statistik-Tabelle: jede 2. Zeile eingefärbt",
+    "Statistik-Tabelle: 1. Spalte (Name) fixiert beim horizontalen Scrollen"
   ]
 }
