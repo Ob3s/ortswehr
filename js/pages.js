@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v1.6.7
+// js/pages.js – alle Seiten v1.6.8
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -127,7 +127,7 @@ ${renderNaechsteDienste(naechster, naechsterOegeln)}
     </div>
 
 
-    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.6.7</div>
+    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.6.8</div>
   `;
   checkDeepLink();
   startStatusPruefung();
@@ -906,7 +906,7 @@ registerPage('kamerad-detail', async (el, {id}) => {
       <hr>
       <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.6rem">
         <input id="q-bez" placeholder="Bezeichnung" style="flex:2;min-width:120px">
-        <input id="q-dat" type="date" style="flex:1;min-width:110px">
+        <input id="q-dat" type="text" placeholder="TT.MM.JJJJ" style="flex:1;min-width:110px">
         <input id="q-bem" placeholder="Bemerkung" style="flex:2;min-width:100px">
         <button class="btn btn-primary btn-sm" onclick="qualiHinzufuegen('${id}')">+</button>
       </div>
@@ -959,7 +959,13 @@ window.qualiHinzufuegen = async (userId) => {
   if (!bez) return;
   await fw.addDoc('users/'+userId+'/qualifikationen', {
     bezeichnung: bez,
-    datum: document.getElementById('q-dat').value || null,
+    datum: (() => {
+      const v = document.getElementById('q-dat').value.trim();
+      if (!v) return null;
+      // TT.MM.JJJJ → JJJJ-MM-TT
+      const m = v.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
+      return m ? `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}` : v;
+    })() || null,
     bemerkung: document.getElementById('q-bem').value || '',
   });
   fw.toast('Hinzugefügt'); navigate('kamerad-detail',{id:userId});
