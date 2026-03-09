@@ -294,3 +294,126 @@ hr       { border: none; border-top: 1px solid var(--border); margin: 1rem 0; }
   0%, 100% { box-shadow: 0 4px 20px rgba(204,34,0,0.4); }
   50%       { box-shadow: 0 4px 32px rgba(204,34,0,0.7); }
 }
+
+/* ══════════════════════════════════════════════════════════
+   THEME: KLASSISCH  (inspiriert von MP-FEUER)
+   Das Standard-Theme (oben) bleibt völlig unverändert.
+   ══════════════════════════════════════════════════════════ */
+body[data-theme="klassisch"] {
+  --red:      #8b0000;
+  --red-dark: #6b0000;
+  --bg:       #d0d4d8;
+  --panel:    #e8eaec;
+  --border:   #b0b8c0;
+  --text:     #1a1a1a;
+  --muted:    #5a6470;
+  --success:  #1a5c2a;
+  --warning:  #8b5000;
+  font-family: 'Segoe UI', Arial, sans-serif;
+}
+
+/* Header: tiefes Dunkelrot, flacher Look */
+body[data-theme="klassisch"] header {
+  background: linear-gradient(180deg, #a00000 0%, #7a0000 100%);
+  border-bottom: 2px solid #5a0000;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.4);
+  height: 52px;
+}
+body[data-theme="klassisch"] header h1 {
+  font-family: 'Segoe UI', Arial, sans-serif;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+/* Karten: weniger rund, mehr "Formular"-Look */
+body[data-theme="klassisch"] .card {
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.6), 0 1px 3px rgba(0,0,0,0.15);
+  padding: 0.85rem;
+  margin-bottom: 0.6rem;
+  background: var(--panel);
+}
+
+/* Listeneinträge kompakter */
+body[data-theme="klassisch"] .list-item {
+  padding: 0.6rem 0;
+  border-bottom: 1px solid var(--border);
+}
+body[data-theme="klassisch"] .list-item-title {
+  font-size: 0.88rem;
+}
+
+/* Buttons: flacher, eckiger */
+body[data-theme="klassisch"] .btn {
+  border-radius: 3px;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  font-size: 0.85rem;
+  padding: 0.5rem 1rem;
+  border: 1px solid rgba(0,0,0,0.2);
+}
+body[data-theme="klassisch"] .btn-primary {
+  background: linear-gradient(180deg, #a00000 0%, #7a0000 100%);
+  border-color: #5a0000;
+}
+body[data-theme="klassisch"] .btn-secondary {
+  background: linear-gradient(180deg, #e8eaec 0%, #d0d4d8 100%);
+  border-color: #9aa0a8;
+  color: #1a1a1a;
+}
+
+/* Inputs */
+body[data-theme="klassisch"] input:not([type="checkbox"]),
+body[data-theme="klassisch"] select,
+body[data-theme="klassisch"] textarea {
+  border-radius: 3px;
+  border: 1px solid #9aa0a8;
+  background: #fff;
+  font-family: 'Segoe UI', Arial, sans-serif;
+}
+
+/* Bottom Nav */
+body[data-theme="klassisch"] .bottom-nav {
+  background: #c0c8d0;
+  border-top: 2px solid #8b0000;
+  box-shadow: 0 -2px 6px rgba(0,0,0,0.2);
+}
+body[data-theme="klassisch"] .nav-btn {
+  font-family: 'Segoe UI', Arial, sans-serif;
+  font-size: 0.65rem;
+}
+
+/* Section Headers */
+body[data-theme="klassisch"] .section-header {
+  font-family: 'Segoe UI', Arial, sans-serif;
+  color: #8b0000;
+  border-bottom: 1px solid #8b0000;
+  padding-bottom: 0.2rem;
+  font-size: 0.75rem;
+}
+
+/* Stat-Kacheln */
+body[data-theme="klassisch"] .stat-card {
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.5), 0 1px 2px rgba(0,0,0,0.1);
+}
+
+/* Alarm-Button */
+body[data-theme="klassisch"] .alarm-btn {
+  border-radius: 4px;
+  letter-spacing: 0.06em;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  background: linear-gradient(180deg, #c00000 0%, #8b0000 100%);
+  border: 2px solid #5a0000;
+}
+
+/* Badges eckiger */
+body[data-theme="klassisch"] .badge { border-radius: 3px; }
+
+/* Formularlabels */
+body[data-theme="klassisch"] .form-row label {
+  font-family: 'Segoe UI', Arial, sans-serif;
+  color: #3a4048;
+}

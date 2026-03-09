@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v2.0.7
+// js/pages.js – alle Seiten v2.0.8
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -850,6 +850,17 @@ registerPage('profil', async (el) => {
 
       <div class="form-row"><label>Führerscheinklassen (z.B. B, C, CE)</label><input id="p-fs" value="${me.fuehrerschein||''}"></div>
 
+      <div class="form-row" style="margin-top:0.5rem">
+        <label>Design</label>
+        <div style="display:flex;gap:0.6rem;margin-top:0.3rem">
+          <button id="theme-standard" onclick="themeWaehlen('standard')"
+            class="btn btn-sm ${(me.theme||'standard')==='standard'?'btn-primary':'btn-secondary'}"
+            style="flex:1">🎨 Standard</button>
+          <button id="theme-klassisch" onclick="themeWaehlen('klassisch')"
+            class="btn btn-sm ${(me.theme||'standard')==='klassisch'?'btn-primary':'btn-secondary'}"
+            style="flex:1">🖥️ Klassisch</button>
+        </div>
+      </div>
       <button class="btn btn-primary btn-full" onclick="profilSpeichern()">💾 Speichern</button>
     </div>
 
@@ -920,6 +931,18 @@ registerPage('profil', async (el) => {
   if (cbStatus)  cbStatus.checked  = me.notif_status  !== false;
   if (cbSelbst)  cbSelbst.checked  = me.notif_selbst  === true;
 });
+
+window.themeWaehlen = async (theme) => {
+  document.body.setAttribute('data-theme', theme === 'klassisch' ? 'klassisch' : '');
+  await fw.setDoc('users/'+fw.user.uid, { theme });
+  Object.assign(fw.profil, { theme });
+  // Buttons aktualisieren
+  document.getElementById('theme-standard')?.classList.toggle('btn-primary',   theme !== 'klassisch');
+  document.getElementById('theme-standard')?.classList.toggle('btn-secondary',  theme === 'klassisch');
+  document.getElementById('theme-klassisch')?.classList.toggle('btn-primary',  theme === 'klassisch');
+  document.getElementById('theme-klassisch')?.classList.toggle('btn-secondary', theme !== 'klassisch');
+  fw.toast(theme === 'klassisch' ? '🖥️ Design: Klassisch' : '🎨 Design: Standard');
+};
 
 window.profilSpeichern = async () => {
   const data = {

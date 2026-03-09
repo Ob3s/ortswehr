@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="theme-color" content="#cc2200">
-  <meta name="app-version" content="2.0.7">
+  <meta name="app-version" content="2.0.8">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ortswehr">
@@ -229,6 +229,9 @@
       const snap = await getDoc(doc(db, 'users', user.uid));
       if (snap.exists()) {
         fw.profil = { id: user.uid, ...snap.data() };
+        // Theme sofort anwenden
+        if (fw.profil.theme === 'klassisch') document.body.setAttribute('data-theme', 'klassisch');
+        else document.body.removeAttribute('data-theme');
       } else {
         fw.profil = { id: user.uid, email: user.email, rolle: 'kamerad',
           vorname: '', nachname: '', dienstgrad: '',
