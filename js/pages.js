@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v2.0.9
+// js/pages.js – alle Seiten v2.1.0
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -303,11 +303,11 @@ function startStatusPruefung() {
 // ── Hilfsfunktion: Liste rendern ─────────────────────────
 function renderEintrag(u, meineMap) {
   const badge = anwesenheitBadge(meineMap.get(u.id));
-  const ortStr = u.ort ? ' · ' + u.ort : '';
   return `<div class="list-item" onclick="navigate('uebung-detail',{id:'${u.id}',typ:'${u.typ}'})">
     <div class="list-item-body">
       <div class="list-item-title">${u.titel}</div>
-      <div class="list-item-sub">${datum(u.datum)}${zeitZeile(u) ? ' · '+zeitZeile(u) : ''}${ortStr}</div>
+      ${u.ort ? `<div class="list-item-sub" style="margin-top:0.05rem">📍 ${u.ort}</div>` : ''}
+      <div class="list-item-sub">${datum(u.datum)}${zeitZeile(u) ? ' · '+zeitZeile(u) : ''}</div>
     </div>
     <div class="list-item-right">${badge}</div>
     <div class="list-chevron">›</div>
