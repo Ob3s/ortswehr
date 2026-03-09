@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v2.0.4
+// js/pages.js – alle Seiten v2.0.5
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -35,11 +35,9 @@ function kurzName(vorname, nachname) {
   return n + ', ' + v.charAt(0) + '.';
 }
 function anwesenheitBadge(s) {
-  if (!s)                                    return '';
   if (s==='bestaetigt' || s==='kommt')       return '<span style="color:#16a34a;font-size:1.1rem">✅</span>';
   if (s==='abgelehnt'  || s==='kommt_nicht') return '<span style="color:#dc2626;font-size:1.1rem">❌</span>';
-  if (s==='vorgeschlagen')                   return '<span style="color:#f59e0b;font-size:1.1rem">⏳</span>';
-  return '';
+  return '<span style="color:#f59e0b;font-size:1.1rem">⏳</span>'; // keine Reaktion
 }
 function getStats(anwesenheiten, dienstMap, einsatzMap) {
   const vor12m = new Date(); vor12m.setFullYear(vor12m.getFullYear()-1);
@@ -117,19 +115,7 @@ registerPage('dashboard', async (el) => {
 
 ${renderNaechsteDienste(naechster, naechsterOegeln)}
 
-    <div class="stats-grid">
-      <div class="stat-card">
-        <div class="stat-zahl">${stats.einsaetze}</div>
-        <div class="stat-count">Einsätze</div>
-      </div>
-      <div class="stat-card">
-        <div class="stat-zahl">${stats.dienste}</div>
-        <div class="stat-count">Dienste</div>
-      </div>
-    </div>
-
-
-    <div id="news-feed" style="margin-top:1rem"></div>
+    <div id="news-feed" style="margin-top:0.5rem"></div>
 
     <div style="text-align:center;color:#374151;font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">${document.querySelector('meta[name="app-version"]')?.content||''}</div>
   `;
@@ -147,12 +133,16 @@ async function ladeNewsFeed() {
   ]);
   const usersMap = new Map(uSnap.docs.map(d => [d.id, d.data()]));
   const beitraege = snap.docs.map(d => ({id:d.id,...d.data()}));
-  if (!beitraege.length) { el.innerHTML = ''; return; }
+  // Header immer zeigen (auch wenn keine Beiträge)
+  const header = '<div class="section-header" style="display:flex;align-items:center;justify-content:space-between">Neuigkeiten'
+    + (fw.isWehrfuehrer() ? '<button class="btn btn-secondary btn-sm" onclick="navigate('news-form')">📝 Beitrag</button>' : '')
+    + '</div>';
+  if (!beitraege.length) {
+    el.innerHTML = header + '<div class="card" style="color:var(--muted);font-size:0.88rem">Noch keine Neuigkeiten.</div>';
+    return;
+  }
 
-  el.innerHTML = '<div class="section-header" style="display:flex;align-items:center;justify-content:space-between">Neuigkeiten'
-    + (fw.isWehrfuehrer() ? '<button class="btn btn-secondary btn-sm" onclick="navigate(\'news-form\')">📝 Beitrag</button>' : '')
-    + '</div>'
-    + beitraege.map(b => {
+  el.innerHTML = header + beitraege.map(b => {
     const hat = b.abstimmung?.optionen?.some(o => o.stimmen?.includes(fw.user.uid));
     const gesamt = b.abstimmung?.optionen?.reduce((s,o) => s+(o.stimmen?.length||0), 0) || 0;
     return `<div class="card" style="margin-bottom:0.6rem">
@@ -270,12 +260,14 @@ function startStatusPruefung() {
 
 // ── Hilfsfunktion: Liste rendern ─────────────────────────
 function renderEintrag(u, meineMap) {
+  const badge = anwesenheitBadge(meineMap.get(u.id));
+  const ortStr = u.ort ? ' · ' + u.ort : '';
   return `<div class="list-item" onclick="navigate('uebung-detail',{id:'${u.id}',typ:'${u.typ}'})">
     <div class="list-item-body">
       <div class="list-item-title">${u.titel}</div>
-      <div class="list-item-sub">${datum(u.datum)}${zeitZeile(u) ? ' · '+zeitZeile(u) : ''}</div>
+      <div class="list-item-sub">${datum(u.datum)}${zeitZeile(u) ? ' · '+zeitZeile(u) : ''}${ortStr}</div>
     </div>
-    <div class="list-item-right">${anwesenheitBadge(meineMap.get(u.id))}</div>
+    <div class="list-item-right">${badge}</div>
     <div class="list-chevron">›</div>
   </div>`;
 }
@@ -365,6 +357,10 @@ registerPage('einsaetze', async (el) => {
   ]);
   const liste    = uSnap.docs.map(d => ({id:d.id,...d.data()}));
   const meineMap = new Map(aSnap.docs.map(d => [d.data().uebungId, d.data().status]));
+  console.log('[Dienste] meineMap:', meineMap.size, 'Einträge, Liste:', liste.length);
+  meineMap.forEach((v,k) => console.log(' →', k, '=', v));
+  console.log('[Einsätze] meineMap:', meineMap.size, 'Einträge, Liste:', liste.length);
+  meineMap.forEach((v,k) => console.log(' →', k, '=', v));
   el.innerHTML = `<div class="card">${renderEintragListe(liste, meineMap)}</div>`;
 });
 
@@ -378,6 +374,8 @@ registerPage('dienste', async (el) => {
   ]);
   const liste    = uSnap.docs.map(d => ({id:d.id,...d.data()}));
   const meineMap = new Map(aSnap.docs.map(d => [d.data().uebungId, d.data().status]));
+  console.log('[Dienste] meineMap:', meineMap.size, 'Einträge, Liste:', liste.length);
+  meineMap.forEach((v,k) => console.log(' →', k, '=', v));
   el.innerHTML = `
     <div class="card">${renderEintragListe(liste, meineMap)}</div>
     ${fw.isWehrfuehrer() ? `
