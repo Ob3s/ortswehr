@@ -134,9 +134,8 @@ async function ladeNewsFeed() {
   const usersMap = new Map(uSnap.docs.map(d => [d.id, d.data()]));
   const beitraege = snap.docs.map(d => ({id:d.id,...d.data()}));
   // Header immer zeigen (auch wenn keine Beiträge)
-  const header = '<div class="section-header" style="display:flex;align-items:center;justify-content:space-between">Neuigkeiten'
-    + (fw.isWehrfuehrer() ? '<button class="btn btn-secondary btn-sm" onclick="navigate('news-form')">📝 Beitrag</button>' : '')
-    + '</div>';
+  const beitragBtn = fw.isWehrfuehrer() ? `<button class="btn btn-secondary btn-sm" onclick="navigate('news-form')">📝 Beitrag</button>` : '';
+  const header = `<div class="section-header" style="display:flex;align-items:center;justify-content:space-between">Neuigkeiten${beitragBtn}</div>`;
   if (!beitraege.length) {
     el.innerHTML = header + '<div class="card" style="color:var(--muted);font-size:0.88rem">Noch keine Neuigkeiten.</div>';
     return;
