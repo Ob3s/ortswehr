@@ -1,0 +1,10 @@
+{
+  "version": "2.1.2",
+  "datum": "09.03.2026",
+  "punkte": [
+    "Deploy-App: Changelog aus changes.json (live, dauerhaft)",
+    "Deploy-App: Commit-Message enthält alle Änderungen",
+    "Deploy-App: Android ZIP-Fix (arrayBuffer)",
+    "Deploy-App: Grüner 'live'-Badge wenn Changelog aus ZIP"
+  ]
+}
