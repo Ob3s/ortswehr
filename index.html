@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="theme-color" content="#cc2200">
-  <meta name="app-version" content="1.7.0">
+  <meta name="app-version" content="1.7.2">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ortswehr">
@@ -22,8 +22,8 @@
     <h1>Ortswehr</h1>
     <p class="sub">Freiwillige Feuerwehr</p>
     <div class="form-row">
-      <label>E-Mail</label>
-      <input id="login-email" type="email" placeholder="name@beispiel.de" autocomplete="email">
+      <label>Benutzername</label>
+      <input id="login-email" type="text" placeholder="vorname.nachname" autocomplete="username" autocapitalize="none">
     </div>
     <div class="form-row">
       <label>Passwort</label>
@@ -35,7 +35,7 @@
       <a href="#" id="pw-reset-link" style="color:var(--red);font-size:0.82rem;text-decoration:none">Passwort vergessen?</a>
     </p>
     <div id="pw-reset-box" style="display:none;margin-top:0.8rem">
-      <input id="reset-email" type="email" placeholder="Deine E-Mail-Adresse">
+      <input id="reset-email" type="text" placeholder="Dein Benutzername" autocapitalize="none">
       <button type="button" class="btn btn-primary btn-full" id="reset-btn" style="margin-top:0.5rem">Reset-Mail senden</button>
       <p id="reset-msg" style="font-size:0.82rem;margin-top:0.5rem;text-align:center"></p>
     </div>
@@ -188,11 +188,12 @@
 
   // Login
   document.getElementById('login-btn').addEventListener('click', async () => {
-    const email = document.getElementById('login-email').value.trim();
-    const pass  = document.getElementById('login-pass').value;
+    const name = document.getElementById('login-email').value.trim().toLowerCase();
+    const pass = document.getElementById('login-pass').value;
     document.getElementById('login-error').textContent = '';
+    const email = name.includes('@') ? name : name + '@ffw-oegeln.de';
     try { await signInWithEmailAndPassword(auth, email, pass); }
-    catch(e) { document.getElementById('login-error').textContent = 'E-Mail oder Passwort falsch'; }
+    catch(e) { document.getElementById('login-error').textContent = 'Benutzername oder Passwort falsch'; }
   });
   ['login-email','login-pass'].forEach(id => {
     document.getElementById(id).addEventListener('keydown', e => {

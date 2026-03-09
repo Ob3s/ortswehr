@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v1.7.0
+// js/pages.js – alle Seiten v1.7.2
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -127,7 +127,7 @@ ${renderNaechsteDienste(naechster, naechsterOegeln)}
     </div>
 
 
-    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.7.0</div>
+    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.7.2</div>
   `;
   checkDeepLink();
   startStatusPruefung();
@@ -910,14 +910,7 @@ registerPage('kamerad-detail', async (el, {id}) => {
             <option value="">– Lehrgang wählen –</option>
             ${['Truppmann','Sprechfunk','AGT','TH-Grund','Maschinist','Absturzsicherung','ABC-Grund','Truppführer','Gruppenführer','Zugführer','Wehrführer','Erste-Hilfe','Motorsäge A/B','Motorsäge C/D'].map(l=>`<option value="${l}">${l}</option>`).join('')}
           </select>
-          <div style="display:flex;gap:0.4rem;align-items:center">
-            <input id="q-dat-t" type="number" min="1" max="31" placeholder="TT" style="width:56px;text-align:center">
-            <span style="color:var(--muted)">.</span>
-            <input id="q-dat-m" type="number" min="1" max="12" placeholder="MM" style="width:56px;text-align:center">
-            <span style="color:var(--muted)">.</span>
-            <input id="q-dat-j" type="number" min="1900" max="2099" placeholder="JJJJ" style="width:80px;text-align:center">
-            <span style="color:var(--muted);font-size:0.8rem;flex:1">Datum bestanden</span>
-          </div>
+          <input id="q-dat" type="date" placeholder="Datum bestanden" style="width:100%">
           <div style="display:flex;gap:0.5rem">
             <input id="q-bem" placeholder="Bemerkung (optional)" style="flex:1">
             <button class="btn btn-primary btn-sm" onclick="qualiHinzufuegen('${id}')">+ Hinzufügen</button>
@@ -973,13 +966,7 @@ window.qualiHinzufuegen = async (userId) => {
   if (!bez) { fw.toast('Bitte einen Lehrgang wählen', true); return; }
   await fw.addDoc('users/'+userId+'/qualifikationen', {
     bezeichnung: bez,
-    datum: (() => {
-      const t = document.getElementById('q-dat-t')?.value.trim();
-      const m = document.getElementById('q-dat-m')?.value.trim();
-      const j = document.getElementById('q-dat-j')?.value.trim();
-      if (!t || !m || !j) return null;
-      return `${j}-${m.padStart(2,'0')}-${t.padStart(2,'0')}`;
-    })() || null,
+    datum: document.getElementById('q-dat').value || null,
     bemerkung: document.getElementById('q-bem').value || '',
   });
   fw.toast('Hinzugefügt'); navigate('kamerad-detail',{id:userId});
@@ -1005,7 +992,7 @@ registerPage('kamerad-form', async (el, {id}) => {
   el.innerHTML = `
     <div class="card">
       ${!u ? `
-        <div class="form-row"><label>E-Mail (wird Login)</label><input id="k-email" type="email" placeholder="name@beispiel.de"></div>
+        <div class="form-row"><label>Benutzername (wird Login)</label><input id="k-email" type="text" placeholder="vorname.nachname" autocapitalize="none"></div>
         <div class="form-row"><label>Initiales Passwort (mind. 6 Zeichen)</label><input id="k-pw" type="password"></div>
       ` : ''}
       <div class="form-row"><label>Vorname</label><input id="k-vn" value="${u?.vorname||''}"></div>
@@ -1050,15 +1037,17 @@ window.kameradSpeichern = async (id) => {
       await fw.setDoc('users/'+id, data);
       fw.toast('Gespeichert ✅'); navigate('kamerad-detail',{id});
     } else {
-      const email = document.getElementById('k-email').value.trim();
-      const pw    = document.getElementById('k-pw').value;
-      if (!email||!pw) { fw.toast('E-Mail und Passwort erforderlich', true); return; }
+      const loginName = document.getElementById('k-email').value.trim().toLowerCase();
+      const pw = document.getElementById('k-pw').value;
+      if (!loginName||!pw) { fw.toast('Benutzername und Passwort erforderlich', true); return; }
       if (pw.length < 6) { fw.toast('Passwort mind. 6 Zeichen', true); return; }
+      const email = loginName.includes('@') ? loginName : loginName + '@ffw-oegeln.de';
+      data.loginName = loginName;
       await window.createKamerad(email, pw, data);
       fw.toast('Kamerad angelegt ✅'); navigate('kameraden');
     }
   } catch(e) {
-    fw.toast(e.message.includes('email-already') ? 'E-Mail bereits vergeben' : e.message, true);
+    fw.toast(e.message.includes('email-already') ? 'Benutzername bereits vergeben' : e.message, true);
   }
 };
 
