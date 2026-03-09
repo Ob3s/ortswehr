@@ -168,7 +168,11 @@ main {
   color: var(--muted); text-transform: uppercase; letter-spacing: 0.05em;
   margin-bottom: 0.3rem;
 }
-input, select, textarea {
+input[type="checkbox"] {
+  -webkit-appearance: checkbox;
+  appearance: checkbox;
+}
+input:not([type="checkbox"]), select, textarea {
   width: 100%; border: 1.5px solid var(--border); border-radius: 10px;
   padding: 0.65rem 0.9rem; font-family: 'DM Sans', sans-serif;
   font-size: 1rem; background: var(--bg); color: var(--text);
