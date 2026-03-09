@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v1.6.5
+// js/pages.js – alle Seiten v1.6.7
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -127,7 +127,7 @@ ${renderNaechsteDienste(naechster, naechsterOegeln)}
     </div>
 
 
-    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.6.5</div>
+    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.6.7</div>
   `;
   checkDeepLink();
   startStatusPruefung();
@@ -397,7 +397,7 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
           best.map(a => `
             <div class="list-item">
               <div class="list-item-body"><div class="list-item-title">${a.userName||'Kamerad'}</div></div>
-              <button class="btn btn-sm btn-danger" onclick="teilnehmerEntfernen('${a.id}','${id}')">🗑</button>
+              <button class="btn btn-sm btn-danger" onclick="teilnehmerEntfernen('${a.id}','${id}','${u.typ}')">🗑</button>
             </div>`).join('')}
         <div class="btn-row">
           <button class="btn btn-secondary btn-sm" onclick="navigate('uebung-eintragen',{id:'${id}',titel:'${u.titel.replace(/'/g,"\\'")}',dauer:${u.dauer_h||0},typ:'${u.typ}',datumStr:'${u.datum?.toDate?.().toISOString()||u.datum}'})">+ Kamerad eintragen</button>
@@ -454,7 +454,7 @@ window.teilnahmeMelden = async (uebungId, titel, dauer_h, typ, datumStr) => {
   fw.toast('Teilnahme gemeldet ⏳');
   navigate('uebung-detail', {id: uebungId, typ});
 };
-window.teilnehmerEntfernen = async (aId, uebungId) => {
+window.teilnehmerEntfernen = async (aId, uebungId, typ) => {
   if (!confirm('Anwesenheit entfernen?')) return;
   await fw.deleteDoc('anwesenheiten/'+aId);
   fw.toast('Entfernt'); navigate('uebung-detail', {id: uebungId, typ});
@@ -928,7 +928,7 @@ window.kameradAktiv = async (id) => {
 window.kameradInaktiv = async (id) => {
   if (!confirm('Kamerad auf inaktiv setzen?')) return;
   await fw.updateDoc('users/'+id, { aktiv: false });
-  fw.toast('Kamerad inaktiv gesetzt'); navigate('kamerad-detail', {id});
+  fw.toast('Kamerad inaktiv gesetzt ✅'); navigate('kamerad-detail', {id});
 };
 
 window.kameradLoeschen = async (id) => {
