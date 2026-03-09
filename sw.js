@@ -1,52 +1,53 @@
-// sw.js – Service Worker v2
-const CACHE = 'ortswehr-v7';
-
-// Nie cachen – immer vom Netz
-const NETWORK_ONLY = ['firestore', 'googleapis', 'firebase', 'gstatic'];
-
-// Nur diese dürfen offline gecacht werden (statische Assets die sich kaum ändern)
+// sw.js – Service Worker v2 DEBUG
+const CACHE = 'ortswehr-v8-debug';
 const CACHE_ONLY_ASSETS = [
   '/ortswehr/icons/icon-192.png',
   '/ortswehr/icons/icon-512.png',
   '/ortswehr/manifest.json',
 ];
+const NETWORK_ONLY = ['firestore', 'googleapis', 'firebase', 'gstatic'];
 
 self.addEventListener('install', e => {
+  console.log('[SW] install – Cache:', CACHE);
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(CACHE_ONLY_ASSETS)));
   self.skipWaiting();
 });
 
 self.addEventListener('activate', e => {
-  e.waitUntil(caches.keys().then(keys =>
-    Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)))
-  ));
+  console.log('[SW] activate – lösche alte Caches');
+  e.waitUntil(caches.keys().then(keys => {
+    keys.forEach(k => console.log('[SW] gefundener Cache:', k, k !== CACHE ? '→ wird gelöscht' : '→ behalten'));
+    return Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k)));
+  }));
   self.clients.claim();
 });
 
 self.addEventListener('fetch', e => {
   const url = e.request.url;
-
-  // Firebase & Co → komplett ignorieren
   if (NETWORK_ONLY.some(n => url.includes(n))) return;
 
-  // Icons + Manifest → cache-first (ändern sich nie)
   if (CACHE_ONLY_ASSETS.some(a => url.includes(a))) {
     e.respondWith(caches.match(e.request).then(cached => cached || fetch(e.request)));
     return;
   }
 
-  // Alles andere (index.html, pages.js, style.css, version.json, sw.js)
-  // → network-first: immer frisch vom Server, Fallback auf Cache
+  // Network-first für alle App-Dateien
   e.respondWith(
     fetch(e.request)
       .then(res => {
         if (res.ok) {
+          console.log('[SW] network-first OK:', url.split('/').pop(), '– Status:', res.status);
           const clone = res.clone();
           caches.open(CACHE).then(c => c.put(e.request, clone));
+        } else {
+          console.warn('[SW] network-first FEHLER:', url.split('/').pop(), res.status);
         }
         return res;
       })
-      .catch(() => caches.match(e.request))
+      .catch(err => {
+        console.warn('[SW] offline-fallback für:', url.split('/').pop(), err.message);
+        return caches.match(e.request);
+      })
   );
 });
 
