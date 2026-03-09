@@ -431,27 +431,7 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
     fw.where('uebungId','==',id), fw.where('userId','==',fw.user.uid));
   const meineA = aSnap.docs[0] ? {id:aSnap.docs[0].id,...aSnap.docs[0].data()} : null;
 
-  const eintragNavFn = `navigate('uebung-eintragen',{id:'${id}',titel:'${u.titel.replace(/'/g,"\'")}',dauer:${u.dauer_h||0},typ:'${u.typ}',datumStr:'${u.datum?.toDate?.().toISOString()||u.datum}'})`;
-  const eintragBtn = fw.isWehrfuehrer()
-    ? `<button class="btn btn-secondary btn-sm" onclick="${eintragNavFn}">+ Kamerad eintragen</button>`
-    : '';
-
   let teilnehmerHTML = '';
-  if (!isEinsatz && fw.isWehrfuehrer()) {
-    const allA = await fw.getDocs('anwesenheiten', fw.where('uebungId','==',id));
-    const best = allA.docs.map(d => ({id:d.id,...d.data()})).filter(a => a.status==='bestaetigt');
-    teilnehmerHTML = `
-      <div class="section-header">Teilnehmer (${best.length})</div>
-      <div class="card">
-        ${best.length===0 ? '<div class="empty">Noch keine bestätigten Teilnehmer</div>' :
-          best.map(a => `
-            <div class="list-item">
-              <div class="list-item-body"><div class="list-item-title">${a.userName||'Kamerad'}</div></div>
-              <button class="btn btn-sm btn-danger" onclick="teilnehmerEntfernen('${a.id}','${id}','${u.typ}')">🗑</button>
-            </div>`).join('')}
-        <div class="btn-row">${eintragBtn}</div>
-      </div>`;
-  }
 
   el.innerHTML = `
     <div class="card">
@@ -474,7 +454,6 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
         onclick="einsatzReagieren('${id}','kommt_nicht')">👎 Komme nicht</button>
     </div>
     ${isEinsatz ? `<div style="padding:0 0 0.5rem">${eintragBtn}</div>` : ''}
-    ${teilnehmerHTML}
   `;
 
   // Live-Listener für Reaktionen (Einsatz + Dienst)

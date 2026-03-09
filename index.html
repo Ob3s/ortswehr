@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="theme-color" content="#cc2200">
-  <meta name="app-version" content="1.8.8">
+  <meta name="app-version" content="1.8.9">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ortswehr">
@@ -39,6 +39,8 @@
       <button type="button" class="btn btn-primary btn-full" id="reset-btn" style="margin-top:0.5rem">Reset-Mail senden</button>
       <p id="reset-msg" style="font-size:0.82rem;margin-top:0.5rem;text-align:center"></p>
     </div>
+    <p id="login-version" style="text-align:center;font-size:0.7rem;color:#374151;margin-top:1rem 0 0"></p>
+    <script>document.getElementById('login-version').textContent=document.querySelector('meta[name="app-version"]')?.content||''</script>
   </div>
 </div>
 
