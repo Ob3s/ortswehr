@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v1.5.3
+// js/pages.js – alle Seiten v1.5.4
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -127,7 +127,7 @@ ${renderNaechsteDienste(naechster, naechsterOegeln)}
     </div>
 
 
-    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.5.3</div>
+    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.5.4</div>
   `;
   checkDeepLink();
   startStatusPruefung();
@@ -637,7 +637,8 @@ registerPage('profil', async (el) => {
     fw.getDocs('users/'+fw.user.uid+'/qualifikationen'),
   ]);
   const me = meSnap.data() || fw.profil;
-  Object.assign(fw.profil, me); // Cache aktualisieren
+  Object.assign(fw.profil, me);
+  console.log('Profil notif:', me.notif_einsatz, me.notif_uebung, me.notif_bestaetigung, me.notif_status, me.notif_selbst);
   const stats  = getStats(aSnap.docs.map(d => d.data()));
   const qualis = qSnap.docs.map(d => ({id:d.id,...d.data()}));
 
