@@ -127,7 +127,7 @@ ${renderNaechsteDienste(naechster, naechsterOegeln)}
     </div>
 
 
-    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">${document.querySelector('meta[name="app-version"]')?.content||''}</div>
+    <div style="text-align:center;color:#374151;font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">${document.querySelector('meta[name="app-version"]')?.content||''}</div>
   `;
   checkDeepLink();
   startStatusPruefung();
@@ -460,7 +460,6 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
         <button class="btn btn-secondary btn-sm" style="margin-top:0.6rem" onclick="navigate('uebung-form',{id:'${u.id}'})">⏱ Endzeit nachtragen</button>
       ` : ''}
     </div>
-    ${isEinsatz ? `
     <div class="section-header">Wer kommt? <span id="einsatz-zaehler" style="font-weight:400;font-size:0.85rem"></span></div>
     <div id="einsatz-reaktionen" class="card">⏳ Lade...</div>
     <div class="card" style="display:flex;gap:0.8rem">
@@ -470,21 +469,7 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
       <button class="btn btn-full" id="btn-kommt-nicht"
         style="background:#dc2626;color:#fff;font-size:1.1rem;padding:0.8rem"
         onclick="einsatzReagieren('${id}','kommt_nicht')">👎 Komme nicht</button>
-    </div>` : ''}
-    ${!isEinsatz ? `<div class="section-header">Meine Anwesenheit</div>
-    <div class="card">
-      ${meineA ? `
-        <div style="margin-bottom:0.6rem">${anwesenheitBadge(meineA.status)}</div>
-        ${meineA.status==='vorgeschlagen'?'<p class="muted" style="font-size:0.83rem">Wartet auf Bestätigung durch den Wehrführer.</p>':''}
-        ${meineA.status==='bestaetigt'?'<p class="muted" style="font-size:0.83rem">Deine Teilnahme wurde bestätigt.</p>':''}
-        ${meineA.status==='abgelehnt'?'<p class="muted" style="font-size:0.83rem">Deine Teilnahme wurde abgelehnt.</p>':''}
-      ` : `
-        <p class="muted" style="font-size:0.85rem;margin-bottom:0.8rem">Du hast dich noch nicht gemeldet.</p>
-        <button class="btn btn-primary" onclick="teilnahmeMelden('${id}','${u.titel.replace(/'/g,"\\'")}',${u.dauer_h||0},'${u.typ}','${u.datum?.toDate?.().toISOString()||u.datum}')">
-          Teilnahme melden
-        </button>
-      `}
-    </div>` : ''}
+    </div>
     ${teilnehmerHTML}
   `;
 
