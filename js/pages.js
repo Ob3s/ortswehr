@@ -372,6 +372,12 @@ window.kalenderImportieren = async () => {
   }
 };
 
+
+function hatLkwFs(fs) {
+  if (!fs) return false;
+  return /\b(C1E|C1|CE|C)\b/.test(fs.toUpperCase());
+}
+
 window.rolleGeaendert = (rolle) => {
   const row = document.getElementById('staerke-rolle-row');
   if (row) row.style.display = rolle === 'wehrfuehrer' ? 'block' : 'none';
@@ -382,11 +388,12 @@ window.einsatzReagieren = async (uebungId, status) => {
   const snap = await fw.getDocs('anwesenheiten',
     fw.where('uebungId','==',uebungId), fw.where('userId','==',fw.user.uid));
   if (snap.docs.length > 0) {
-    await fw.updateDoc('anwesenheiten/'+snap.docs[0].id, { status, rolle: fw.profil.stärkeRolle || fw.profil.rolle || 'kamerad', aktualisiertAm: new Date() });
+    await fw.updateDoc('anwesenheiten/'+snap.docs[0].id, { status, rolle: fw.profil.stärkeRolle || fw.profil.rolle || 'kamerad', fuehrerschein: fw.profil.fuehrerschein || '', aktualisiertAm: new Date() });
   } else {
     await fw.addDoc('anwesenheiten', {
       uebungId, userId: fw.user.uid, userName: name,
       rolle: fw.profil.stärkeRolle || fw.profil.rolle || 'kamerad',
+      fuehrerschein: fw.profil.fuehrerschein || '',
       status, gemeldetAm: new Date(),
     });
   }
@@ -499,11 +506,14 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
 
         const container = document.getElementById('einsatz-reaktionen');
         if (container) {
-          const rows = [...kommen, ...kommenNicht].map(a => `
-            <div style="display:flex;align-items:center;gap:0.6rem;padding:0.4rem 0;border-bottom:1px solid var(--border)">
+          const rows = [...kommen, ...kommenNicht].map(a => {
+            const lkw = a.status === 'kommt' && hatLkwFs(a.fuehrerschein);
+            return `<div style="display:flex;align-items:center;gap:0.6rem;padding:0.4rem 0;border-bottom:1px solid var(--border)">
               <span style="font-size:1.1rem">${a.status==='kommt'?'👍':'👎'}</span>
               <span style="flex:1;font-weight:${a.userId===fw.user.uid?'600':'400'}">${a.userName||'Kamerad'}</span>
-            </div>`).join('');
+              ${lkw ? '<span>🚛</span>' : ''}
+            </div>`;
+          }).join('');
           container.innerHTML = rows || '<div class="muted" style="text-align:center;font-size:0.85rem;padding:0.5rem">Noch keine Rückmeldungen</div>';
         }
 
