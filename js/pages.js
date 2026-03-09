@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v1.7.2
+// js/pages.js – alle Seiten v1.7.3
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -127,7 +127,7 @@ ${renderNaechsteDienste(naechster, naechsterOegeln)}
     </div>
 
 
-    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.7.2</div>
+    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.7.3</div>
   `;
   checkDeepLink();
   startStatusPruefung();
@@ -193,33 +193,64 @@ function renderEintrag(u, meineMap) {
 
 function renderEintragListe(liste, meineMap) {
   if (!liste.length) return '<div class="empty">Keine Einträge</div>';
-  const diesJahr = new Date().getFullYear();
-  const aktuell  = liste.filter(u => {
+  const heute = new Date(); heute.setHours(0,0,0,0);
+
+  const zukunft = liste.filter(u => {
     const d = u.datum?.toDate ? u.datum.toDate() : new Date(u.datum);
-    return d.getFullYear() >= diesJahr;
-  });
-  const archiv   = liste.filter(u => {
-    const d = u.datum?.toDate ? u.datum.toDate() : new Date(u.datum);
-    return d.getFullYear() < diesJahr;
+    return d >= heute;
+  }).sort((a,b) => {
+    const da = a.datum?.toDate ? a.datum.toDate() : new Date(a.datum);
+    const db = b.datum?.toDate ? b.datum.toDate() : new Date(b.datum);
+    return da - db;
   });
 
-  // Nach Jahr gruppieren fürs Archiv
+  const vergangen = liste.filter(u => {
+    const d = u.datum?.toDate ? u.datum.toDate() : new Date(u.datum);
+    return d < heute;
+  });
+
+  // Archiv nach Jahr gruppieren
   const archivJahre = {};
-  for (const u of archiv) {
+  for (const u of vergangen) {
     const d = u.datum?.toDate ? u.datum.toDate() : new Date(u.datum);
     const j = d.getFullYear();
     if (!archivJahre[j]) archivJahre[j] = [];
     archivJahre[j].push(u);
   }
 
-  let html = aktuell.length
-    ? aktuell.map(u => renderEintrag(u, meineMap)).join('')
-    : '<div class="empty">Keine Einträge dieses Jahr</div>';
+  // Nächste Dienste: zeige 1, oder 2 wenn der erste nicht in Oegeln ist
+  let sichtbar = [];
+  if (zukunft.length > 0) {
+    const erster = zukunft[0];
+    const erstInOegeln = erster.ort?.toLowerCase().includes('oegeln');
+    sichtbar = erstInOegeln ? [erster] : zukunft.slice(0, 2);
+  }
+  const weitereZukunft = zukunft.slice(sichtbar.length);
 
-  if (archiv.length) {
-    html += `<details style="margin-top:0.5rem">
+  let html = '';
+
+  // Sichtbare zukünftige Dienste
+  if (sichtbar.length) {
+    html += sichtbar.map(u => renderEintrag(u, meineMap)).join('');
+  } else {
+    html += '<div class="empty">Keine kommenden Dienste</div>';
+  }
+
+  // Weitere zukünftige Dienste einklappbar
+  if (weitereZukunft.length) {
+    html += `<details style="margin-top:0.2rem">
       <summary style="padding:0.6rem 0;cursor:pointer;color:var(--muted);font-size:0.85rem;list-style:none;display:flex;align-items:center;gap:0.4rem">
-        <span>▸</span> Archiv (${archiv.length} Einträge)
+        <span>▸</span> Weitere Dienste (${weitereZukunft.length})
+      </summary>
+      ${weitereZukunft.map(u => renderEintrag(u, meineMap)).join('')}
+    </details>`;
+  }
+
+  // Archiv einklappbar
+  if (vergangen.length) {
+    html += `<details style="margin-top:0.2rem">
+      <summary style="padding:0.6rem 0;cursor:pointer;color:var(--muted);font-size:0.85rem;list-style:none;display:flex;align-items:center;gap:0.4rem">
+        <span>▸</span> Archiv (${vergangen.length} Einträge)
       </summary>
       ${Object.keys(archivJahre).sort((a,b)=>b-a).map(jahr => `
         <div style="font-size:0.78rem;color:var(--muted);padding:0.4rem 0 0.2rem;font-weight:600">${jahr}</div>
@@ -227,6 +258,7 @@ function renderEintragListe(liste, meineMap) {
       `).join('')}
     </details>`;
   }
+
   return html;
 }
 
