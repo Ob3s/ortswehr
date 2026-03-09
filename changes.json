@@ -1,11 +1,9 @@
 {
-  "version": "2.1.3",
+  "version": "2.1.4",
   "datum": "09.03.2026",
   "punkte": [
-    "Kalender-Import: Änderungen werden aktualisiert (Titel, Ort, Zeit, Dauer)",
-    "Kalender-Import: Anwesenheiten/Zusagen bleiben bei Re-Import erhalten",
-    "Kalender-Import: Status zeigt neu · aktualisiert · unverändert",
-    "Deploy-App: Changelog aus changes.json mit live-Badge",
-    "Deploy-App: Commit-Message enthält alle Änderungen"
+    "Statistik: Namen alphabetisch sortiert",
+    "Statistik: Nur aktive Kameraden werden angezeigt",
+    "Singular/Plural überall korrekt: 1 Einsatz / 2 Einsätze, 1 Dienst / 2 Dienste"
   ]
 }
