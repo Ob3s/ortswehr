@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v1.6.3
+// js/pages.js – alle Seiten v1.6.5
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -127,7 +127,7 @@ ${renderNaechsteDienste(naechster, naechsterOegeln)}
     </div>
 
 
-    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.6.3</div>
+    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.6.5</div>
   `;
   checkDeepLink();
   startStatusPruefung();
@@ -928,7 +928,7 @@ window.kameradAktiv = async (id) => {
 window.kameradInaktiv = async (id) => {
   if (!confirm('Kamerad auf inaktiv setzen?')) return;
   await fw.updateDoc('users/'+id, { aktiv: false });
-  fw.toast('Kamerad inaktiv gesetzt'); navigate('kameraden');
+  fw.toast('Kamerad inaktiv gesetzt'); navigate('kamerad-detail', {id});
 };
 
 window.kameradLoeschen = async (id) => {
@@ -940,9 +940,18 @@ window.kameradLoeschen = async (id) => {
   // Anwesenheiten löschen
   const aSnap = await fw.getDocs('anwesenheiten', fw.where('userId','==',id));
   await Promise.all(aSnap.docs.map(d => fw.deleteDoc('anwesenheiten/'+d.id)));
-  // Nutzer löschen
+  // Firestore-Dokument löschen
   await fw.deleteDoc('users/'+id);
-  fw.toast('Kamerad gelöscht'); navigate('kameraden');
+  // Auth-Account löschen (über Cloud Function)
+  try {
+    const { getFunctions, httpsCallable } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-functions.js');
+    const functions = getFunctions(fw.app, 'europe-west3');
+    await httpsCallable(functions, 'deleteAuthUser')({ uid: id });
+  } catch(e) {
+    fw.toast('Firestore gelöscht, Auth-Account konnte nicht entfernt werden: ' + e.message, true);
+    navigate('kameraden'); return;
+  }
+  fw.toast('Kamerad vollständig gelöscht ✅'); navigate('kameraden');
 };
 
 window.qualiHinzufuegen = async (userId) => {
