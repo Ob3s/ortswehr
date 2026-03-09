@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v1.6.8
+// js/pages.js – alle Seiten v1.7.0
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -127,7 +127,7 @@ ${renderNaechsteDienste(naechster, naechsterOegeln)}
     </div>
 
 
-    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.6.8</div>
+    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.7.0</div>
   `;
   checkDeepLink();
   startStatusPruefung();
@@ -727,7 +727,7 @@ registerPage('profil', async (el) => {
         <div><div class="muted" style="font-size:0.72rem">Eingetreten</div><div class="bold">${datum(me.eintrittsdatum)||'–'}</div></div>
       </div>
       <hr>
-      <div class="card-title" style="margin-bottom:0.5rem">Qualifikationen</div>
+      <div class="card-title" style="margin-bottom:0.5rem">Lehrgänge</div>
       ${qualis.length===0 ? '<p class="muted" style="font-size:0.85rem">Keine eingetragen</p>' :
         qualis.map(q => `
           <div class="list-item">
@@ -893,7 +893,7 @@ registerPage('kamerad-detail', async (el, {id}) => {
       </div>
     </div>
     <div class="card">
-      <div class="card-title">Qualifikationen</div>
+      <div class="card-title">Lehrgänge</div>
       ${qualis.length===0?'<p class="muted" style="font-size:0.85rem">Keine</p>':
         qualis.map(q=>`
           <div class="list-item">
@@ -905,10 +905,24 @@ registerPage('kamerad-detail', async (el, {id}) => {
           </div>`).join('')}
       <hr>
       <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.6rem">
-        <input id="q-bez" placeholder="Bezeichnung" style="flex:2;min-width:120px">
-        <input id="q-dat" type="text" placeholder="TT.MM.JJJJ" style="flex:1;min-width:110px">
-        <input id="q-bem" placeholder="Bemerkung" style="flex:2;min-width:100px">
-        <button class="btn btn-primary btn-sm" onclick="qualiHinzufuegen('${id}')">+</button>
+        <div style="display:flex;flex-direction:column;gap:0.5rem;width:100%;margin-top:0.3rem">
+          <select id="q-bez" style="width:100%">
+            <option value="">– Lehrgang wählen –</option>
+            ${['Truppmann','Sprechfunk','AGT','TH-Grund','Maschinist','Absturzsicherung','ABC-Grund','Truppführer','Gruppenführer','Zugführer','Wehrführer','Erste-Hilfe','Motorsäge A/B','Motorsäge C/D'].map(l=>`<option value="${l}">${l}</option>`).join('')}
+          </select>
+          <div style="display:flex;gap:0.4rem;align-items:center">
+            <input id="q-dat-t" type="number" min="1" max="31" placeholder="TT" style="width:56px;text-align:center">
+            <span style="color:var(--muted)">.</span>
+            <input id="q-dat-m" type="number" min="1" max="12" placeholder="MM" style="width:56px;text-align:center">
+            <span style="color:var(--muted)">.</span>
+            <input id="q-dat-j" type="number" min="1900" max="2099" placeholder="JJJJ" style="width:80px;text-align:center">
+            <span style="color:var(--muted);font-size:0.8rem;flex:1">Datum bestanden</span>
+          </div>
+          <div style="display:flex;gap:0.5rem">
+            <input id="q-bem" placeholder="Bemerkung (optional)" style="flex:1">
+            <button class="btn btn-primary btn-sm" onclick="qualiHinzufuegen('${id}')">+ Hinzufügen</button>
+          </div>
+        </div>
       </div>
     </div>
     <div class="card" style="display:flex;flex-direction:column;gap:0.5rem">
@@ -955,16 +969,16 @@ window.kameradLoeschen = async (id) => {
 };
 
 window.qualiHinzufuegen = async (userId) => {
-  const bez = document.getElementById('q-bez').value.trim();
-  if (!bez) return;
+  const bez = document.getElementById('q-bez').value;
+  if (!bez) { fw.toast('Bitte einen Lehrgang wählen', true); return; }
   await fw.addDoc('users/'+userId+'/qualifikationen', {
     bezeichnung: bez,
     datum: (() => {
-      const v = document.getElementById('q-dat').value.trim();
-      if (!v) return null;
-      // TT.MM.JJJJ → JJJJ-MM-TT
-      const m = v.match(/^(\d{1,2})\.(\d{1,2})\.(\d{4})$/);
-      return m ? `${m[3]}-${m[2].padStart(2,'0')}-${m[1].padStart(2,'0')}` : v;
+      const t = document.getElementById('q-dat-t')?.value.trim();
+      const m = document.getElementById('q-dat-m')?.value.trim();
+      const j = document.getElementById('q-dat-j')?.value.trim();
+      if (!t || !m || !j) return null;
+      return `${j}-${m.padStart(2,'0')}-${t.padStart(2,'0')}`;
     })() || null,
     bemerkung: document.getElementById('q-bem').value || '',
   });
@@ -996,7 +1010,7 @@ registerPage('kamerad-form', async (el, {id}) => {
       ` : ''}
       <div class="form-row"><label>Vorname</label><input id="k-vn" value="${u?.vorname||''}"></div>
       <div class="form-row"><label>Nachname</label><input id="k-nn" value="${u?.nachname||''}"></div>
-      <div class="form-row"><label>Dienstgrad</label><input id="k-dg" value="${u?.dienstgrad||''}"></div>
+      <div class="form-row"><label>Dienstgrad</label><select id="k-dg"><option value="">– wählen –</option><option value="Feuerwehrmann-Anwärter" ${u?.dienstgrad==="Feuerwehrmann-Anwärter"?"selected":""}>Feuerwehrmann-Anwärter</option><option value="Feuerwehrmann" ${u?.dienstgrad==="Feuerwehrmann"?"selected":""}>Feuerwehrmann</option><option value="Oberfeuerwehrmann" ${u?.dienstgrad==="Oberfeuerwehrmann"?"selected":""}>Oberfeuerwehrmann</option><option value="Hauptfeuerwehrmann" ${u?.dienstgrad==="Hauptfeuerwehrmann"?"selected":""}>Hauptfeuerwehrmann</option><option value="1. Hauptfeuerwehrmann" ${u?.dienstgrad==="1. Hauptfeuerwehrmann"?"selected":""}>1. Hauptfeuerwehrmann</option><option value="Löschmeister" ${u?.dienstgrad==="Löschmeister"?"selected":""}>Löschmeister</option><option value="Oberlöschmeister" ${u?.dienstgrad==="Oberlöschmeister"?"selected":""}>Oberlöschmeister</option><option value="Hauptlöschmeister" ${u?.dienstgrad==="Hauptlöschmeister"?"selected":""}>Hauptlöschmeister</option><option value="1. Hauptlöschmeister" ${u?.dienstgrad==="1. Hauptlöschmeister"?"selected":""}>1. Hauptlöschmeister</option><option value="Brandmeister" ${u?.dienstgrad==="Brandmeister"?"selected":""}>Brandmeister</option><option value="Oberbrandmeister" ${u?.dienstgrad==="Oberbrandmeister"?"selected":""}>Oberbrandmeister</option><option value="Hauptbrandmeister" ${u?.dienstgrad==="Hauptbrandmeister"?"selected":""}>Hauptbrandmeister</option><option value="1. Hauptbrandmeister" ${u?.dienstgrad==="1. Hauptbrandmeister"?"selected":""}>1. Hauptbrandmeister</option></select></div>
       <div class="form-row"><label>Eintrittsdatum</label><input id="k-ed" type="date" value="${datumVal}"></div>
       <div class="form-row"><label>Ortswehr</label>
         <select id="k-ow">
