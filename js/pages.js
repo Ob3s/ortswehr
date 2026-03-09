@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v2.1.0
+// js/pages.js – alle Seiten v2.1.2
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -435,27 +435,56 @@ window.kalenderImportieren = async () => {
     const { events, error } = await res.json();
     if (error) throw new Error(error);
 
-    // Duplikate vermeiden
+    // Bestehende Dienste laden – Matching per Datum (YYYY-MM-DD)
     const snap = await fw.getDocs('dienste');
-    const vorhandene = new Set(snap.docs.map(d =>
-      d.data().titel + '_' + d.data().datum?.toDate?.().toISOString().slice(0,10)));
+    // Map: datum-String → {id, data}
+    const vorhandeneMap = new Map(snap.docs.map(d => [
+      d.data().datum?.toDate?.().toISOString().slice(0,10),
+      { id: d.id, data: d.data() }
+    ]));
 
-    let neu = 0, skip = 0;
+    let neu = 0, aktualisiert = 0, unveraendert = 0;
     for (const e of events) {
-      if (vorhandene.has(e.titel + '_' + e.datum)) { skip++; continue; }
-      await fw.addDoc('dienste', {
+      const bestehend = vorhandeneMap.get(e.datum);
+      const neuerEintrag = {
         titel: e.titel, datum: new Date(e.datum),
         dauer_h: e.dauer_h, beschreibung: e.beschreibung || '',
         zeitBeginn: e.zeitBeginn || null, zeitEnde: e.zeitEnde || null,
-        ort: e.ort || null,
-        typ: 'dienst', erstelltVon: fw.user.uid, erstelltAm: new Date(),
-      });
-      neu++;
+        ort: e.ort || null, typ: 'dienst',
+      };
+
+      if (!bestehend) {
+        // Neu anlegen
+        await fw.addDoc('dienste', { ...neuerEintrag, erstelltVon: fw.user.uid, erstelltAm: new Date() });
+        neu++;
+      } else {
+        // Prüfen ob sich Kerndaten geändert haben
+        const alt = bestehend.data;
+        const geaendert =
+          alt.titel !== e.titel ||
+          (alt.ort || '') !== (e.ort || '') ||
+          (alt.zeitBeginn || '') !== (e.zeitBeginn || '') ||
+          (alt.zeitEnde || '') !== (e.zeitEnde || '') ||
+          Math.abs((alt.dauer_h || 0) - (e.dauer_h || 0)) > 0.01;
+
+        if (geaendert) {
+          // Nur Kerndaten updaten – Anwesenheiten bleiben unberührt
+          await fw.setDoc('dienste/' + bestehend.id, neuerEintrag);
+          aktualisiert++;
+        } else {
+          unveraendert++;
+        }
+      }
     }
-    status.textContent = `${neu} Dienste importiert, ${skip} bereits vorhanden`;
+
+    const teile = [];
+    if (neu > 0)          teile.push(neu + ' neu');
+    if (aktualisiert > 0) teile.push(aktualisiert + ' aktualisiert');
+    if (unveraendert > 0) teile.push(unveraendert + ' unverändert');
+    status.textContent = teile.join(' · ');
     btn.textContent = '📅 Aus Google Kalender importieren';
     btn.disabled = false;
-    if (neu > 0) setTimeout(() => navigate('dienste'), 1000);
+    if (neu > 0 || aktualisiert > 0) setTimeout(() => navigate('dienste'), 1200);
   } catch(e) {
     status.textContent = 'Fehler: ' + e.message;
     btn.textContent = '📅 Aus Google Kalender importieren';
