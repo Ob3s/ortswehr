@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v1.5.5
+// js/pages.js – alle Seiten v1.5.6
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -127,7 +127,7 @@ ${renderNaechsteDienste(naechster, naechsterOegeln)}
     </div>
 
 
-    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.5.5</div>
+    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.5.6</div>
   `;
   checkDeepLink();
   startStatusPruefung();
@@ -726,12 +726,19 @@ registerPage('profil', async (el) => {
       <button class="btn btn-secondary btn-full" style="margin-top:0.5rem" onclick="pruefeAufUpdate(true)">🔄 Auf Updates prüfen</button>
     </div>
   `;
-  // direkt setzen – DOM ist nach innerHTML sofort verfügbar
-  document.getElementById('n-einsatz').checked = me.notif_einsatz !== false;
-  document.getElementById('n-uebung').checked  = me.notif_uebung  !== false;
-  document.getElementById('n-best').checked    = me.notif_bestaetigung !== false;
-  document.getElementById('n-status').checked  = me.notif_status  !== false;
-  const ns = document.getElementById('n-selbst'); if (ns) ns.checked = me.notif_selbst === true;
+  // DOM-Elemente direkt nach innerHTML setzen
+  const cbEinsatz = document.getElementById('n-einsatz');
+  const cbUebung  = document.getElementById('n-uebung');
+  const cbBest    = document.getElementById('n-best');
+  const cbStatus  = document.getElementById('n-status');
+  const cbSelbst  = document.getElementById('n-selbst');
+  console.log('Elemente gefunden:', !!cbEinsatz, !!cbUebung, !!cbBest, !!cbStatus, !!cbSelbst);
+  if (cbEinsatz) cbEinsatz.checked = me.notif_einsatz !== false;
+  if (cbUebung)  cbUebung.checked  = me.notif_uebung  !== false;
+  if (cbBest)    cbBest.checked    = me.notif_bestaetigung !== false;
+  if (cbStatus)  cbStatus.checked  = me.notif_status  !== false;
+  if (cbSelbst)  cbSelbst.checked  = me.notif_selbst  === true;
+  console.log('Checkbox-Werte gesetzt:', cbEinsatz?.checked, cbUebung?.checked, cbBest?.checked, cbStatus?.checked, cbSelbst?.checked);
 });
 
 window.profilSpeichern = async () => {
