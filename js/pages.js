@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v1.5.4
+// js/pages.js – alle Seiten v1.5.5
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -127,7 +127,7 @@ ${renderNaechsteDienste(naechster, naechsterOegeln)}
     </div>
 
 
-    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.5.4</div>
+    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.5.5</div>
   `;
   checkDeepLink();
   startStatusPruefung();
@@ -639,6 +639,7 @@ registerPage('profil', async (el) => {
   const me = meSnap.data() || fw.profil;
   Object.assign(fw.profil, me);
   console.log('Profil notif:', me.notif_einsatz, me.notif_uebung, me.notif_bestaetigung, me.notif_status, me.notif_selbst);
+  // Checkboxen per JS setzen (checked-Attribut funktioniert nicht nach innerHTML)
   const stats  = getStats(aSnap.docs.map(d => d.data()));
   const qualis = qSnap.docs.map(d => ({id:d.id,...d.data()}));
 
@@ -674,24 +675,24 @@ registerPage('profil', async (el) => {
     <div class="card">
       <div class="notif-row" style="display:flex;align-items:center;gap:0.8rem;padding:0.6rem 0;border-bottom:1px solid var(--border)">
         <div style="flex:1"><div style="font-weight:600">🚨 Einsatzalarm</div><div class="muted" style="font-size:0.78rem">Bei neuen Einsätzen</div></div>
-        <input type="checkbox" id="n-einsatz" ${me.notif_einsatz !== false ? 'checked' : ''} style="width:24px;height:24px;accent-color:var(--red);cursor:pointer;flex-shrink:0">
+        <input type="checkbox" id="n-einsatz" style="width:24px;height:24px;accent-color:var(--red);cursor:pointer;flex-shrink:0">
       </div>
       <div class="notif-row" style="display:flex;align-items:center;gap:0.8rem;padding:0.6rem 0;border-bottom:1px solid var(--border)">
         <div style="flex:1"><div style="font-weight:600">📅 Neuer Dienst</div><div class="muted" style="font-size:0.78rem">Bei neuen Diensten</div></div>
-        <input type="checkbox" id="n-uebung" ${me.notif_uebung !== false ? 'checked' : ''} style="width:24px;height:24px;accent-color:var(--red);cursor:pointer;flex-shrink:0">
+        <input type="checkbox" id="n-uebung" style="width:24px;height:24px;accent-color:var(--red);cursor:pointer;flex-shrink:0">
       </div>
       <div class="notif-row" style="display:flex;align-items:center;gap:0.8rem;padding:0.6rem 0;border-bottom:1px solid var(--border)">
         <div style="flex:1"><div style="font-weight:600">✅ Bestätigung</div><div class="muted" style="font-size:0.78rem">Wenn Teilnahme bestätigt wird</div></div>
-        <input type="checkbox" id="n-best" ${me.notif_bestaetigung !== false ? 'checked' : ''} style="width:24px;height:24px;accent-color:var(--red);cursor:pointer;flex-shrink:0">
+        <input type="checkbox" id="n-best" style="width:24px;height:24px;accent-color:var(--red);cursor:pointer;flex-shrink:0">
       </div>
       <div class="notif-row" style="display:flex;align-items:center;gap:0.8rem;padding:0.6rem 0;border-bottom:1px solid var(--border)">
         <div style="flex:1"><div style="font-weight:600">⚠️ Status-Warnung</div><div class="muted" style="font-size:0.78rem">Wenn App offline oder Push nicht bereit</div></div>
-        <input type="checkbox" id="n-status" ${me.notif_status !== false ? 'checked' : ''} style="width:24px;height:24px;accent-color:var(--red);cursor:pointer;flex-shrink:0">
+        <input type="checkbox" id="n-status" style="width:24px;height:24px;accent-color:var(--red);cursor:pointer;flex-shrink:0">
       </div>
       ${fw.isWehrfuehrer() ? `
       <div class="notif-row" style="display:flex;align-items:center;gap:0.8rem;padding:0.6rem 0;border-bottom:1px solid var(--border)">
         <div style="flex:1"><div style="font-weight:600">🧪 Selbst benachrichtigen</div><div class="muted" style="font-size:0.78rem">Nur für Tests – Wehrführer erhält eigene Alarme</div></div>
-        <input type="checkbox" id="n-selbst" ${me.notif_selbst ? 'checked' : ''} style="width:24px;height:24px;accent-color:var(--red);cursor:pointer;flex-shrink:0">
+        <input type="checkbox" id="n-selbst" style="width:24px;height:24px;accent-color:var(--red);cursor:pointer;flex-shrink:0">
       </div>` : ''}
       <button class="btn btn-secondary btn-full" style="margin-top:0.8rem" id="notif-save-btn" onclick="notifSpeichern()">Einstellungen speichern</button>
     </div>
@@ -725,7 +726,12 @@ registerPage('profil', async (el) => {
       <button class="btn btn-secondary btn-full" style="margin-top:0.5rem" onclick="pruefeAufUpdate(true)">🔄 Auf Updates prüfen</button>
     </div>
   `;
-  setTimeout(initNotifCheckboxes, 0);
+  // direkt setzen – DOM ist nach innerHTML sofort verfügbar
+  document.getElementById('n-einsatz').checked = me.notif_einsatz !== false;
+  document.getElementById('n-uebung').checked  = me.notif_uebung  !== false;
+  document.getElementById('n-best').checked    = me.notif_bestaetigung !== false;
+  document.getElementById('n-status').checked  = me.notif_status  !== false;
+  const ns = document.getElementById('n-selbst'); if (ns) ns.checked = me.notif_selbst === true;
 });
 
 window.profilSpeichern = async () => {
