@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v1.5.9
+// js/pages.js – alle Seiten v1.6.0
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -127,7 +127,7 @@ ${renderNaechsteDienste(naechster, naechsterOegeln)}
     </div>
 
 
-    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.5.9</div>
+    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.6.0</div>
   `;
   checkDeepLink();
   startStatusPruefung();
@@ -355,7 +355,11 @@ window.ablehnen = async (aId) => {
 };
 
 // ── Detail ────────────────────────────────────────────────
+let _einsatzListener = null; // aktiver onSnapshot Listener
+
 registerPage('uebung-detail', async (el, {id, typ}) => {
+  // alten Listener aufräumen
+  if (_einsatzListener) { _einsatzListener(); _einsatzListener = null; }
   const snap = await fw.getDoc(col(typ||'dienst')+'/'+id);
   if (!snap.exists()) { el.innerHTML='<div class="empty">Nicht gefunden</div>'; return; }
   const u = {id,...snap.data()};
@@ -397,6 +401,17 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
         <button class="btn btn-secondary btn-sm" style="margin-top:0.6rem" onclick="navigate('uebung-form',{id:'${u.id}'})">⏱ Endzeit nachtragen</button>
       ` : ''}
     </div>
+    ${isEinsatz ? `
+    <div class="section-header">Wer kommt? <span id="einsatz-zaehler" style="font-weight:400;font-size:0.85rem"></span></div>
+    <div id="einsatz-reaktionen" class="card">⏳ Lade...</div>
+    <div class="card" style="display:flex;gap:0.8rem">
+      <button class="btn btn-full" id="btn-kommt"
+        style="background:#16a34a;color:#fff;font-size:1.1rem;padding:0.8rem"
+        onclick="einsatzReagieren('${id}','kommt')">👍 Ich komme</button>
+      <button class="btn btn-full" id="btn-kommt-nicht"
+        style="background:#dc2626;color:#fff;font-size:1.1rem;padding:0.8rem"
+        onclick="einsatzReagieren('${id}','kommt_nicht')">👎 Komme nicht</button>
+    </div>` : ''}
     <div class="section-header">Meine Anwesenheit</div>
     <div class="card">
       ${meineA ? `

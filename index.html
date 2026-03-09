@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="theme-color" content="#cc2200">
-  <meta name="app-version" content="1.5.9">
+  <meta name="app-version" content="1.6.0">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ortswehr">
@@ -70,7 +70,7 @@
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
   import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail }
     from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
-  import { getFirestore, collection, doc, getDoc, getDocs, addDoc, setDoc, updateDoc, deleteDoc, query, where, orderBy, Timestamp }
+  import { getFirestore, collection, doc, getDoc, getDocs, addDoc, setDoc, updateDoc, deleteDoc, query, where, orderBy, Timestamp, onSnapshot }
     from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
   import { getMessaging, getToken, onMessage }
     from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging.js';
@@ -104,6 +104,9 @@
       return getDocs(q);
     },
     where, orderBy, Timestamp,
+    onSnapshot(col, ...c) { const q = c.length ? query(collection(db, col), ...c) : collection(db, col); return onSnapshot(q, () => {}); },
+    onDocSnapshot(path, cb) { return onSnapshot(doc(db, path), cb); },
+    onQuerySnapshot(col, cb, ...c) { const q = c.length ? query(collection(db, col), ...c) : collection(db, col); return onSnapshot(q, cb); },
     isWehrfuehrer() { return this.profil?.rolle === 'wehrfuehrer'; },
 
     toast(msg, isError = false) {
@@ -254,6 +257,8 @@
   });
 
   window.navigate = function(page, params = {}) {
+    // Aktiven Live-Listener aufräumen beim Seitenwechsel
+    if (window._einsatzListener) { window._einsatzListener(); window._einsatzListener = null; }
     document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('aktiv', b.dataset.page === page));
     fw.hideBack(); fw.hideHeaderAction();
     document.getElementById('main-content').innerHTML = '<div class="loading">⏳</div>';
