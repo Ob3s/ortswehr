@@ -488,8 +488,8 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
     ${teilnehmerHTML}
   `;
 
-  // Live-Listener für Einsatz-Reaktionen
-  if (isEinsatz) {
+  // Live-Listener für Reaktionen (Einsatz + Dienst)
+  if (true) {
     // User-Daten vorladen für Fallback bei alten Anwesenheiten ohne rolle/fuehrerschein
     const usersSnap = await fw.getDocs('users');
     const usersMap = new Map(usersSnap.docs.map(d => [d.id, d.data()]));
@@ -513,7 +513,9 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
         const gruf  = kommen.filter(a => a.rolle === 'gruppenführer').length;
         const kamf  = kommen.filter(a => !['zugführer','gruppenführer'].includes(a.rolle)).length;
         const zaehler = document.getElementById('einsatz-zaehler');
-        if (zaehler) zaehler.textContent = `👍 ${kommen.length}  👎 ${kommenNicht.length}  ·  Stärke: ${zugf}/${gruf}/${kamf}`;
+        if (zaehler) zaehler.textContent = isEinsatz
+          ? `👍 ${kommen.length}  👎 ${kommenNicht.length}  ·  Stärke: ${zugf}/${gruf}/${kamf}`
+          : `👍 ${kommen.length}  👎 ${kommenNicht.length}`;
 
         const container = document.getElementById('einsatz-reaktionen');
         if (container) {
@@ -522,7 +524,7 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
             return `<div style="display:flex;align-items:center;gap:0.6rem;padding:0.4rem 0;border-bottom:1px solid var(--border)">
               <span style="font-size:1.1rem">${a.status==='kommt'?'👍':'👎'}</span>
               <span style="flex:1;font-weight:${a.userId===fw.user.uid?'600':'400'}">${a.userName||'Kamerad'}</span>
-              ${lkw ? '<span>🚛</span>' : ''}
+              ${isEinsatz && lkw ? '<span>🚛</span>' : ''}
             </div>`;
           }).join('');
           container.innerHTML = rows || '<div class="muted" style="text-align:center;font-size:0.85rem;padding:0.5rem">Noch keine Rückmeldungen</div>';
@@ -753,42 +755,22 @@ function checkDeepLink() {
 registerPage('profil', async (el) => {
   fw.setTitle('Mein Profil');
   // Immer frisch laden damit notif-Felder aktuell sind
-  const [meSnap, aSnap, qSnap] = await Promise.all([
+  const [meSnap, qSnap] = await Promise.all([
     fw.getDoc('users/'+fw.user.uid),
-    fw.getDocs('anwesenheiten', fw.where('userId','==',fw.user.uid)),
     fw.getDocs('users/'+fw.user.uid+'/qualifikationen'),
   ]);
   const me = meSnap.data() || fw.profil;
   Object.assign(fw.profil, me);
-  // Checkboxen per JS setzen (checked-Attribut funktioniert nicht nach innerHTML)
-  const stats  = getStats(aSnap.docs.map(d => d.data()));
   const qualis = qSnap.docs.map(d => ({id:d.id,...d.data()}));
 
   el.innerHTML = `
-    <div class="stats-grid">
-      <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.gesamtEinsatz)}h</div><div class="stat-label">Einsatzstunden</div></div>
-      <div class="stat-card"><div class="stat-zahl">${stats.einsaetze}</div><div class="stat-label">Einsätze</div></div>
-      <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.gesamtDienst)}h</div><div class="stat-label">Dienststunden</div></div>
-      <div class="stat-card"><div class="stat-zahl">${stats.dienste}</div><div class="stat-label">Dienste</div></div>
-      <div class="stat-card wide ${stats.ziel?'erreicht':'fehlt'}">
-        <div class="stat-zahl">${dauerFormat(stats.stunden12m)} / 40:00h</div>
-        <div class="stat-label">Letzte 12 Monate ${stats.ziel?'✅ Ziel erreicht':'⚠️ Noch nicht erreicht'}</div>
-      </div>
-    </div>
-
     <div class="section-header">Persönliche Daten</div>
     <div class="card">
       <div class="form-row"><label>Vorname</label><input id="p-vn" value="${me.vorname||''}"></div>
       <div class="form-row"><label>Nachname</label><input id="p-nn" value="${me.nachname||''}"></div>
-      <div class="form-row"><label>Telefon</label><input id="p-tel" type="tel" value="${me.telefon||''}"></div>
-      <div class="form-row"><label>E-Mail</label><input id="p-mail" type="email" value="${me.email||''}"></div>
+
       <div class="form-row"><label>Führerscheinklassen (z.B. B, C, CE)</label><input id="p-fs" value="${me.fuehrerschein||''}"></div>
-      <div class="form-row"><label>Ortswehr</label>
-        <select id="p-ow">${await (async () => {
-          const s = await fw.getDocs('ortswehren');
-          return '<option value="">– Keine –</option>' + s.docs.map(d => `<option value="${d.id}" ${me.ortswehrId===d.id?'selected':''}>${d.data().name}</option>`).join('');
-        })()}</select>
-      </div>
+
       <button class="btn btn-primary btn-full" onclick="profilSpeichern()">💾 Speichern</button>
     </div>
 
@@ -840,7 +822,7 @@ registerPage('profil', async (el) => {
     <div class="card">
       <div class="form-row"><label>Aktuelles Passwort</label><input id="pw-alt" type="password"></div>
       <div class="form-row"><label>Neues Passwort</label><input id="pw-neu" type="password"></div>
-      <button class="btn btn-primary btn-full" onclick="passwortAendern()">💾 Speichern</button>
+      <button class="btn btn-primary btn-full" onclick="passwortAendern()">🔒 Passwort ändern</button>
     </div>
     <div class="card">
       <button class="btn btn-danger btn-full" onclick="abmelden()">Abmelden</button>
@@ -864,10 +846,8 @@ window.profilSpeichern = async () => {
   const data = {
     vorname: document.getElementById('p-vn').value,
     nachname: document.getElementById('p-nn').value,
-    telefon: document.getElementById('p-tel').value,
-    email: document.getElementById('p-mail').value,
     fuehrerschein: document.getElementById('p-fs').value,
-    ortswehrId: document.getElementById('p-ow')?.value || fw.profil.ortswehrId || null,
+    ortswehrId: fw.profil.ortswehrId || null,
   };
   await fw.setDoc('users/'+fw.user.uid, data);
   Object.assign(fw.profil, data);
