@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v1.5.7
+// js/pages.js – alle Seiten v1.5.9
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -127,7 +127,7 @@ ${renderNaechsteDienste(naechster, naechsterOegeln)}
     </div>
 
 
-    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.5.7</div>
+    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.5.9</div>
   `;
   checkDeepLink();
   startStatusPruefung();
@@ -559,7 +559,6 @@ window.uebungSpeichern = async (id, forcTyp) => {
       uebungId = ref.id;
     }
     const mitAlarmFlag = document.getElementById('f-alarm')?.value === '1';
-  console.log('Push: mitAlarmFlag =', mitAlarmFlag, 'isNeu =', isNeu, 'typ =', typ);
   if (isNeu && mitAlarmFlag) await benachrichtigeOrtswehr(typ, titel, datumStr, dauer_h, uebungId);
   else if (isNeu && !mitAlarmFlag && typ === 'dienst') await benachrichtigeOrtswehr(typ, titel, datumStr, dauer_h, uebungId);
     fw.toast(isEinsatz ? 'Einsatz gemeldet 🚨' : 'Gespeichert ✅');
@@ -576,24 +575,20 @@ window.uebungLoeschen = async (id, typ) => {
 // ── Push ──────────────────────────────────────────────────
 async function benachrichtigeOrtswehr(typ, titel, datumStr, dauer_h, uebungId) {
   const ortswehrId = fw.profil.ortswehrId;
-  console.log('Push: ortswehrId =', ortswehrId);
   if (!ortswehrId) {
     fw.toast('⚠️ Keine Ortswehr zugeordnet – niemand wird benachrichtigt!', true);
     return;
   }
   const usersSnap = await fw.getDocs('users', fw.where('ortswehrId','==',ortswehrId));
-  console.log('Push: Nutzer in Ortswehr:', usersSnap.docs.length);
   const isEinsatz = typ === 'einsatz';
   const tokens = [];
   for (const d of usersSnap.docs) {
     const u = d.data();
-    console.log('Push: Nutzer', d.id, 'fcmToken:', !!u.fcmToken, 'notif_einsatz:', u.notif_einsatz, 'selbst:', d.id === fw.user.uid);
     if (d.id === fw.user.uid && !fw.profil.notif_selbst) { console.log('Push: Selbst übersprungen'); continue; }
     if (!u.fcmToken) { console.log('Push: Kein Token für', d.id); continue; }
     if (isEinsatz && u.notif_einsatz !== false) tokens.push(u.fcmToken);
     if (!isEinsatz && u.notif_uebung !== false) tokens.push(u.fcmToken);
   }
-  console.log('Push: Tokens gefunden:', tokens.length);
   if (tokens.length === 0) { fw.toast('⚠️ Keine Push-Empfänger gefunden', true); return; }
   const title = isEinsatz ? '🚨 EINSATZ ALARM' : '🔔 Neuer Dienst';
   const body  = isEinsatz
@@ -604,15 +599,12 @@ async function benachrichtigeOrtswehr(typ, titel, datumStr, dauer_h, uebungId) {
 
 async function sendPush(tokens, title, body, alarm = false, uebungId = null) {
   try {
-    console.log('Push wird gesendet an', tokens.length, 'Empfänger...');
     await fw.addDoc('push_queue', {
       tokens, title, body, alarm, uebungId,
       erstelltAm: new Date(), erstelltVon: fw.user.uid,
     });
-    console.log('push_queue Dokument erstellt ✅');
     fw.toast(alarm ? 'Alarm gesendet 🚨' : 'Benachrichtigung gesendet ✅');
   } catch(e) {
-    console.error('Push Fehler:', e);
     fw.toast('Push Fehler: ' + e.message, true);
   }
 }
@@ -638,7 +630,6 @@ registerPage('profil', async (el) => {
   ]);
   const me = meSnap.data() || fw.profil;
   Object.assign(fw.profil, me);
-  console.log('Profil notif:', me.notif_einsatz, me.notif_uebung, me.notif_bestaetigung, me.notif_status, me.notif_selbst);
   // Checkboxen per JS setzen (checked-Attribut funktioniert nicht nach innerHTML)
   const stats  = getStats(aSnap.docs.map(d => d.data()));
   const qualis = qSnap.docs.map(d => ({id:d.id,...d.data()}));
@@ -694,7 +685,7 @@ registerPage('profil', async (el) => {
         <div style="flex:1"><div style="font-weight:600">🧪 Selbst benachrichtigen</div><div class="muted" style="font-size:0.78rem">Nur für Tests – Wehrführer erhält eigene Alarme</div></div>
         <input type="checkbox" id="n-selbst" style="width:24px;height:24px;accent-color:var(--red);cursor:pointer;flex-shrink:0">
       </div>` : ''}
-      <button class="btn btn-secondary btn-full" style="margin-top:0.8rem" id="notif-save-btn" onclick="notifSpeichern()">Einstellungen speichern</button>
+      <button class="btn btn-primary btn-full" style="margin-top:0.8rem" id="notif-save-btn" onclick="notifSpeichern()">💾 Speichern</button>
     </div>
 
     <div class="section-header">Dienstlich</div>
@@ -719,7 +710,7 @@ registerPage('profil', async (el) => {
     <div class="card">
       <div class="form-row"><label>Aktuelles Passwort</label><input id="pw-alt" type="password"></div>
       <div class="form-row"><label>Neues Passwort</label><input id="pw-neu" type="password"></div>
-      <button class="btn btn-secondary btn-full" onclick="passwortAendern()">🔒 Passwort ändern</button>
+      <button class="btn btn-primary btn-full" onclick="passwortAendern()">💾 Speichern</button>
     </div>
     <div class="card">
       <button class="btn btn-danger btn-full" onclick="abmelden()">Abmelden</button>
@@ -732,13 +723,11 @@ registerPage('profil', async (el) => {
   const cbBest    = document.getElementById('n-best');
   const cbStatus  = document.getElementById('n-status');
   const cbSelbst  = document.getElementById('n-selbst');
-  console.log('Elemente gefunden:', !!cbEinsatz, !!cbUebung, !!cbBest, !!cbStatus, !!cbSelbst);
   if (cbEinsatz) cbEinsatz.checked = me.notif_einsatz !== false;
   if (cbUebung)  cbUebung.checked  = me.notif_uebung  !== false;
   if (cbBest)    cbBest.checked    = me.notif_bestaetigung !== false;
   if (cbStatus)  cbStatus.checked  = me.notif_status  !== false;
   if (cbSelbst)  cbSelbst.checked  = me.notif_selbst  === true;
-  console.log('Checkbox-Werte gesetzt:', cbEinsatz?.checked, cbUebung?.checked, cbBest?.checked, cbStatus?.checked, cbSelbst?.checked);
 });
 
 window.profilSpeichern = async () => {
@@ -890,15 +879,30 @@ registerPage('kamerad-detail', async (el, {id}) => {
         <button class="btn btn-primary btn-sm" onclick="qualiHinzufuegen('${id}')">+</button>
       </div>
     </div>
-    <div class="card">
-      <button class="btn btn-danger btn-full" onclick="kameradLoeschen('${id}')">🗑 Kamerad löschen</button>
+    <div class="card" style="display:flex;flex-direction:column;gap:0.5rem">
+      <button class="btn btn-secondary btn-full" onclick="kameradInaktiv('${id}')">🔕 Kamerad inaktiv setzen</button>
+      <button class="btn btn-danger btn-full" onclick="kameradLoeschen('${id}')">🗑 Kamerad vollständig löschen</button>
     </div>`;
 });
 
+window.kameradInaktiv = async (id) => {
+  if (!confirm('Kamerad auf inaktiv setzen?')) return;
+  await fw.updateDoc('users/'+id, { aktiv: false });
+  fw.toast('Kamerad inaktiv gesetzt'); navigate('kameraden');
+};
+
 window.kameradLoeschen = async (id) => {
-  if (!confirm('Kamerad wirklich löschen? Alle Anwesenheiten bleiben erhalten.')) return;
-  await fw.setDoc('users/'+id, { aktiv: false });
-  fw.toast('Kamerad deaktiviert'); navigate('kameraden');
+  if (!confirm('Kamerad VOLLSTÄNDIG löschen? Dies kann nicht rückgängig gemacht werden!')) return;
+  if (!confirm('Wirklich? Alle Daten dieses Kameraden werden gelöscht!')) return;
+  // Qualifikationen löschen
+  const qSnap = await fw.getDocs('users/'+id+'/qualifikationen');
+  await Promise.all(qSnap.docs.map(d => fw.deleteDoc('users/'+id+'/qualifikationen/'+d.id)));
+  // Anwesenheiten löschen
+  const aSnap = await fw.getDocs('anwesenheiten', fw.where('userId','==',id));
+  await Promise.all(aSnap.docs.map(d => fw.deleteDoc('anwesenheiten/'+d.id)));
+  // Nutzer löschen
+  await fw.deleteDoc('users/'+id);
+  fw.toast('Kamerad gelöscht'); navigate('kameraden');
 };
 
 window.qualiHinzufuegen = async (userId) => {
