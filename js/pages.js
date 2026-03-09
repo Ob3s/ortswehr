@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v2.0.1
+// js/pages.js – alle Seiten v2.0.2
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -35,9 +35,10 @@ function kurzName(vorname, nachname) {
   return n + ', ' + v.charAt(0) + '.';
 }
 function anwesenheitBadge(s) {
-  if (!s)                               return '';
-  if (s==='bestaetigt' || s==='kommt')  return '<span style="color:#16a34a;font-size:1.1rem">✅</span>';
+  if (!s)                                    return '';
+  if (s==='bestaetigt' || s==='kommt')       return '<span style="color:#16a34a;font-size:1.1rem">✅</span>';
   if (s==='abgelehnt'  || s==='kommt_nicht') return '<span style="color:#dc2626;font-size:1.1rem">❌</span>';
+  if (s==='vorgeschlagen')                   return '<span style="color:#f59e0b;font-size:1.1rem">⏳</span>';
   return '';
 }
 function getStats(anwesenheiten, dienstMap, einsatzMap) {
@@ -45,15 +46,16 @@ function getStats(anwesenheiten, dienstMap, einsatzMap) {
   let gesamtEinsatz=0, gesamtDienst=0, einsaetze=0, dienste=0, stunden12m=0;
   for (const a of anwesenheiten) {
     if (a.status !== 'bestaetigt' && a.status !== 'kommt') continue;
-    // Stunden aus der Quell-Collection holen (zuverlässiger als in anwesenheiten)
-    const eintrag = a.typ==='einsatz'
-      ? (einsatzMap?.get(a.uebungId) || null)
-      : (dienstMap?.get(a.uebungId)  || null);
+    // Typ bestimmen: gespeichertes Feld oder aus Quell-Collection ermitteln
+    const dienstEintrag  = dienstMap?.get(a.uebungId)  || null;
+    const einsatzEintrag = einsatzMap?.get(a.uebungId) || null;
+    const eintrag   = dienstEintrag || einsatzEintrag || null;
+    const istEinsatz = a.typ === 'einsatz' || (!a.typ && !!einsatzEintrag && !dienstEintrag);
     const h = eintrag?.dauer_h ?? a.dauer_h ?? 0;
-    const d = a.datum?.toDate ? a.datum.toDate() : new Date(a.datum);
-    if (a.typ === 'einsatz') { gesamtEinsatz += h; einsaetze++; }
-    else                     { gesamtDienst  += h; dienste++;   }
-    if (d >= vor12m && a.typ !== 'einsatz') stunden12m += h;
+    const d = a.datum?.toDate ? a.datum.toDate() : (eintrag?.datum?.toDate?.() || new Date(a.datum));
+    if (istEinsatz) { gesamtEinsatz += h; einsaetze++; }
+    else            { gesamtDienst  += h; dienste++;   }
+    if (d >= vor12m && !istEinsatz) stunden12m += h;
   }
   return {
     gesamtEinsatz: Math.round(gesamtEinsatz*10)/10,
@@ -120,12 +122,12 @@ ${renderNaechsteDienste(naechster, naechsterOegeln)}
 
     <div class="stats-grid">
       <div class="stat-card">
-        <div class="stat-zahl">${dauerFormat(stats.gesamtEinsatz)}h / ${stats.einsaetze}</div>
-        <div class="stat-label">Einsatzstunden / Einsätze</div>
+        <div class="stat-zahl">${dauerFormat(stats.gesamtEinsatz)}h</div>
+        <div class="stat-count">${stats.einsaetze} Einsätze</div>
       </div>
       <div class="stat-card" style="border-top: 3px solid ${stats.stunden12m>=40?'#16a34a':stats.stunden12m>=25?'#f59e0b':stats.stunden12m>=10?'#fb923c':'#e5e7eb'}">
-        <div class="stat-zahl">${dauerFormat(stats.gesamtDienst)}h / ${stats.dienste}</div>
-        <div class="stat-label">Dienststunden / Dienste</div>
+        <div class="stat-zahl">${dauerFormat(stats.gesamtDienst)}h</div>
+        <div class="stat-count">${stats.dienste} Dienste</div>
       </div>
     </div>
 
@@ -247,7 +249,6 @@ function startStatusPruefung() {
 // ── Hilfsfunktion: Liste rendern ─────────────────────────
 function renderEintrag(u, meineMap) {
   return `<div class="list-item" onclick="navigate('uebung-detail',{id:'${u.id}',typ:'${u.typ}'})">
-    <div class="typ-dot typ-${u.typ}"></div>
     <div class="list-item-body">
       <div class="list-item-title">${u.titel}</div>
       <div class="list-item-sub">${datum(u.datum)}${zeitZeile(u) ? ' · '+zeitZeile(u) : ''}</div>

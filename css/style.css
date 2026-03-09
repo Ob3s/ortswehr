@@ -143,6 +143,7 @@ main {
 .stat-card.wide { grid-column: 1 / -1; }
 .stat-zahl { font-size: 1.8rem; font-weight: 700; color: var(--red); line-height: 1; }
 .stat-label { font-size: 0.72rem; color: var(--muted); margin-top: 0.25rem; }
+.stat-count { font-size: 0.78rem; color: var(--muted); margin-top: 0.2rem; font-weight: 500; }
 .stat-card.erreicht .stat-zahl { color: var(--success); }
 .stat-card.fehlt    .stat-zahl { color: var(--warning); }
 
