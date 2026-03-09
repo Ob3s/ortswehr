@@ -431,7 +431,10 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
     fw.where('uebungId','==',id), fw.where('userId','==',fw.user.uid));
   const meineA = aSnap.docs[0] ? {id:aSnap.docs[0].id,...aSnap.docs[0].data()} : null;
 
-  let teilnehmerHTML = '';
+  const eintragNavFn = `navigate('uebung-eintragen',{id:'${id}',titel:'${u.titel.replace(/'/g,"\'")}',dauer:${u.dauer_h||0},typ:'${u.typ}',datumStr:'${u.datum?.toDate?.().toISOString()||u.datum}'})`;
+  const eintragBtn = fw.isWehrfuehrer()
+    ? `<button class="btn btn-secondary btn-sm" onclick="${eintragNavFn}">+ Kamerad eintragen</button>`
+    : '';
 
   el.innerHTML = `
     <div class="card">
@@ -453,7 +456,7 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
         style="background:#dc2626;color:#fff;font-size:1.1rem;padding:0.8rem"
         onclick="einsatzReagieren('${id}','kommt_nicht')">👎 Komme nicht</button>
     </div>
-    ${isEinsatz ? `<div style="padding:0 0 0.5rem">${eintragBtn}</div>` : ''}
+    ${fw.isWehrfuehrer() ? `<div style="padding:0 0 0.5rem">${eintragBtn}</div>` : ''}
   `;
 
   // Live-Listener für Reaktionen (Einsatz + Dienst)
@@ -488,11 +491,14 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
         const container = document.getElementById('einsatz-reaktionen');
         if (container) {
           const rows = [...kommen, ...kommenNicht].map(a => {
-            const lkw = a.status === 'kommt' && hatLkwFs(a.fuehrerschein);
+            const lkw = isEinsatz && a.status === 'kommt' && hatLkwFs(a.fuehrerschein);
+            const loeschBtn = fw.isWehrfuehrer()
+              ? `<button onclick="teilnehmerEntfernen('${a.id}','${id}','${u.typ}')" style="background:none;border:none;cursor:pointer;font-size:0.9rem;color:#9ca3af;padding:0.1rem 0.3rem" title="Entfernen">🗑</button>`
+              : '';
             return `<div style="display:flex;align-items:center;gap:0.6rem;padding:0.4rem 0;border-bottom:1px solid var(--border)">
-              <span style="font-size:1.1rem">${a.status==='kommt'?'👍':'👎'}</span>
+              <span style="font-size:1.1rem">${a.status==='kommt'?'👍':'👎'}${lkw?'🚛':''}</span>
               <span style="flex:1;font-weight:${a.userId===fw.user.uid?'600':'400'}">${a.userName||'Kamerad'}</span>
-              ${isEinsatz && lkw ? '<span>🚛</span>' : ''}
+              ${loeschBtn}
             </div>`;
           }).join('');
           container.innerHTML = rows || '<div class="muted" style="text-align:center;font-size:0.85rem;padding:0.5rem">Noch keine Rückmeldungen</div>';
