@@ -1,19 +1,19 @@
-// sw.js – Service Worker
-const CACHE = 'ortswehr-v6';
-const ASSETS = [
-  '/ortswehr/css/style.css', '/ortswehr/js/pages.js', '/ortswehr/manifest.json',
-  '/ortswehr/icons/icon-192.png', '/ortswehr/icons/icon-512.png'
+// sw.js – Service Worker v2
+const CACHE = 'ortswehr-v7';
+
+// Nie cachen – immer vom Netz
+const NETWORK_ONLY = ['firestore', 'googleapis', 'firebase', 'gstatic'];
+
+// Nur diese dürfen offline gecacht werden (statische Assets die sich kaum ändern)
+const CACHE_ONLY_ASSETS = [
+  '/ortswehr/icons/icon-192.png',
+  '/ortswehr/icons/icon-512.png',
+  '/ortswehr/manifest.json',
 ];
 
-// Immer vom Netz holen (nie cachen)
-const NETWORK_ONLY = ['firestore', 'googleapis', 'firebase', 'gstatic', 'sw.js', 'version.json'];
-
-// Network-first (index.html soll immer aktuell sein)
-const NETWORK_FIRST = ['/ortswehr/', '/ortswehr/index.html'];
-
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
-  self.skipWaiting(); // Sofort übernehmen
+  e.waitUntil(caches.open(CACHE).then(c => c.addAll(CACHE_ONLY_ASSETS)));
+  self.skipWaiting();
 });
 
 self.addEventListener('activate', e => {
@@ -26,26 +26,27 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const url = e.request.url;
 
-  // Nie cachen
+  // Firebase & Co → komplett ignorieren
   if (NETWORK_ONLY.some(n => url.includes(n))) return;
 
-  // Network-first für index.html
-  if (NETWORK_FIRST.some(p => url.includes(p))) {
-    e.respondWith(
-      fetch(e.request)
-        .then(res => {
-          const clone = res.clone();
-          caches.open(CACHE).then(c => c.put(e.request, clone));
-          return res;
-        })
-        .catch(() => caches.match(e.request))
-    );
+  // Icons + Manifest → cache-first (ändern sich nie)
+  if (CACHE_ONLY_ASSETS.some(a => url.includes(a))) {
+    e.respondWith(caches.match(e.request).then(cached => cached || fetch(e.request)));
     return;
   }
 
-  // Cache-first für alle anderen Assets
+  // Alles andere (index.html, pages.js, style.css, version.json, sw.js)
+  // → network-first: immer frisch vom Server, Fallback auf Cache
   e.respondWith(
-    caches.match(e.request).then(cached => cached || fetch(e.request))
+    fetch(e.request)
+      .then(res => {
+        if (res.ok) {
+          const clone = res.clone();
+          caches.open(CACHE).then(c => c.put(e.request, clone));
+        }
+        return res;
+      })
+      .catch(() => caches.match(e.request))
   );
 });
 
