@@ -63,9 +63,10 @@
 </div>
 
 <div id="toast"></div>
-<div id="update-banner" style="display:none;position:fixed;bottom:70px;left:50%;transform:translateX(-50%);z-index:999;background:#1e293b;color:#fff;border-radius:14px;padding:0.7rem 1.2rem;display:none;align-items:center;gap:0.8rem;box-shadow:0 4px 20px rgba(0,0,0,0.3);font-size:0.88rem;white-space:nowrap">
+<div id="update-banner" style="display:none;position:fixed;bottom:70px;left:50%;transform:translateX(-50%);z-index:999;background:#1e293b;color:#fff;border-radius:14px;padding:0.7rem 1.2rem;align-items:center;gap:0.8rem;box-shadow:0 4px 20px rgba(0,0,0,0.3);font-size:0.88rem;white-space:nowrap">
   🆕 Neue Version verfügbar
   <button id="update-btn" style="background:var(--red);color:#fff;border:none;border-radius:8px;padding:0.35rem 0.9rem;font-size:0.85rem;cursor:pointer;font-weight:600">Jetzt aktualisieren</button>
+  <button id="update-schliessen" style="background:none;border:none;color:#9ca3af;font-size:1.1rem;cursor:pointer;padding:0 0.2rem">✕</button>
 </div>
 
 <script type="module">
@@ -302,15 +303,20 @@
         if (banner) banner.style.display = 'flex';
         document.getElementById('update-btn').onclick = async () => {
           document.getElementById('update-btn').textContent = '⏳ Wird aktualisiert...';
-          // Alle SW deregistrieren und Caches löschen
           const regs = await navigator.serviceWorker.getRegistrations();
           await Promise.all(regs.map(r => r.unregister()));
           const keys = await caches.keys();
           await Promise.all(keys.map(k => caches.delete(k)));
           window.location.reload(true);
         };
-      } else if (manuell) {
-        fw.toast('✅ App ist aktuell (v' + lokal + ')');
+        document.getElementById('update-schliessen')?.addEventListener('click', () => {
+          banner.style.display = 'none';
+        });
+      } else {
+        // Gleiche Version → Banner verstecken (z.B. nach Update-Reload)
+        const banner = document.getElementById('update-banner');
+        if (banner) banner.style.display = 'none';
+        if (manuell) fw.toast('✅ App ist aktuell (v' + lokal + ')');
       }
     } catch(e) {
       if (manuell) fw.toast('Keine Verbindung', true);

@@ -26,19 +26,17 @@ function zeitZeile(u) {
 }
 
 function anwesenheitBadge(s) {
-  if (!s)                   return '';
-  if (s==='bestaetigt')     return '<span class="badge badge-green">✅ Bestätigt</span>';
-  if (s==='vorgeschlagen')  return '<span class="badge badge-orange">⏳ Ausstehend</span>';
-  if (s==='abgelehnt')      return '<span class="badge badge-red">❌ Abgelehnt</span>';
-  if (s==='kommt')          return '<span style="color:#16a34a;font-size:1.1rem">✅</span>';
-  if (s==='kommt_nicht')    return '<span style="color:#dc2626;font-size:1.1rem">❌</span>';
+  if (!s)                               return '';
+  if (s==='bestaetigt' || s==='kommt')  return '<span style="color:#16a34a;font-size:1.1rem">✅</span>';
+  if (s==='abgelehnt'  || s==='kommt_nicht') return '<span style="color:#dc2626;font-size:1.1rem">❌</span>';
   return '';
 }
 function getStats(anwesenheiten) {
   const vor12m = new Date(); vor12m.setFullYear(vor12m.getFullYear()-1);
   let gesamtEinsatz=0, gesamtDienst=0, einsaetze=0, dienste=0, stunden12m=0;
   for (const a of anwesenheiten) {
-    if (a.status !== 'bestaetigt' && a.status !== 'kommt') continue;
+    if (a.status !== 'bestaetigt' && a.status !== 'kommt' && a.status !== 'kommt_nicht') continue; // kommt_nicht = Einsatz ohne Teilnahme, für Zähler nicht
+    if (a.status === 'kommt_nicht') continue;
     const h = a.dauer_h || 0;
     const d = a.datum?.toDate ? a.datum.toDate() : new Date(a.datum);
     if (a.typ === 'einsatz') { gesamtEinsatz += h; einsaetze++; }
@@ -105,13 +103,14 @@ registerPage('dashboard', async (el) => {
 ${renderNaechsteDienste(naechster, naechsterOegeln)}
 
     <div class="stats-grid">
-      <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.gesamtEinsatz)}h</div><div class="stat-label">Einsatzstunden</div></div>
-      <div class="stat-card"><div class="stat-zahl">${stats.einsaetze}</div><div class="stat-label">Einsätze</div></div>
-      <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.gesamtDienst)}h</div><div class="stat-label">Dienststunden</div></div>
-      <div class="stat-card"><div class="stat-zahl">${stats.dienste}</div><div class="stat-label">Dienste</div></div>
-      <div class="stat-card wide ${stats.ziel?'erreicht':'fehlt'}">
-        <div class="stat-zahl">${dauerFormat(stats.stunden12m)} / 40:00h</div>
-        <div class="stat-label">Letzte 12 Monate ${stats.ziel?'✅ Ziel erreicht':'⚠️ Noch nicht erreicht'}</div>
+      <div class="stat-card">
+        <div class="stat-zahl">${dauerFormat(stats.gesamtEinsatz)}h <span style="font-weight:400;font-size:0.8rem;color:var(--muted)">/ ${stats.einsaetze}</span></div>
+        <div class="stat-label">Einsatzstunden / Einsätze</div>
+      </div>
+      <div class="stat-card" style="border-top: 3px solid ${stats.stunden12m>=40?'#16a34a':stats.stunden12m>=25?'#f59e0b':stats.stunden12m>=10?'#fb923c':'#e5e7eb'}">
+        <div class="stat-zahl">${dauerFormat(stats.gesamtDienst)}h <span style="font-weight:400;font-size:0.8rem;color:var(--muted)">/ ${stats.dienste}</span></div>
+        <div class="stat-label">Dienststunden / Dienste</div>
+        <div style="font-size:0.7rem;color:var(--muted);margin-top:0.2rem">${dauerFormat(stats.stunden12m)} / 40:00h (12 Mon.)</div>
       </div>
     </div>
 
@@ -863,11 +862,17 @@ registerPage('statistik', async (el) => {
     qualiPerUser[u.id] = qualiSnaps[i].docs.map(d => d.data());
   });
 
-  // Stunden-Berechnung
+  // Dienste/Einsätze als Map für Stunden-Lookup
+  const dienstMap  = new Map(dienste.map(d  => [d.id, d]));
+  const einsatzMap = new Map(einsaetze.map(e => [e.id, e]));
+
   function stunden(userId, typ, jahr) {
     return anw
       .filter(a => a.userId===userId && a.typ===typ && jahrvon(a.datum, jahr))
-      .reduce((s, a) => s + (a.dauer_h||0), 0);
+      .reduce((s, a) => {
+        const eintrag = typ==='dienst' ? dienstMap.get(a.uebungId) : einsatzMap.get(a.uebungId);
+        return s + (eintrag?.dauer_h || a.dauer_h || 0);
+      }, 0);
   }
   function einsatzAnzahl(userId, jahr) {
     return anw.filter(a => a.userId===userId && a.typ==='einsatz' && jahrvon(a.datum, jahr)).length;
@@ -903,7 +908,7 @@ registerPage('statistik', async (el) => {
     const eAkt = einsatzAnzahl(u.id,jahrAkt);
     const eVor = einsatzAnzahl(u.id,jahrVor);
     return {u, dAkt, dVor, lAkt, lVor, eAkt, eVor};
-  }).filter(r => r.dAkt+r.dVor+r.lAkt+r.lVor+r.eAkt+r.eVor > 0);
+  }); // alle Kameraden zeigen
 
   const sumD = (jahr) => kRows.reduce((s,r) => s+(jahr===jahrAkt?r.dAkt:r.dVor),0);
   const sumL = (jahr) => kRows.reduce((s,r) => s+(jahr===jahrAkt?r.lAkt:r.lVor),0);
