@@ -1,17 +1,19 @@
 // sw.js – Service Worker
-const CACHE = 'ortswehr-v5';
+const CACHE = 'ortswehr-v6';
 const ASSETS = [
-  '/ortswehr/', '/ortswehr/index.html',
   '/ortswehr/css/style.css', '/ortswehr/js/pages.js', '/ortswehr/manifest.json',
   '/ortswehr/icons/icon-192.png', '/ortswehr/icons/icon-512.png'
 ];
 
-// Diese URLs niemals cachen – sonst erkennt der SW seine eigenen Updates nicht
-const NEVER_CACHE = ['sw.js', 'version.json'];
+// Immer vom Netz holen (nie cachen)
+const NETWORK_ONLY = ['firestore', 'googleapis', 'firebase', 'gstatic', 'sw.js', 'version.json'];
+
+// Network-first (index.html soll immer aktuell sein)
+const NETWORK_FIRST = ['/ortswehr/', '/ortswehr/index.html'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)));
-  // KEIN skipWaiting – warten auf Nutzer-Bestätigung
+  self.skipWaiting(); // Sofort übernehmen
 });
 
 self.addEventListener('activate', e => {
@@ -23,16 +25,30 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   const url = e.request.url;
-  // Nie cachen: Firebase, externe APIs, sw.js selbst, version.json
-  if (url.includes('firestore') || url.includes('googleapis') ||
-      url.includes('firebase') || url.includes('gstatic') ||
-      NEVER_CACHE.some(n => url.includes(n))) return;
+
+  // Nie cachen
+  if (NETWORK_ONLY.some(n => url.includes(n))) return;
+
+  // Network-first für index.html
+  if (NETWORK_FIRST.some(p => url.includes(p))) {
+    e.respondWith(
+      fetch(e.request)
+        .then(res => {
+          const clone = res.clone();
+          caches.open(CACHE).then(c => c.put(e.request, clone));
+          return res;
+        })
+        .catch(() => caches.match(e.request))
+    );
+    return;
+  }
+
+  // Cache-first für alle anderen Assets
   e.respondWith(
     caches.match(e.request).then(cached => cached || fetch(e.request))
   );
 });
 
-// ── Update auf Befehl der App ─────────────────────────────
 self.addEventListener('message', e => {
   if (e.data === 'SKIP_WAITING') self.skipWaiting();
 });
