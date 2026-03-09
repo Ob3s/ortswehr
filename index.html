@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="theme-color" content="#cc2200">
-  <meta name="app-version" content="1.7.5">
+  <meta name="app-version" content="1.7.6">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ortswehr">
@@ -243,6 +243,8 @@
       navigate('dashboard');
     } else {
       fw.user = null; fw.profil = null;
+      document.getElementById('nav-kameraden').classList.add('hidden');
+      document.getElementById('nav-ortswehren').classList.add('hidden');
       document.getElementById('login-page').classList.remove('hidden');
       document.getElementById('app').classList.add('hidden');
     }
