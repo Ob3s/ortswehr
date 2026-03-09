@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v2.1.4
+// js/pages.js – alle Seiten v2.1.5
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -1190,49 +1190,53 @@ registerPage('statistik', async (el) => {
     </div>
 
     <div class="section-header">Pro Kamerad</div>
-    <div class="card" style="overflow-x:auto">
-      <table style="width:100%;border-collapse:collapse;font-size:0.78rem;min-width:340px">
-        <thead>
-          <tr style="color:var(--muted);font-size:0.72rem">
-            <th style="text-align:left;padding:0.35rem 0.25rem">Kamerad</th>
-            <th colspan="2" style="text-align:center;padding:0.35rem 0.25rem;border-left:1px solid var(--border)">Dienste</th>
-            <th colspan="2" style="text-align:center;padding:0.35rem 0.25rem;border-left:1px solid var(--border)">Lehrgänge</th>
-            <th colspan="2" style="text-align:center;padding:0.35rem 0.25rem;border-left:1px solid var(--border)">Einsätze</th>
-          </tr>
-          <tr style="color:var(--muted);font-size:0.7rem">
-            <th style="padding:0.2rem 0.25rem"></th>
-            <th style="text-align:right;padding:0.2rem 0.25rem;border-left:1px solid var(--border)">${jahrVor}</th>
-            <th style="text-align:right;padding:0.2rem 0.25rem">${jahrAkt}</th>
-            <th style="text-align:right;padding:0.2rem 0.25rem;border-left:1px solid var(--border)">${jahrVor}</th>
-            <th style="text-align:right;padding:0.2rem 0.25rem">${jahrAkt}</th>
-            <th style="text-align:right;padding:0.2rem 0.25rem;border-left:1px solid var(--border)">${jahrVor}</th>
-            <th style="text-align:right;padding:0.2rem 0.25rem">${jahrAkt}</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${kRows.map(r => `
-          <tr style="border-top:1px solid var(--border)">
-            <td style="padding:0.4rem 0.25rem;font-weight:500">${kurzName(r.u.vorname, r.u.nachname)}</td>
-            <td style="text-align:right;padding:0.4rem 0.25rem;border-left:1px solid var(--border);color:var(--muted)">${dauerFormat(r.dVor)}h</td>
-            <td style="text-align:right;padding:0.4rem 0.25rem">${dauerFormat(r.dAkt)}h</td>
-            <td style="text-align:right;padding:0.4rem 0.25rem;border-left:1px solid var(--border);color:var(--muted)">${r.lVor}</td>
-            <td style="text-align:right;padding:0.4rem 0.25rem">${r.lAkt}</td>
-            <td style="text-align:right;padding:0.4rem 0.25rem;border-left:1px solid var(--border);color:var(--muted)">${r.eVor}</td>
-            <td style="text-align:right;padding:0.4rem 0.25rem">${r.eAkt}</td>
-          </tr>`).join('')}
-        </tbody>
-        <tfoot>
-          <tr style="border-top:2px solid var(--border);font-weight:700">
-            <td style="padding:0.4rem 0.25rem">Gesamt</td>
-            <td style="text-align:right;padding:0.4rem 0.25rem;border-left:1px solid var(--border);color:var(--muted)">${dauerFormat(sumD(jahrVor))}h</td>
-            <td style="text-align:right;padding:0.4rem 0.25rem">${dauerFormat(sumD(jahrAkt))}h</td>
-            <td style="text-align:right;padding:0.4rem 0.25rem;border-left:1px solid var(--border);color:var(--muted)">${sumL(jahrVor)}</td>
-            <td style="text-align:right;padding:0.4rem 0.25rem">${sumL(jahrAkt)}</td>
-            <td style="text-align:right;padding:0.4rem 0.25rem;border-left:1px solid var(--border);color:var(--muted)">${sumE(jahrVor)}</td>
-            <td style="text-align:right;padding:0.4rem 0.25rem">${sumE(jahrAkt)}</td>
-          </tr>
-        </tfoot>
-      </table>
+    <div class="card" style="padding:0;overflow:hidden">
+      <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+        <table style="width:100%;border-collapse:collapse;font-size:0.78rem;min-width:380px">
+          <thead>
+            <tr style="color:var(--muted);font-size:0.72rem;background:var(--panel)">
+              <th style="text-align:left;padding:0.5rem 0.6rem;position:sticky;left:0;background:var(--panel);z-index:2;min-width:90px">Kamerad</th>
+              <th colspan="2" style="text-align:center;padding:0.35rem 0.4rem;border-left:1px solid var(--border)">Dienste</th>
+              <th colspan="2" style="text-align:center;padding:0.35rem 0.4rem;border-left:1px solid var(--border)">Lehrgänge</th>
+              <th colspan="2" style="text-align:center;padding:0.35rem 0.4rem;border-left:1px solid var(--border)">Einsätze</th>
+            </tr>
+            <tr style="color:var(--muted);font-size:0.7rem;background:var(--panel)">
+              <th style="padding:0.2rem 0.6rem;position:sticky;left:0;background:var(--panel);z-index:2;border-bottom:2px solid var(--border)"></th>
+              <th style="text-align:right;padding:0.2rem 0.4rem;border-left:1px solid var(--border);border-bottom:2px solid var(--border)">${jahrVor}</th>
+              <th style="text-align:right;padding:0.2rem 0.4rem;border-bottom:2px solid var(--border)">${jahrAkt}</th>
+              <th style="text-align:right;padding:0.2rem 0.4rem;border-left:1px solid var(--border);border-bottom:2px solid var(--border)">${jahrVor}</th>
+              <th style="text-align:right;padding:0.2rem 0.4rem;border-bottom:2px solid var(--border)">${jahrAkt}</th>
+              <th style="text-align:right;padding:0.2rem 0.4rem;border-left:1px solid var(--border);border-bottom:2px solid var(--border)">${jahrVor}</th>
+              <th style="text-align:right;padding:0.2rem 0.4rem;border-bottom:2px solid var(--border)">${jahrAkt}</th>
+            </tr>
+          </thead>
+          <tbody>
+            ${kRows.map((r,idx) => {
+              const bg = idx%2===0 ? 'var(--panel)' : 'var(--panel2)';
+              return `<tr style="background:${bg}">
+                <td style="padding:0.4rem 0.6rem;font-weight:500;position:sticky;left:0;background:${bg};z-index:1;border-right:1px solid var(--border)">${kurzName(r.u.vorname, r.u.nachname)}</td>
+                <td style="text-align:right;padding:0.4rem 0.4rem;border-left:1px solid var(--border);color:var(--muted)">${dauerFormat(r.dVor)}h</td>
+                <td style="text-align:right;padding:0.4rem 0.4rem">${dauerFormat(r.dAkt)}h</td>
+                <td style="text-align:right;padding:0.4rem 0.4rem;border-left:1px solid var(--border);color:var(--muted)">${r.lVor}</td>
+                <td style="text-align:right;padding:0.4rem 0.4rem">${r.lAkt}</td>
+                <td style="text-align:right;padding:0.4rem 0.4rem;border-left:1px solid var(--border);color:var(--muted)">${r.eVor}</td>
+                <td style="text-align:right;padding:0.4rem 0.4rem">${r.eAkt}</td>
+              </tr>`;
+            }).join('')}
+          </tbody>
+          <tfoot>
+            <tr style="border-top:2px solid var(--border);font-weight:700;background:var(--panel)">
+              <td style="padding:0.4rem 0.6rem;position:sticky;left:0;background:var(--panel);z-index:1;border-right:1px solid var(--border)">Gesamt</td>
+              <td style="text-align:right;padding:0.4rem 0.4rem;border-left:1px solid var(--border);color:var(--muted)">${dauerFormat(sumD(jahrVor))}h</td>
+              <td style="text-align:right;padding:0.4rem 0.4rem">${dauerFormat(sumD(jahrAkt))}h</td>
+              <td style="text-align:right;padding:0.4rem 0.4rem;border-left:1px solid var(--border);color:var(--muted)">${sumL(jahrVor)}</td>
+              <td style="text-align:right;padding:0.4rem 0.4rem">${sumL(jahrAkt)}</td>
+              <td style="text-align:right;padding:0.4rem 0.4rem;border-left:1px solid var(--border);color:var(--muted)">${sumE(jahrVor)}</td>
+              <td style="text-align:right;padding:0.4rem 0.4rem">${sumE(jahrAkt)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
     </div>
   `;
 });
