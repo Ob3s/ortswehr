@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="theme-color" content="#cc2200">
-  <meta name="app-version" content="1.7.6">
+  <meta name="app-version" content="1.7.7">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ortswehr">
@@ -107,7 +107,9 @@
     onSnapshot(col, ...c) { const q = c.length ? query(collection(db, col), ...c) : collection(db, col); return onSnapshot(q, () => {}); },
     onDocSnapshot(path, cb) { return onSnapshot(doc(db, path), cb); },
     onQuerySnapshot(col, cb, ...c) { const q = c.length ? query(collection(db, col), ...c) : collection(db, col); return onSnapshot(q, cb); },
-    isWehrfuehrer() { return this.profil?.rolle === 'wehrfuehrer'; },
+    isWehrfuehrer()    { return this.profil?.rolle === 'wehrfuehrer'; },
+    isGruppenfuehrer() { return ['gruppenführer','zugführer','wehrfuehrer'].includes(this.profil?.rolle); },
+    isZugfuehrer()     { return ['zugführer','wehrfuehrer'].includes(this.profil?.rolle); },
 
     toast(msg, isError = false) {
       const t = document.getElementById('toast');

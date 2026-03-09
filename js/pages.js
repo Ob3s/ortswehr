@@ -372,15 +372,21 @@ window.kalenderImportieren = async () => {
   }
 };
 
+window.rolleGeaendert = (rolle) => {
+  const row = document.getElementById('staerke-rolle-row');
+  if (row) row.style.display = rolle === 'wehrfuehrer' ? 'block' : 'none';
+};
+
 window.einsatzReagieren = async (uebungId, status) => {
   const name = ((fw.profil.vorname||'') + ' ' + (fw.profil.nachname||'')).trim();
   const snap = await fw.getDocs('anwesenheiten',
     fw.where('uebungId','==',uebungId), fw.where('userId','==',fw.user.uid));
   if (snap.docs.length > 0) {
-    await fw.updateDoc('anwesenheiten/'+snap.docs[0].id, { status, aktualisiertAm: new Date() });
+    await fw.updateDoc('anwesenheiten/'+snap.docs[0].id, { status, rolle: fw.profil.stärkeRolle || fw.profil.rolle || 'kamerad', aktualisiertAm: new Date() });
   } else {
     await fw.addDoc('anwesenheiten', {
       uebungId, userId: fw.user.uid, userName: name,
+      rolle: fw.profil.stärkeRolle || fw.profil.rolle || 'kamerad',
       status, gemeldetAm: new Date(),
     });
   }
@@ -485,8 +491,11 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
         const kommenNicht = alle.filter(a => a.status === 'kommt_nicht');
         const meineR      = alle.find(a => a.userId === fw.user.uid);
 
+        const zugf  = kommen.filter(a => a.rolle === 'zugführer').length;
+        const gruf  = kommen.filter(a => a.rolle === 'gruppenführer').length;
+        const kamf  = kommen.filter(a => !['zugführer','gruppenführer'].includes(a.rolle)).length;
         const zaehler = document.getElementById('einsatz-zaehler');
-        if (zaehler) zaehler.textContent = `👍 ${kommen.length}  👎 ${kommenNicht.length}`;
+        if (zaehler) zaehler.textContent = `👍 ${kommen.length}  👎 ${kommenNicht.length}  ·  Stärke: ${zugf}/${gruf}/${kamf}`;
 
         const container = document.getElementById('einsatz-reaktionen');
         if (container) {
@@ -1074,10 +1083,20 @@ registerPage('kamerad-form', async (el, {id}) => {
         </select>
       </div>
       <div class="form-row"><label>Rolle</label>
-        <select id="k-rolle">
+        <select id="k-rolle" onchange="rolleGeaendert(this.value)">
           <option value="kamerad" ${u?.rolle==='kamerad'?'selected':''}>Kamerad</option>
+          <option value="gruppenführer" ${u?.rolle==='gruppenführer'?'selected':''}>Gruppenführer</option>
+          <option value="zugführer" ${u?.rolle==='zugführer'?'selected':''}>Zugführer</option>
           <option value="wehrfuehrer" ${u?.rolle==='wehrfuehrer'?'selected':''}>Wehrführer</option>
         </select>
+        <div id="staerke-rolle-row" style="display:${u?.rolle==='wehrfuehrer'?'block':'none'};margin-top:0.5rem">
+          <label style="font-size:0.82rem;color:var(--muted)">Zählt in der Einsatzstärke als</label>
+          <select id="k-staerke-rolle">
+            <option value="kamerad" ${(u?.stärkeRolle||'kamerad')==='kamerad'?'selected':''}>Kamerad</option>
+            <option value="gruppenführer" ${u?.stärkeRolle==='gruppenführer'?'selected':''}>Gruppenführer</option>
+            <option value="zugführer" ${u?.stärkeRolle==='zugführer'?'selected':''}>Zugführer</option>
+          </select>
+        </div>
       </div>
       <div class="form-row"><label>Telefon</label><input id="k-tel" type="tel" value="${u?.telefon||''}"></div>
       <div class="form-row"><label>E-Mail</label><input id="k-mail" type="email" value="${u?.email||''}"></div>
@@ -1096,6 +1115,9 @@ window.kameradSpeichern = async (id) => {
     eintrittsdatum: document.getElementById('k-ed').value || null,
     ortswehrId: document.getElementById('k-ow').value || null,
     rolle: document.getElementById('k-rolle').value,
+    stärkeRolle: document.getElementById('k-rolle').value === 'wehrfuehrer'
+      ? (document.getElementById('k-staerke-rolle')?.value || 'kamerad')
+      : document.getElementById('k-rolle').value,
     telefon: document.getElementById('k-tel').value,
     email: document.getElementById('k-mail').value,
     fuehrerschein: document.getElementById('k-fs').value,
