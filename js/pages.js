@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v2.0.2
+// js/pages.js – alle Seiten v2.0.3
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -113,21 +113,18 @@ registerPage('dashboard', async (el) => {
       <span id="status-lampe" style="width:12px;height:12px;border-radius:50%;background:#ccc;display:inline-block;flex-shrink:0;cursor:default" title="Status wird geprüft..."></span>
     </div>
 
-    <div style="display:flex;gap:0.6rem;margin-bottom:0.6rem">
-      <button class="alarm-btn" style="flex:1" onclick="navigate('uebung-form',{typ:'einsatz',alarm:true})">🚨 Einsatz</button>
-      ${fw.isWehrfuehrer() ? `<button class="btn btn-secondary" style="flex-shrink:0" onclick="navigate('news-form')">📝 Beitrag</button>` : ''}
-    </div>
+    <button class="alarm-btn" onclick="navigate('uebung-form',{typ:'einsatz',alarm:true})">🚨 Einsatz</button>
 
 ${renderNaechsteDienste(naechster, naechsterOegeln)}
 
     <div class="stats-grid">
       <div class="stat-card">
-        <div class="stat-zahl">${dauerFormat(stats.gesamtEinsatz)}h</div>
-        <div class="stat-count">${stats.einsaetze} Einsätze</div>
+        <div class="stat-zahl">${stats.einsaetze}</div>
+        <div class="stat-count">Einsätze</div>
       </div>
-      <div class="stat-card" style="border-top: 3px solid ${stats.stunden12m>=40?'#16a34a':stats.stunden12m>=25?'#f59e0b':stats.stunden12m>=10?'#fb923c':'#e5e7eb'}">
-        <div class="stat-zahl">${dauerFormat(stats.gesamtDienst)}h</div>
-        <div class="stat-count">${stats.dienste} Dienste</div>
+      <div class="stat-card">
+        <div class="stat-zahl">${stats.dienste}</div>
+        <div class="stat-count">Dienste</div>
       </div>
     </div>
 
@@ -144,11 +141,18 @@ ${renderNaechsteDienste(naechster, naechsterOegeln)}
 async function ladeNewsFeed() {
   const el = document.getElementById('news-feed');
   if (!el) return;
-  const snap = await fw.getDocs('news', fw.orderBy('erstelltAm','desc'));
+  const [snap, uSnap] = await Promise.all([
+    fw.getDocs('news', fw.orderBy('erstelltAm','desc')),
+    fw.getDocs('users'),
+  ]);
+  const usersMap = new Map(uSnap.docs.map(d => [d.id, d.data()]));
   const beitraege = snap.docs.map(d => ({id:d.id,...d.data()}));
   if (!beitraege.length) { el.innerHTML = ''; return; }
 
-  el.innerHTML = '<div class="section-header">Neuigkeiten</div>' + beitraege.map(b => {
+  el.innerHTML = '<div class="section-header" style="display:flex;align-items:center;justify-content:space-between">Neuigkeiten'
+    + (fw.isWehrfuehrer() ? '<button class="btn btn-secondary btn-sm" onclick="navigate('news-form')">📝 Beitrag</button>' : '')
+    + '</div>'
+    + beitraege.map(b => {
     const hat = b.abstimmung?.optionen?.some(o => o.stimmen?.includes(fw.user.uid));
     const gesamt = b.abstimmung?.optionen?.reduce((s,o) => s+(o.stimmen?.length||0), 0) || 0;
     return `<div class="card" style="margin-bottom:0.6rem">
@@ -160,20 +164,27 @@ async function ladeNewsFeed() {
           ${b.abstimmung.optionen.map((o,i) => {
             const pct = gesamt ? Math.round((o.stimmen?.length||0)/gesamt*100) : 0;
             const meineStimme = o.stimmen?.includes(fw.user.uid);
+            const namen = (o.stimmen||[]).map(uid => {
+                const u = usersMap?.get(uid);
+                return u ? kurzName(u.vorname, u.nachname) : '?';
+              }).join(', ');
             return hat
-              ? `<div style="margin-bottom:0.4rem">
+              ? `<div style="margin-bottom:0.5rem">
                   <div style="display:flex;justify-content:space-between;font-size:0.83rem;margin-bottom:0.2rem">
-                    <span>${meineStimme?'✅ ':''} ${o.text}</span>
+                    <span>${meineStimme?'✅ ':''}${o.text}</span>
                     <span style="color:var(--muted)">${o.stimmen?.length||0} (${pct}%)</span>
                   </div>
-                  <div style="height:6px;background:#e5e7eb;border-radius:3px">
-                    <div style="height:6px;background:${meineStimme?'#16a34a':'#dc2626'};border-radius:3px;width:${pct}%"></div>
+                  <div style="height:6px;background:#e5e7eb;border-radius:3px;margin-bottom:0.2rem">
+                    <div style="height:6px;background:${meineStimme?'#16a34a':'#6b7280'};border-radius:3px;width:${pct}%"></div>
                   </div>
+                  ${namen ? `<div style="font-size:0.72rem;color:var(--muted)">${namen}</div>` : ''}
+                  ${meineStimme ? `<button class="btn btn-secondary btn-sm" style="margin-top:0.3rem;font-size:0.75rem" onclick="newsAbstimmen('${b.id}',${i})">Stimme ändern</button>` : `<button class="btn btn-secondary btn-sm" style="margin-top:0.3rem;font-size:0.75rem" onclick="newsAbstimmen('${b.id}',${i})">Abstimmen</button>`}
                  </div>`
               : `<button class="btn btn-secondary btn-sm" style="width:100%;margin-bottom:0.4rem;text-align:left"
                    onclick="newsAbstimmen('${b.id}',${i})">${o.text}</button>`;
           }).join('')}
           <div style="font-size:0.75rem;color:var(--muted);margin-top:0.3rem">${gesamt} Stimme${gesamt!==1?'n':''}</div>
+          ${fw.isWehrfuehrer() && b.abstimmung.aenderungen?.length ? `<div style="font-size:0.72rem;color:#f59e0b;margin-top:0.3rem">⚠️ ${b.abstimmung.aenderungen.length} Stimme${b.abstimmung.aenderungen.length!==1?'n':''} wurden geändert</div>` : ''}
         </div>` : ''}
       <div style="font-size:0.72rem;color:var(--muted);margin-top:0.5rem">${datum(b.erstelltAm)}</div>
       ${fw.isWehrfuehrer() ? `<button onclick="newsLoeschen('${b.id}')" style="background:none;border:none;color:#9ca3af;font-size:0.75rem;cursor:pointer;padding:0;margin-top:0.3rem">🗑 Löschen</button>` : ''}
@@ -185,13 +196,24 @@ window.newsAbstimmen = async (newsId, optionIndex) => {
   const snap = await fw.getDoc('news/'+newsId);
   if (!snap.exists()) return;
   const b = snap.data();
+  // Alte Stimme merken für Änderungs-Log
+  const alteOption = b.abstimmung.optionen.findIndex(o => (o.stimmen||[]).includes(fw.user.uid));
+  const hat_geaendert = alteOption !== -1 && alteOption !== optionIndex;
   const optionen = b.abstimmung.optionen.map((o,i) => ({
     ...o,
     stimmen: i===optionIndex
-      ? [...(o.stimmen||[]), fw.user.uid]
+      ? [...new Set([...(o.stimmen||[]), fw.user.uid])]
       : (o.stimmen||[]).filter(uid => uid !== fw.user.uid)
   }));
-  await fw.updateDoc('news/'+newsId, {'abstimmung.optionen': optionen});
+  // Änderungs-Log für Wehrführer
+  const aenderungen = b.abstimmung.aenderungen || [];
+  if (hat_geaendert) {
+    aenderungen.push({ uid: fw.user.uid, von: alteOption, zu: optionIndex, am: new Date().toISOString() });
+  }
+  await fw.updateDoc('news/'+newsId, {
+    'abstimmung.optionen': optionen,
+    'abstimmung.aenderungen': aenderungen,
+  });
   ladeNewsFeed();
 };
 

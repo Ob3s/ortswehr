@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="theme-color" content="#cc2200">
-  <meta name="app-version" content="2.0.2">
+  <meta name="app-version" content="2.0.3">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ortswehr">
@@ -328,6 +328,16 @@
 
   // Beim Start prüfen (kurze Verzögerung damit SW-Registrierung abgeschlossen ist)
   setTimeout(pruefeAufUpdate, 1500);
+
+  // Uhr
+  function tickUhr() {
+    const el = document.getElementById('header-uhr');
+    if (!el) return;
+    const now = new Date();
+    el.textContent = now.toLocaleTimeString('de-DE', {hour:'2-digit', minute:'2-digit', second:'2-digit'});
+  }
+  tickUhr();
+  setInterval(tickUhr, 1000);
 </script>
 <script src="js/pages.js" type="module" defer></script>
 </body>
