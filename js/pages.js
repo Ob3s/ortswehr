@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v2.0.3
+// js/pages.js – alle Seiten v2.0.4
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -150,7 +150,7 @@ async function ladeNewsFeed() {
   if (!beitraege.length) { el.innerHTML = ''; return; }
 
   el.innerHTML = '<div class="section-header" style="display:flex;align-items:center;justify-content:space-between">Neuigkeiten'
-    + (fw.isWehrfuehrer() ? '<button class="btn btn-secondary btn-sm" onclick="navigate('news-form')">📝 Beitrag</button>' : '')
+    + (fw.isWehrfuehrer() ? '<button class="btn btn-secondary btn-sm" onclick="navigate(\'news-form\')">📝 Beitrag</button>' : '')
     + '</div>'
     + beitraege.map(b => {
     const hat = b.abstimmung?.optionen?.some(o => o.stimmen?.includes(fw.user.uid));
