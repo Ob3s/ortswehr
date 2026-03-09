@@ -1,10 +1,11 @@
 {
-  "version": "2.1.2",
+  "version": "2.1.3",
   "datum": "09.03.2026",
   "punkte": [
-    "Deploy-App: Changelog aus changes.json (live, dauerhaft)",
-    "Deploy-App: Commit-Message enthält alle Änderungen",
-    "Deploy-App: Android ZIP-Fix (arrayBuffer)",
-    "Deploy-App: Grüner 'live'-Badge wenn Changelog aus ZIP"
+    "Kalender-Import: Änderungen werden aktualisiert (Titel, Ort, Zeit, Dauer)",
+    "Kalender-Import: Anwesenheiten/Zusagen bleiben bei Re-Import erhalten",
+    "Kalender-Import: Status zeigt neu · aktualisiert · unverändert",
+    "Deploy-App: Changelog aus changes.json mit live-Badge",
+    "Deploy-App: Commit-Message enthält alle Änderungen"
   ]
 }
