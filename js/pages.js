@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v2.0.6
+// js/pages.js – alle Seiten v2.0.7
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -147,61 +147,79 @@ ${renderNaechsteDienste(naechster, zweiter)}
   ladeNewsFeed();
 });
 
+let _newsFeedListener = null;
+
+function renderNewsBeitrag(b, usersMap) {
+  const hat = b.abstimmung?.optionen?.some(o => (o.stimmen||[]).includes(fw.user.uid));
+  const gesamt = b.abstimmung?.optionen?.reduce((s,o) => s+(o.stimmen?.length||0), 0) || 0;
+  const abstimmungHtml = b.abstimmung ? `
+    <div style="margin-top:0.8rem;border-top:1px solid var(--border);padding-top:0.6rem">
+      <div style="font-weight:600;font-size:0.88rem;margin-bottom:0.6rem">🗳️ ${b.abstimmung.frage}</div>
+      ${b.abstimmung.optionen.map((o,i) => {
+        const pct = gesamt ? Math.round(((o.stimmen||[]).length)/gesamt*100) : 0;
+        const meineStimme = (o.stimmen||[]).includes(fw.user.uid);
+        const namen = (o.stimmen||[]).map(uid => {
+          const u = usersMap?.get(uid);
+          return u ? kurzName(u.vorname, u.nachname) : '?';
+        }).join(', ');
+        if (hat) {
+          // Ergebnis anzeigen nach Stimmabgabe, Option weiterhin anklickbar zum Ändern
+          return `<div onclick="newsAbstimmen('${b.id}',${i})"
+            style="margin-bottom:0.5rem;cursor:pointer;padding:0.5rem 0.6rem;border-radius:10px;border:2px solid ${meineStimme?'#16a34a':'#e5e7eb'};background:${meineStimme?'#f0fdf4':'transparent'}">
+            <div style="display:flex;justify-content:space-between;font-size:0.85rem;margin-bottom:0.25rem">
+              <span style="font-weight:${meineStimme?'600':'400'}">${meineStimme?'● ':'○ '}${o.text}</span>
+              <span style="color:var(--muted)">${(o.stimmen||[]).length} (${pct}%)</span>
+            </div>
+            <div style="height:5px;background:#e5e7eb;border-radius:3px">
+              <div style="height:5px;background:${meineStimme?'#16a34a':'#9ca3af'};border-radius:3px;width:${pct}%;transition:width 0.3s"></div>
+            </div>
+            ${namen ? `<div style="font-size:0.7rem;color:var(--muted);margin-top:0.25rem">${namen}</div>` : ''}
+          </div>`;
+        } else {
+          // Noch nicht abgestimmt → Option anklickbar
+          return `<div onclick="newsAbstimmen('${b.id}',${i})"
+            style="margin-bottom:0.4rem;cursor:pointer;padding:0.5rem 0.6rem;border-radius:10px;border:2px solid #e5e7eb;display:flex;align-items:center;gap:0.5rem">
+            <span style="width:18px;height:18px;border-radius:50%;border:2px solid #9ca3af;display:inline-block;flex-shrink:0"></span>
+            <span style="font-size:0.88rem">${o.text}</span>
+          </div>`;
+        }
+      }).join('')}
+      <div style="font-size:0.75rem;color:var(--muted);margin-top:0.3rem">${gesamt} Stimme${gesamt!==1?'n':''}</div>
+      ${fw.isWehrfuehrer() && b.abstimmung.aenderungen?.length ? `<div style="font-size:0.72rem;color:#f59e0b;margin-top:0.3rem">⚠️ ${b.abstimmung.aenderungen.length} Stimme${b.abstimmung.aenderungen.length!==1?'n':''} geändert</div>` : ''}
+    </div>` : '';
+  return `<div class="card" style="margin-bottom:0.6rem">
+    <div style="font-weight:600;margin-bottom:0.3rem">${b.titel||''}</div>
+    <div style="font-size:0.88rem;color:var(--muted);white-space:pre-wrap">${b.inhalt||''}</div>
+    ${abstimmungHtml}
+    <div style="font-size:0.72rem;color:var(--muted);margin-top:0.5rem">${datum(b.erstelltAm)}</div>
+    ${fw.isWehrfuehrer() ? `<button onclick="newsLoeschen('${b.id}')" style="background:none;border:none;color:#9ca3af;font-size:0.75rem;cursor:pointer;padding:0;margin-top:0.3rem">🗑 Löschen</button>` : ''}
+  </div>`;
+}
+
 async function ladeNewsFeed() {
   const el = document.getElementById('news-feed');
   if (!el) return;
-  const [snap, uSnap] = await Promise.all([
-    fw.getDocs('news', fw.orderBy('erstelltAm','desc')),
-    fw.getDocs('users'),
-  ]);
-  const usersMap = new Map(uSnap.docs.map(d => [d.id, d.data()]));
-  const beitraege = snap.docs.map(d => ({id:d.id,...d.data()}));
-  // Header immer zeigen (auch wenn keine Beiträge)
+  // Alten Listener aufräumen
+  if (_newsFeedListener) { _newsFeedListener(); _newsFeedListener = null; }
+
   const beitragBtn = fw.isWehrfuehrer() ? `<button class="btn btn-secondary btn-sm" onclick="navigate('news-form')">📝 Beitrag</button>` : '';
   const header = `<div class="section-header" style="display:flex;align-items:center;justify-content:space-between">Neuigkeiten${beitragBtn}</div>`;
-  if (!beitraege.length) {
-    el.innerHTML = header + '<div class="card" style="color:var(--muted);font-size:0.88rem">Noch keine Neuigkeiten.</div>';
-    return;
-  }
 
-  el.innerHTML = header + beitraege.map(b => {
-    const hat = b.abstimmung?.optionen?.some(o => o.stimmen?.includes(fw.user.uid));
-    const gesamt = b.abstimmung?.optionen?.reduce((s,o) => s+(o.stimmen?.length||0), 0) || 0;
-    return `<div class="card" style="margin-bottom:0.6rem">
-      <div style="font-weight:600;margin-bottom:0.3rem">${b.titel||''}</div>
-      <div style="font-size:0.88rem;color:var(--muted);white-space:pre-wrap">${b.inhalt||''}</div>
-      ${b.abstimmung ? `
-        <div style="margin-top:0.8rem;border-top:1px solid var(--border);padding-top:0.6rem">
-          <div style="font-weight:600;font-size:0.88rem;margin-bottom:0.5rem">🗳️ ${b.abstimmung.frage}</div>
-          ${b.abstimmung.optionen.map((o,i) => {
-            const pct = gesamt ? Math.round((o.stimmen?.length||0)/gesamt*100) : 0;
-            const meineStimme = o.stimmen?.includes(fw.user.uid);
-            const namen = (o.stimmen||[]).map(uid => {
-                const u = usersMap?.get(uid);
-                return u ? kurzName(u.vorname, u.nachname) : '?';
-              }).join(', ');
-            return hat
-              ? `<div style="margin-bottom:0.5rem">
-                  <div style="display:flex;justify-content:space-between;font-size:0.83rem;margin-bottom:0.2rem">
-                    <span>${meineStimme?'✅ ':''}${o.text}</span>
-                    <span style="color:var(--muted)">${o.stimmen?.length||0} (${pct}%)</span>
-                  </div>
-                  <div style="height:6px;background:#e5e7eb;border-radius:3px;margin-bottom:0.2rem">
-                    <div style="height:6px;background:${meineStimme?'#16a34a':'#6b7280'};border-radius:3px;width:${pct}%"></div>
-                  </div>
-                  ${namen ? `<div style="font-size:0.72rem;color:var(--muted)">${namen}</div>` : ''}
-                  ${meineStimme ? `<button class="btn btn-secondary btn-sm" style="margin-top:0.3rem;font-size:0.75rem" onclick="newsAbstimmen('${b.id}',${i})">Stimme ändern</button>` : `<button class="btn btn-secondary btn-sm" style="margin-top:0.3rem;font-size:0.75rem" onclick="newsAbstimmen('${b.id}',${i})">Abstimmen</button>`}
-                 </div>`
-              : `<button class="btn btn-secondary btn-sm" style="width:100%;margin-bottom:0.4rem;text-align:left"
-                   onclick="newsAbstimmen('${b.id}',${i})">${o.text}</button>`;
-          }).join('')}
-          <div style="font-size:0.75rem;color:var(--muted);margin-top:0.3rem">${gesamt} Stimme${gesamt!==1?'n':''}</div>
-          ${fw.isWehrfuehrer() && b.abstimmung.aenderungen?.length ? `<div style="font-size:0.72rem;color:#f59e0b;margin-top:0.3rem">⚠️ ${b.abstimmung.aenderungen.length} Stimme${b.abstimmung.aenderungen.length!==1?'n':''} wurden geändert</div>` : ''}
-        </div>` : ''}
-      <div style="font-size:0.72rem;color:var(--muted);margin-top:0.5rem">${datum(b.erstelltAm)}</div>
-      ${fw.isWehrfuehrer() ? `<button onclick="newsLoeschen('${b.id}')" style="background:none;border:none;color:#9ca3af;font-size:0.75rem;cursor:pointer;padding:0;margin-top:0.3rem">🗑 Löschen</button>` : ''}
-    </div>`;
-  }).join('');
+  // usersMap einmalig laden
+  const uSnap = await fw.getDocs('users');
+  const usersMap = new Map(uSnap.docs.map(d => [d.id, d.data()]));
+
+  // Live-Listener auf news
+  _newsFeedListener = fw.onQuerySnapshot('news', snap => {
+    const beitraege = snap.docs
+      .map(d => ({id:d.id,...d.data()}))
+      .sort((a,b) => (b.erstelltAm?.toMillis?.() || 0) - (a.erstelltAm?.toMillis?.() || 0));
+    if (!beitraege.length) {
+      el.innerHTML = header + '<div class="card" style="color:var(--muted);font-size:0.88rem">Noch keine Neuigkeiten.</div>';
+      return;
+    }
+    el.innerHTML = header + beitraege.map(b => renderNewsBeitrag(b, usersMap)).join('');
+  });
 }
 
 window.newsAbstimmen = async (newsId, optionIndex) => {

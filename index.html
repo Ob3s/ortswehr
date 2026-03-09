@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="theme-color" content="#cc2200">
-  <meta name="app-version" content="2.0.6">
+  <meta name="app-version" content="2.0.7">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ortswehr">
@@ -267,6 +267,7 @@
   window.navigate = function(page, params = {}) {
     // Aktiven Live-Listener aufräumen beim Seitenwechsel
     if (window._einsatzListener) { window._einsatzListener(); window._einsatzListener = null; }
+    if (window._newsFeedListener) { window._newsFeedListener(); window._newsFeedListener = null; }
     document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('aktiv', b.dataset.page === page));
     fw.hideBack(); fw.hideHeaderAction();
     document.getElementById('main-content').innerHTML = '<div class="loading">⏳</div>';
