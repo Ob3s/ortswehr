@@ -319,12 +319,15 @@
         if (manuell) fw.toast('✅ App ist aktuell (v' + lokal + ')');
       }
     } catch(e) {
+      // Netzwerkfehler → Banner sicherheitshalber verstecken
+      const bannerErr = document.getElementById('update-banner');
+      if (bannerErr) bannerErr.style.display = 'none';
       if (manuell) fw.toast('Keine Verbindung', true);
     }
   };
 
-  // Beim Start automatisch prüfen
-  pruefeAufUpdate();
+  // Beim Start prüfen (kurze Verzögerung damit SW-Registrierung abgeschlossen ist)
+  setTimeout(pruefeAufUpdate, 1500);
 </script>
 <script src="js/pages.js" type="module" defer></script>
 </body>

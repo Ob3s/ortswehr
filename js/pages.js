@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v2.0.0
+// js/pages.js – alle Seiten v2.0.1
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -124,7 +124,7 @@ ${renderNaechsteDienste(naechster, naechsterOegeln)}
         <div class="stat-label">Einsatzstunden / Einsätze</div>
       </div>
       <div class="stat-card" style="border-top: 3px solid ${stats.stunden12m>=40?'#16a34a':stats.stunden12m>=25?'#f59e0b':stats.stunden12m>=10?'#fb923c':'#e5e7eb'}">
-        <div class="stat-zahl">${dauerFormat(stats.gesamtDienst)}h / ${stats.dienste} ${stats.ziel?'✅':'⚠️'}</div>
+        <div class="stat-zahl">${dauerFormat(stats.gesamtDienst)}h / ${stats.dienste}</div>
         <div class="stat-label">Dienststunden / Dienste</div>
       </div>
     </div>
@@ -362,10 +362,7 @@ registerPage('dienste', async (el) => {
       <button class="btn btn-secondary btn-full" onclick="kalenderImportieren()" id="kal-btn">📅 Aus Google Kalender importieren</button>
       <div id="kal-status" class="muted" style="font-size:0.8rem;text-align:center;margin-top:0.4rem"></div>
     </div>` : ''}
-    <div style="font-size:0.75rem;color:var(--muted);margin-top:1rem;padding:0 0.2rem;line-height:1.6">
-      ✅ = 40 Dienststunden in 12 Monaten erreicht &nbsp;·&nbsp; ⚠️ = Ziel noch nicht erreicht<br>
-      Farbbalken: je grüner, desto näher am Ziel
-    </div>
+
   `;
 });
 
@@ -420,13 +417,26 @@ window.rolleGeaendert = (rolle) => {
 
 window.einsatzReagieren = async (uebungId, status) => {
   const name = kurzName(fw.profil.vorname, fw.profil.nachname);
+  // Typ und Datum aus Quell-Collection ermitteln
+  let typ = 'dienst', datum = new Date(), dauer_h = 0;
+  const dSnap = await fw.getDoc('dienste/'+uebungId);
+  if (dSnap.exists()) {
+    typ = 'dienst'; datum = dSnap.data().datum?.toDate?.() || new Date(); dauer_h = dSnap.data().dauer_h || 0;
+  } else {
+    const eSnap = await fw.getDoc('einsaetze/'+uebungId);
+    if (eSnap.exists()) { typ = 'einsatz'; datum = eSnap.data().datum?.toDate?.() || new Date(); dauer_h = eSnap.data().dauer_h || 0; }
+  }
   const snap = await fw.getDocs('anwesenheiten',
     fw.where('uebungId','==',uebungId), fw.where('userId','==',fw.user.uid));
   if (snap.docs.length > 0) {
-    await fw.updateDoc('anwesenheiten/'+snap.docs[0].id, { status, rolle: fw.profil.stärkeRolle || fw.profil.rolle || 'kamerad', fuehrerschein: fw.profil.fuehrerschein || '', aktualisiertAm: new Date() });
+    await fw.updateDoc('anwesenheiten/'+snap.docs[0].id, {
+      status, typ, datum, dauer_h,
+      rolle: fw.profil.stärkeRolle || fw.profil.rolle || 'kamerad',
+      fuehrerschein: fw.profil.fuehrerschein || '', aktualisiertAm: new Date()
+    });
   } else {
     await fw.addDoc('anwesenheiten', {
-      uebungId, userId: fw.user.uid, userName: name,
+      uebungId, userId: fw.user.uid, userName: name, typ, datum, dauer_h,
       rolle: fw.profil.stärkeRolle || fw.profil.rolle || 'kamerad',
       fuehrerschein: fw.profil.fuehrerschein || '',
       status, gemeldetAm: new Date(),
@@ -964,16 +974,31 @@ registerPage('statistik', async (el) => {
   const dienstMap  = new Map(dienste.map(d  => [d.id, d]));
   const einsatzMap = new Map(einsaetze.map(e => [e.id, e]));
 
+  function stundenUndTyp(a) {
+    // typ+datum aus Quell-Collection ermitteln (anwesenheiten haben das evtl. nicht gesetzt)
+    const d = dienstMap.get(a.uebungId);
+    if (d) return { typ:'dienst',  datum: d.datum,  dauer_h: d.dauer_h||0 };
+    const e = einsatzMap.get(a.uebungId);
+    if (e) return { typ:'einsatz', datum: e.datum,  dauer_h: e.dauer_h||0 };
+    // Fallback auf gespeicherte Felder
+    return { typ: a.typ||'dienst', datum: a.datum, dauer_h: a.dauer_h||0 };
+  }
   function stunden(userId, typ, jahr) {
     return anw
-      .filter(a => a.userId===userId && a.typ===typ && jahrvon(a.datum, jahr))
+      .filter(a => a.userId===userId)
       .reduce((s, a) => {
-        const eintrag = typ==='dienst' ? dienstMap.get(a.uebungId) : einsatzMap.get(a.uebungId);
-        return s + (eintrag?.dauer_h || a.dauer_h || 0);
+        const {typ:t, datum:dat, dauer_h} = stundenUndTyp(a);
+        if (t !== typ) return s;
+        if (!jahrvon(dat, jahr)) return s;
+        return s + dauer_h;
       }, 0);
   }
   function einsatzAnzahl(userId, jahr) {
-    return anw.filter(a => a.userId===userId && a.typ==='einsatz' && jahrvon(a.datum, jahr)).length;
+    return anw.filter(a => {
+      if (a.userId !== userId) return false;
+      const {typ, datum} = stundenUndTyp(a);
+      return typ==='einsatz' && jahrvon(datum, jahr);
+    }).length;
   }
   function lehrgangStunden(userId, jahr) {
     return (qualiPerUser[userId]||[])
