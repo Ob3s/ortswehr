@@ -471,7 +471,7 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
         style="background:#dc2626;color:#fff;font-size:1.1rem;padding:0.8rem"
         onclick="einsatzReagieren('${id}','kommt_nicht')">👎 Komme nicht</button>
     </div>` : ''}
-    <div class="section-header">Meine Anwesenheit</div>
+    ${!isEinsatz ? `<div class="section-header">Meine Anwesenheit</div>
     <div class="card">
       ${meineA ? `
         <div style="margin-bottom:0.6rem">${anwesenheitBadge(meineA.status)}</div>
@@ -484,16 +484,27 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
           Teilnahme melden
         </button>
       `}
-    </div>
+    </div>` : ''}
     ${teilnehmerHTML}
   `;
 
   // Live-Listener für Einsatz-Reaktionen
   if (isEinsatz) {
+    // User-Daten vorladen für Fallback bei alten Anwesenheiten ohne rolle/fuehrerschein
+    const usersSnap = await fw.getDocs('users');
+    const usersMap = new Map(usersSnap.docs.map(d => [d.id, d.data()]));
+
     _einsatzListener = fw.onQuerySnapshot(
       'anwesenheiten',
       (snap) => {
-        const alle = snap.docs.map(d => ({id:d.id,...d.data()}));
+        const alle = snap.docs.map(d => {
+          const a = {id:d.id,...d.data()};
+          const profil = usersMap.get(a.userId) || {};
+          // Fehlende Felder aus users-Collection ergänzen
+          if (!a.rolle) a.rolle = profil.stärkeRolle || profil.rolle || 'kamerad';
+          if (!a.fuehrerschein) a.fuehrerschein = profil.fuehrerschein || '';
+          return a;
+        });
         const kommen      = alle.filter(a => a.status === 'kommt');
         const kommenNicht = alle.filter(a => a.status === 'kommt_nicht');
         const meineR      = alle.find(a => a.userId === fw.user.uid);
