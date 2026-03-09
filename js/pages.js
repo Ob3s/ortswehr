@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v2.1.2
+// js/pages.js – alle Seiten v2.1.3
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
