@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v1.6.0
+// js/pages.js – alle Seiten v1.6.3
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -127,7 +127,7 @@ ${renderNaechsteDienste(naechster, naechsterOegeln)}
     </div>
 
 
-    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.6.0</div>
+    <div style="text-align:center;color:var(--border);font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">v1.6.3</div>
   `;
   checkDeepLink();
   startStatusPruefung();
@@ -340,6 +340,20 @@ window.kalenderImportieren = async () => {
   }
 };
 
+window.einsatzReagieren = async (uebungId, status) => {
+  const name = ((fw.profil.vorname||'') + ' ' + (fw.profil.nachname||'')).trim();
+  const snap = await fw.getDocs('anwesenheiten',
+    fw.where('uebungId','==',uebungId), fw.where('userId','==',fw.user.uid));
+  if (snap.docs.length > 0) {
+    await fw.updateDoc('anwesenheiten/'+snap.docs[0].id, { status, aktualisiertAm: new Date() });
+  } else {
+    await fw.addDoc('anwesenheiten', {
+      uebungId, userId: fw.user.uid, userName: name,
+      status, gemeldetAm: new Date(),
+    });
+  }
+};
+
 window.bestaetigen = async (aId, uId, userId, name) => {
   await fw.updateDoc('anwesenheiten/'+aId, { status:'bestaetigt', bestaetigtAm: new Date() });
   const uSnap = await fw.getDoc('users/'+userId);
@@ -515,7 +529,10 @@ registerPage('uebung-form', async (el, {id, typ: vorTyp, alarm: mitAlarm}) => {
           <input id="f-ende" type="time" value="${u?.zeitEnde||''}">
         </div>
         <input type="hidden" id="f-alarm" value="${mitAlarm ? '1' : '0'}">
-        <button class="btn btn-danger btn-full" style="margin-top:0.5rem" onclick="uebungSpeichern('${id||''}','einsatz')">${u ? '💾 Speichern' : mitAlarm ? '🚨 Einsatz melden & Alarm senden' : '💾 Einsatz speichern'}</button>
+        <div class="btn-row" style="margin-top:0.5rem">
+          <button class="btn btn-primary btn-full" onclick="uebungSpeichern('${id||''}','einsatz')">${u ? '💾 Speichern' : mitAlarm ? '🚨 Einsatz melden & Alarm senden' : '💾 Einsatz speichern'}</button>
+          ${u ? `<button class="btn btn-danger" onclick="uebungLoeschen('${id}','einsatz')">🗑 Löschen</button>` : ''}
+        </div>
       </div>`;
   } else {
     // Dienst: vollständiges Formular
@@ -535,7 +552,7 @@ registerPage('uebung-form', async (el, {id, typ: vorTyp, alarm: mitAlarm}) => {
         </div>
         <div class="btn-row">
           <button class="btn btn-primary" onclick="uebungSpeichern('${id||''}','dienst')">💾 Speichern & Benachrichtigen</button>
-          ${u ? `<button class="btn btn-danger" onclick="uebungLoeschen('${id}')">🗑 Löschen</button>` : ''}
+          ${u ? `<button class="btn btn-danger" onclick="uebungLoeschen('${id}','dienst')">🗑 Löschen</button>` : ''}
         </div>
       </div>`;
   }
@@ -895,10 +912,18 @@ registerPage('kamerad-detail', async (el, {id}) => {
       </div>
     </div>
     <div class="card" style="display:flex;flex-direction:column;gap:0.5rem">
-      <button class="btn btn-secondary btn-full" onclick="kameradInaktiv('${id}')">🔕 Kamerad inaktiv setzen</button>
+      ${u.aktiv === false
+        ? `<button class="btn btn-primary btn-full" onclick="kameradAktiv('${id}')">✅ Kamerad aktiv setzen</button>`
+        : `<button class="btn btn-secondary btn-full" onclick="kameradInaktiv('${id}')">🔕 Kamerad inaktiv setzen</button>`
+      }
       <button class="btn btn-danger btn-full" onclick="kameradLoeschen('${id}')">🗑 Kamerad vollständig löschen</button>
     </div>`;
 });
+
+window.kameradAktiv = async (id) => {
+  await fw.updateDoc('users/'+id, { aktiv: true });
+  fw.toast('Kamerad aktiv gesetzt ✅'); navigate('kamerad-detail', {id});
+};
 
 window.kameradInaktiv = async (id) => {
   if (!confirm('Kamerad auf inaktiv setzen?')) return;
