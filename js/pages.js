@@ -431,8 +431,13 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
     fw.where('uebungId','==',id), fw.where('userId','==',fw.user.uid));
   const meineA = aSnap.docs[0] ? {id:aSnap.docs[0].id,...aSnap.docs[0].data()} : null;
 
+  const eintragNavFn = `navigate('uebung-eintragen',{id:'${id}',titel:'${u.titel.replace(/'/g,"\'")}',dauer:${u.dauer_h||0},typ:'${u.typ}',datumStr:'${u.datum?.toDate?.().toISOString()||u.datum}'})`;
+  const eintragBtn = fw.isWehrfuehrer()
+    ? `<button class="btn btn-secondary btn-sm" onclick="${eintragNavFn}">+ Kamerad eintragen</button>`
+    : '';
+
   let teilnehmerHTML = '';
-  if (fw.isWehrfuehrer()) {
+  if (!isEinsatz && fw.isWehrfuehrer()) {
     const allA = await fw.getDocs('anwesenheiten', fw.where('uebungId','==',id));
     const best = allA.docs.map(d => ({id:d.id,...d.data()})).filter(a => a.status==='bestaetigt');
     teilnehmerHTML = `
@@ -444,9 +449,7 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
               <div class="list-item-body"><div class="list-item-title">${a.userName||'Kamerad'}</div></div>
               <button class="btn btn-sm btn-danger" onclick="teilnehmerEntfernen('${a.id}','${id}','${u.typ}')">🗑</button>
             </div>`).join('')}
-        <div class="btn-row">
-          <button class="btn btn-secondary btn-sm" onclick="navigate('uebung-eintragen',{id:'${id}',titel:'${u.titel.replace(/'/g,"\\'")}',dauer:${u.dauer_h||0},typ:'${u.typ}',datumStr:'${u.datum?.toDate?.().toISOString()||u.datum}'})">+ Kamerad eintragen</button>
-        </div>
+        <div class="btn-row">${eintragBtn}</div>
       </div>`;
   }
 
@@ -470,6 +473,7 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
         style="background:#dc2626;color:#fff;font-size:1.1rem;padding:0.8rem"
         onclick="einsatzReagieren('${id}','kommt_nicht')">👎 Komme nicht</button>
     </div>
+    ${isEinsatz ? `<div style="padding:0 0 0.5rem">${eintragBtn}</div>` : ''}
     ${teilnehmerHTML}
   `;
 
