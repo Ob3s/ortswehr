@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v2.2.5
+// js/pages.js – alle Seiten v2.2.6
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -727,7 +727,7 @@ window.teilnehmerEntfernen = async (aId, uebungId, typ) => {
 // ── Kamerad direkt eintragen ──────────────────────────────
 registerPage('uebung-eintragen', async (el, {id, titel, dauer, typ, datumStr}) => {
   fw.setTitle('Eintragen');
-  fw.showBack(() => navigate('uebung-detail',{id}));
+  fw.showBack(() => navigate('uebung-detail',{id, typ}));
   const [usersSnap, bereitsSnap] = await Promise.all([
     fw.getDocs('users'),
     fw.getDocs('anwesenheiten', fw.where('uebungId','==',id)),
@@ -754,11 +754,12 @@ registerPage('uebung-eintragen', async (el, {id, titel, dauer, typ, datumStr}) =
 
 window.direktEintragen = async (uebungId, userId, name, dauer_h, typ, datumStr) => {
   await fw.addDoc('anwesenheiten', {
-    uebungId, userId, userName: name, status:'bestaetigt',
+    uebungId, userId, userName: name, status:'kommt',
     dauer_h, typ, datum: new Date(datumStr), bestaetigtAm: new Date(),
   });
   fw.toast(name+' eingetragen ✅');
-  navigate('uebung-detail', {id: uebungId, typ});
+  // Seite neu laden damit neue Anwesenheit sofort sichtbar
+  navigate('uebung-eintragen', {id: uebungId, titel: '', dauer: dauer_h, typ, datumStr});
 };
 
 // ── Einsatz / Dienst Form ─────────────────────────────────
