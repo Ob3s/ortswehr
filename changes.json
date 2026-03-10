@@ -1,7 +1,10 @@
 {
-  "version": "2.3.1",
+  "version": "2.3.2",
   "datum": "10.03.2026",
   "punkte": [
-    "Stärke/AGT/LKW: Profildaten werden immer aktuell geladen (Lehrgänge wirken sofort)"
+    "Lehrgänge: doppelte Linie oberhalb des Dropdowns entfernt",
+    "Lehrgänge: Sortierung nach festgelegter Reihenfolge mit Trennlinie",
+    "AGT: Statusanzeige ✅/⚠️ basierend auf G26, Wärme- und Belastungsübung",
+    "AGT: Felder zum Eintragen der Nachweisdaten im Kamerad-Profil"
   ]
 }
