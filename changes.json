@@ -1,1 +1,10 @@
-{"version": "2.2.2", "datum": "10.03.2026", "punkte": ["Einsätze: aktuelles Jahr direkt sichtbar, Archiv nach Jahr einklappbar", "Profil-Statistik: Einsätze korrekt gezählt (typ-Normalisierung)", "App-Update: automatischer Reload wenn neuer Service Worker aktiviert"]}
+{
+  "version": "2.2.2",
+  "datum": "10.03.2026",
+  "punkte": [
+    "Einsätze: aktuelles Jahr direkt sichtbar, Archiv nach Jahr einklappbar",
+    "Profil-Statistik: Einsätze korrekt gezählt (typ-Normalisierung)",
+    "App-Update: automatischer Reload wenn neuer Service Worker aktiviert",
+    "Build-Fix: index.html Version wurde nicht korrekt gesetzt (behoben)"
+  ]
+}
