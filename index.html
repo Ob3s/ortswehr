@@ -293,7 +293,14 @@
   };
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/ortswehr/sw.js');
+    navigator.serviceWorker.register('/ortswehr/sw.js').then(reg => {
+      // Sofort auf Update prüfen
+      reg.update();
+      // Wenn neuer SW aktiviert → Seite automatisch neu laden
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        window.location.reload();
+      });
+    });
   }
 
   // Update-Prüfung: version.json vom Server holen (nie gecacht)
