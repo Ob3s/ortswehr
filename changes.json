@@ -1,9 +1,8 @@
 {
-  "version": "2.1.7",
-  "datum": "09.03.2026",
+  "version": "2.1.8",
+  "datum": "10.03.2026",
   "punkte": [
-    "Statistik-Tabelle: Zebra-Streifen sichtbar, sticky Spalte ohne Überlagerung",
-    "Statistik-Tabelle: 1. Spalte fixiert beim horizontalen Scrollen",
-    "Deploy-App: JSON-Bundle statt ZIP – kein Korruptionsproblem mehr auf Android"
+    "Statistik-Tabelle: Zebra-Streifen in beiden Themes korrekt (Standard + Klassisch)",
+    "Statistik-Tabelle: Sticky-Spalte passt sich Theme-Hintergrund an"
   ]
 }
