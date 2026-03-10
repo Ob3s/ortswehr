@@ -1,9 +1,10 @@
 {
-  "version": "2.2.0",
+  "version": "2.2.1",
   "datum": "10.03.2026",
   "punkte": [
-    "Einsätze: aktuelles Jahr direkt sichtbar, mit Anzahl",
-    "Einsätze: ältere Jahre einklappbar als Archiv pro Jahr",
-    "Einsätze: 'YYYY noch kein Einsatz' wenn kein Eintrag im aktuellen Jahr"
+    "Einsätze-Seite: aktuelles Jahr direkt sichtbar, Archiv nach Jahr einklappbar",
+    "Einsätze-Seite: \"2026 noch kein Einsatz\" wenn leer",
+    "Profil-Statistik: Einsätze werden jetzt korrekt gezählt (typ-Normalisierung)",
+    "Profil-Statistik: Stunden korrekt aufgeteilt Dienst vs. Einsatz"
   ]
 }
