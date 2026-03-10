@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v2.2.8
+// js/pages.js – alle Seiten v2.2.9
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -651,9 +651,16 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
 
   // Live-Listener für Reaktionen (Einsatz + Dienst)
   if (true) {
-    // User-Daten vorladen für Fallback bei alten Anwesenheiten ohne rolle/fuehrerschein
+    // User-Daten + Qualifikationen vorladen
     const usersSnap = await fw.getDocs('users');
     const usersMap = new Map(usersSnap.docs.map(d => [d.id, d.data()]));
+    // AGT-Map: userId → true wenn AGT-Qualifikation vorhanden
+    const agtMap = new Map();
+    await Promise.all(usersSnap.docs.map(async d => {
+      const qSnap = await fw.getDocs('users/'+d.id+'/qualifikationen');
+      const hatAgt = qSnap.docs.some(q => (q.data().bezeichnung||q.data().titel||q.data().name||'').toLowerCase().includes('agt'));
+      if (hatAgt) agtMap.set(d.id, true);
+    }));
 
     _einsatzListener = fw.onQuerySnapshot(
       'anwesenheiten',
@@ -673,20 +680,23 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
         const zugf  = kommen.filter(a => a.rolle === 'zugführer').length;
         const gruf  = kommen.filter(a => a.rolle === 'gruppenführer').length;
         const kamf  = kommen.filter(a => !['zugführer','gruppenführer'].includes(a.rolle)).length;
+        const agtZ  = kommen.filter(a => agtMap.get(a.userId)).length;
         const zaehler = document.getElementById('einsatz-zaehler');
         if (zaehler) zaehler.textContent = isEinsatz
-          ? `👍 ${kommen.length}  👎 ${kommenNicht.length}  ·  Stärke: ${zugf}/${gruf}/${kamf}`
+          ? `👍 ${kommen.length}  👎 ${kommenNicht.length}  ·  Stärke: ${zugf}/${gruf}/${kamf}  ·  AGT: ${agtZ}`
           : `👍 ${kommen.length}  👎 ${kommenNicht.length}`;
 
         const container = document.getElementById('einsatz-reaktionen');
         if (container) {
           const rows = [...kommen, ...kommenNicht].map(a => {
-            const lkw = isEinsatz && a.status === 'kommt' && hatLkwFs(a.fuehrerschein);
+            const kommt = a.status === 'kommt' || a.status === 'bestaetigt';
+            const lkw = kommt && hatLkwFs(a.fuehrerschein);
+            const agt = isEinsatz && kommt && agtMap.get(a.userId);
             const loeschBtn = fw.isWehrfuehrer()
               ? `<button onclick="teilnehmerEntfernen('${a.id}','${id}','${u.typ}')" style="background:none;border:none;cursor:pointer;font-size:0.9rem;color:#9ca3af;padding:0.1rem 0.3rem" title="Entfernen">🗑</button>`
               : '';
             return `<div style="display:flex;align-items:center;gap:0.6rem;padding:0.4rem 0;border-bottom:1px solid var(--border)">
-              <span style="font-size:1.1rem">${a.status==='kommt'?'👍':'👎'}${lkw?'🚛':''}</span>
+              <span style="font-size:1.1rem">${kommt?'👍':'👎'}${lkw?'🚛':''}${agt?'💨':''}</span>
               <span style="flex:1;font-weight:${a.userId===fw.user.uid?'600':'400'}">${kurzName(usersMap.get(a.userId)?.vorname, usersMap.get(a.userId)?.nachname) || a.userName || 'Kamerad'}</span>
               ${loeschBtn}
             </div>`;
