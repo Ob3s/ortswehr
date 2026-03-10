@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v2.1.5
+// js/pages.js – alle Seiten v2.2.2
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -52,7 +52,8 @@ function getStats(anwesenheiten, dienstMap, einsatzMap) {
     const dienstEintrag  = dienstMap?.get(a.uebungId)  || null;
     const einsatzEintrag = einsatzMap?.get(a.uebungId) || null;
     const eintrag   = dienstEintrag || einsatzEintrag || null;
-    const istEinsatz = a.typ === 'einsatz' || (!a.typ && !!einsatzEintrag && !dienstEintrag);
+    const typNorm = a.typ === 'einsaetze' ? 'einsatz' : a.typ === 'dienste' ? 'dienst' : a.typ;
+    const istEinsatz = typNorm === 'einsatz' || (!a.typ && !!einsatzEintrag && !dienstEintrag);
     const h = eintrag?.dauer_h ?? a.dauer_h ?? 0;
     const d = a.datum?.toDate ? a.datum.toDate() : (eintrag?.datum?.toDate?.() || new Date(a.datum));
     if (istEinsatz) { gesamtEinsatz += h; einsaetze++; }
@@ -390,6 +391,57 @@ function renderEintragListe(liste, meineMap) {
 }
 
 
+// ── Einsatz-Liste: aktuelles Jahr oben, Archiv nach Jahr ──
+function renderEinsatzListe(liste, meineMap) {
+  if (!liste.length) {
+    const jahrAkt = new Date().getFullYear();
+    return `<div class="empty">${jahrAkt} noch kein Einsatz</div>`;
+  }
+
+  const jahrAkt = new Date().getFullYear();
+
+  // Einträge nach Jahr gruppieren
+  const jahreMap = {};
+  for (const u of liste) {
+    const d = u.datum?.toDate ? u.datum.toDate() : new Date(u.datum);
+    const j = d.getFullYear();
+    if (!jahreMap[j]) jahreMap[j] = [];
+    jahreMap[j].push(u);
+  }
+
+  // Aktuelles Jahr zuerst, dann absteigende Archiv-Jahre
+  const alleJahre = Object.keys(jahreMap).map(Number).sort((a,b) => b-a);
+  let html = '';
+
+  for (const jahr of alleJahre) {
+    const eintraege = jahreMap[jahr];
+    if (jahr === jahrAkt) {
+      // Aktuelles Jahr: direkt anzeigen
+      if (!eintraege.length) {
+        html += `<div class="empty">${jahrAkt} noch kein Einsatz</div>`;
+      } else {
+        html += `<div style="font-size:0.78rem;color:var(--muted);padding:0.5rem 0 0.2rem;font-weight:600">${jahr} · ${eintraege.length} Einsatz${eintraege.length!==1?'ätze':''}</div>`;
+        html += eintraege.map(u => renderEintrag(u, meineMap)).join('');
+      }
+    } else {
+      // Vergangene Jahre: einklappbar
+      html += `<details style="margin-top:0.2rem">
+        <summary style="padding:0.6rem 0;cursor:pointer;color:var(--muted);font-size:0.85rem;list-style:none;display:flex;align-items:center;gap:0.4rem">
+          <span>▸</span> ${jahr} (${eintraege.length} Einsatz${eintraege.length!==1?'ätze':''})
+        </summary>
+        ${eintraege.map(u => renderEintrag(u, meineMap)).join('')}
+      </details>`;
+    }
+  }
+
+  // Wenn kein Eintrag für aktuelles Jahr vorhanden
+  if (!jahreMap[jahrAkt]) {
+    html = `<div class="empty">${jahrAkt} noch kein Einsatz</div>` + html;
+  }
+
+  return html;
+}
+
 // Collection je nach Typ
 function col(typ) { return typ === 'einsatz' ? 'einsaetze' : 'dienste'; }
 
@@ -403,7 +455,7 @@ registerPage('einsaetze', async (el) => {
   ]);
   const liste    = uSnap.docs.map(d => ({id:d.id,...d.data()}));
   const meineMap = new Map(aSnap.docs.map(d => [d.data().uebungId, d.data().status]));
-  el.innerHTML = `<div class="card">${renderEintragListe(liste, meineMap)}</div>`;
+  el.innerHTML = `<div class="card">${renderEinsatzListe(liste, meineMap)}</div>`;
 });
 
 // ── Dienste ───────────────────────────────────────────────
@@ -1212,9 +1264,11 @@ registerPage('statistik', async (el) => {
           </thead>
           <tbody>
             ${kRows.map((r,idx) => {
-              const bg = idx%2===0 ? 'var(--panel)' : 'var(--panel2)';
-              return `<tr style="background:${bg}">
-                <td style="padding:0.4rem 0.6rem;font-weight:500;position:sticky;left:0;background:${bg};z-index:1;border-right:1px solid var(--border)">${kurzName(r.u.vorname, r.u.nachname)}</td>
+              const odd = idx%2 !== 0;
+              const isKlassisch = document.body.getAttribute('data-theme') === 'klassisch';
+              const zebraStyle = odd ? (isKlassisch ? 'background:rgba(0,0,0,0.07)' : 'background:rgba(255,255,255,0.08)') : '';
+              return `<tr style="${zebraStyle}">
+                <td class="${odd?'stat-td-sticky-odd':'stat-td-sticky'}" style="padding:0.4rem 0.6rem;font-weight:500">${kurzName(r.u.vorname, r.u.nachname)}</td>
                 <td style="text-align:right;padding:0.4rem 0.4rem;border-left:1px solid var(--border);color:var(--muted)">${dauerFormat(r.dVor)}h</td>
                 <td style="text-align:right;padding:0.4rem 0.4rem">${dauerFormat(r.dAkt)}h</td>
                 <td style="text-align:right;padding:0.4rem 0.4rem;border-left:1px solid var(--border);color:var(--muted)">${r.lVor}</td>
@@ -1226,7 +1280,7 @@ registerPage('statistik', async (el) => {
           </tbody>
           <tfoot>
             <tr style="border-top:2px solid var(--border);font-weight:700;background:var(--panel)">
-              <td style="padding:0.4rem 0.6rem;position:sticky;left:0;background:var(--panel);z-index:1;border-right:1px solid var(--border)">Gesamt</td>
+              <td class="stat-td-sticky" style="padding:0.4rem 0.6rem">Gesamt</td>
               <td style="text-align:right;padding:0.4rem 0.4rem;border-left:1px solid var(--border);color:var(--muted)">${dauerFormat(sumD(jahrVor))}h</td>
               <td style="text-align:right;padding:0.4rem 0.4rem">${dauerFormat(sumD(jahrAkt))}h</td>
               <td style="text-align:right;padding:0.4rem 0.4rem;border-left:1px solid var(--border);color:var(--muted)">${sumL(jahrVor)}</td>
