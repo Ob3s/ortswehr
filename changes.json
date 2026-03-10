@@ -1,8 +1,9 @@
 {
-  "version": "2.1.9",
+  "version": "2.2.0",
   "datum": "10.03.2026",
   "punkte": [
-    "Statistik-Tabelle: Zebra-Streifen jetzt in beiden Themes sichtbar",
-    "Statistik-Tabelle: Gesamt-Zeile HTML-Fehler behoben"
+    "Einsätze: aktuelles Jahr direkt sichtbar, mit Anzahl",
+    "Einsätze: ältere Jahre einklappbar als Archiv pro Jahr",
+    "Einsätze: 'YYYY noch kein Einsatz' wenn kein Eintrag im aktuellen Jahr"
   ]
 }
