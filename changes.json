@@ -1,10 +1,1 @@
-{
-  "version": "2.2.1",
-  "datum": "10.03.2026",
-  "punkte": [
-    "Einsätze-Seite: aktuelles Jahr direkt sichtbar, Archiv nach Jahr einklappbar",
-    "Einsätze-Seite: \"2026 noch kein Einsatz\" wenn leer",
-    "Profil-Statistik: Einsätze werden jetzt korrekt gezählt (typ-Normalisierung)",
-    "Profil-Statistik: Stunden korrekt aufgeteilt Dienst vs. Einsatz"
-  ]
-}
+{"version": "2.2.2", "datum": "10.03.2026", "punkte": ["Einsätze: aktuelles Jahr direkt sichtbar, Archiv nach Jahr einklappbar", "Profil-Statistik: Einsätze korrekt gezählt (typ-Normalisierung)", "App-Update: automatischer Reload wenn neuer Service Worker aktiviert"]}
