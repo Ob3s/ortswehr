@@ -1,9 +1,9 @@
 {
-  "version": "2.2.4",
+  "version": "2.2.5",
   "datum": "10.03.2026",
   "punkte": [
-    "Profil: Dienste zählen nur letzte 12 Monate",
-    "Profil: Einsätze zählen nur aktuelles Kalenderjahr",
-    "Profil: Stat-Labels zeigen Zeitraum (12 Mon. / 2026)"
+    "Einsätze: Tippfehler 'Einsatzätze' behoben",
+    "Einsätze: Archiv-Dropdown mit Jahren als eigene Untermenüs",
+    "Dienste: Archiv-Dropdown mit Jahren als eigene Untermenüs"
   ]
 }
