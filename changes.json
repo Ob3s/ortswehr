@@ -1,8 +1,7 @@
 {
-  "version": "2.3.0",
+  "version": "2.3.1",
   "datum": "10.03.2026",
   "punkte": [
-    "LKW- und AGT-Symbol erscheinen jetzt auch bei alten Einträgen",
-    "Führerschein und Rolle werden immer aus aktuellem Profil gelesen"
+    "Stärke/AGT/LKW: Profildaten werden immer aktuell geladen (Lehrgänge wirken sofort)"
   ]
 }
