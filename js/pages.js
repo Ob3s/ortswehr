@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v2.3.0
+// js/pages.js – alle Seiten v2.3.1
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -651,25 +651,30 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
 
   // Live-Listener für Reaktionen (Einsatz + Dienst)
   if (true) {
-    // User-Daten + Qualifikationen vorladen
-    const usersSnap = await fw.getDocs('users');
-    const usersMap = new Map(usersSnap.docs.map(d => [d.id, d.data()]));
-    // AGT-Map: userId → true wenn AGT-Qualifikation vorhanden
-    const agtMap = new Map();
-    await Promise.all(usersSnap.docs.map(async d => {
-      const qSnap = await fw.getDocs('users/'+d.id+'/qualifikationen');
-      const hatAgt = qSnap.docs.some(q => (q.data().bezeichnung||q.data().titel||q.data().name||'').toLowerCase().includes('agt'));
-      if (hatAgt) agtMap.set(d.id, true);
-    }));
+    // usersMap + agtMap: beim Start laden und bei jedem Snapshot neu laden
+    let usersMap = new Map();
+    let agtMap   = new Map();
+    const ladeProfilDaten = async () => {
+      const usersSnap = await fw.getDocs('users');
+      usersMap = new Map(usersSnap.docs.map(d => [d.id, d.data()]));
+      agtMap   = new Map();
+      await Promise.all(usersSnap.docs.map(async d => {
+        const qSnap = await fw.getDocs('users/'+d.id+'/qualifikationen');
+        const hatAgt = qSnap.docs.some(q => (q.data().bezeichnung||q.data().titel||q.data().name||'').toLowerCase().includes('agt'));
+        if (hatAgt) agtMap.set(d.id, true);
+      }));
+    };
+    await ladeProfilDaten();
 
     _einsatzListener = fw.onQuerySnapshot(
       'anwesenheiten',
-      (snap) => {
+      async (snap) => {
+        // Profildaten bei jedem Update neu laden (Rollen/Lehrgänge können sich geändert haben)
+        await ladeProfilDaten();
         const alle = snap.docs.map(d => {
           const a = {id:d.id,...d.data()};
           const profil = usersMap.get(a.userId) || {};
-          // Profildaten immer als Quelle nutzen (überschreibt alte/leere Einträge)
-          a.rolle        = profil.stärkeRolle || profil.rolle || a.rolle || 'kamerad';
+          a.rolle         = profil.stärkeRolle || profil.rolle || a.rolle || 'kamerad';
           a.fuehrerschein = profil.fuehrerschein || a.fuehrerschein || '';
           return a;
         });
