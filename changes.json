@@ -1,9 +1,8 @@
 {
-  "version": "2.2.9",
+  "version": "2.3.0",
   "datum": "10.03.2026",
   "punkte": [
-    "LKW-Symbol erscheint jetzt auch bei Diensten",
-    "Einsätze: AGT-Symbol 💨 bei Kameraden mit AGT-Qualifikation",
-    "Einsätze: Stärke-Zeile zeigt jetzt zusätzlich AGT-Anzahl"
+    "LKW- und AGT-Symbol erscheinen jetzt auch bei alten Einträgen",
+    "Führerschein und Rolle werden immer aus aktuellem Profil gelesen"
   ]
 }
