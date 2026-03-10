@@ -1,11 +1,7 @@
 {
-  "version": "2.3.2",
+  "version": "2.3.3",
   "datum": "10.03.2026",
   "punkte": [
-    "Lehrgänge: doppelte Linie oberhalb des Dropdowns entfernt",
-    "Lehrgänge: Sortierung nach festgelegter Reihenfolge mit Trennlinie",
-    "AGT: Statusanzeige ✅/⚠️ basierend auf G26, Wärme- und Belastungsübung",
-    "AGT: Felder zum Eintragen der Nachweisdaten im Kamerad-Profil",
-    "Syntax-Fix: ungültige Escape-Sequenzen in JS behoben"
+    "Lehrgänge: Sortierung korrigiert (Groß-/Kleinschreibung und Leerzeichen werden ignoriert)"
   ]
 }
