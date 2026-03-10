@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v2.2.9
+// js/pages.js – alle Seiten v2.3.0
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -668,9 +668,9 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
         const alle = snap.docs.map(d => {
           const a = {id:d.id,...d.data()};
           const profil = usersMap.get(a.userId) || {};
-          // Fehlende Felder aus users-Collection ergänzen
-          if (!a.rolle) a.rolle = profil.stärkeRolle || profil.rolle || 'kamerad';
-          if (!a.fuehrerschein) a.fuehrerschein = profil.fuehrerschein || '';
+          // Profildaten immer als Quelle nutzen (überschreibt alte/leere Einträge)
+          a.rolle        = profil.stärkeRolle || profil.rolle || a.rolle || 'kamerad';
+          a.fuehrerschein = profil.fuehrerschein || a.fuehrerschein || '';
           return a;
         });
         const kommen      = alle.filter(a => a.status === 'kommt' || a.status === 'bestaetigt');
