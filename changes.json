@@ -1,8 +1,9 @@
 {
-  "version": "2.1.5",
+  "version": "2.1.7",
   "datum": "09.03.2026",
   "punkte": [
-    "Statistik-Tabelle: jede 2. Zeile eingefärbt",
-    "Statistik-Tabelle: 1. Spalte (Name) fixiert beim horizontalen Scrollen"
+    "Statistik-Tabelle: Zebra-Streifen sichtbar, sticky Spalte ohne Überlagerung",
+    "Statistik-Tabelle: 1. Spalte fixiert beim horizontalen Scrollen",
+    "Deploy-App: JSON-Bundle statt ZIP – kein Korruptionsproblem mehr auf Android"
   ]
 }
