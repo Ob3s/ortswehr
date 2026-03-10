@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v2.2.6
+// js/pages.js – alle Seiten v2.2.7
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -666,7 +666,7 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
           if (!a.fuehrerschein) a.fuehrerschein = profil.fuehrerschein || '';
           return a;
         });
-        const kommen      = alle.filter(a => a.status === 'kommt');
+        const kommen      = alle.filter(a => a.status === 'kommt' || a.status === 'bestaetigt');
         const kommenNicht = alle.filter(a => a.status === 'kommt_nicht');
         const meineR      = alle.find(a => a.userId === fw.user.uid);
 
