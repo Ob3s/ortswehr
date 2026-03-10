@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v2.2.7
+// js/pages.js – alle Seiten v2.2.8
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -753,9 +753,14 @@ registerPage('uebung-eintragen', async (el, {id, titel, dauer, typ, datumStr}) =
 });
 
 window.direktEintragen = async (uebungId, userId, name, dauer_h, typ, datumStr) => {
+  // Profil laden damit fuehrerschein + rolle mitgespeichert werden
+  const userSnap = await fw.getDoc('users/' + userId);
+  const profil = userSnap.exists() ? userSnap.data() : {};
   await fw.addDoc('anwesenheiten', {
     uebungId, userId, userName: name, status:'kommt',
     dauer_h, typ, datum: new Date(datumStr), bestaetigtAm: new Date(),
+    rolle: profil.stärkeRolle || profil.rolle || 'kamerad',
+    fuehrerschein: profil.fuehrerschein || '',
   });
   fw.toast(name+' eingetragen ✅');
   // Seite neu laden damit neue Anwesenheit sofort sichtbar
