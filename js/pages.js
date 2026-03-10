@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v2.2.4
+// js/pages.js – alle Seiten v2.2.5
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -381,16 +381,20 @@ function renderEintragListe(liste, meineMap) {
     </details>`;
   }
 
-  // Archiv einklappbar
+  // Archiv einklappbar – Jahre als eigene Dropdowns
   if (vergangen.length) {
+    const jahreInnen = Object.keys(archivJahre).sort((a,b)=>b-a).map(jahr => `
+      <details style="margin-top:0.1rem">
+        <summary style="padding:0.5rem 0;cursor:pointer;color:var(--muted);font-size:0.8rem;list-style:none;display:flex;align-items:center;gap:0.4rem;padding-left:0.5rem">
+          <span>▸</span> ${jahr} (${archivJahre[jahr].length})
+        </summary>
+        ${archivJahre[jahr].map(u => renderEintrag(u, meineMap)).join('')}
+      </details>`).join('');
     html += `<details style="margin-top:0.2rem">
       <summary style="padding:0.6rem 0;cursor:pointer;color:var(--muted);font-size:0.85rem;list-style:none;display:flex;align-items:center;gap:0.4rem">
         <span>▸</span> Archiv (${vergangen.length} Einträge)
       </summary>
-      ${Object.keys(archivJahre).sort((a,b)=>b-a).map(jahr => `
-        <div style="font-size:0.78rem;color:var(--muted);padding:0.4rem 0 0.2rem;font-weight:600">${jahr}</div>
-        ${archivJahre[jahr].map(u => renderEintrag(u, meineMap)).join('')}
-      `).join('')}
+      ${jahreInnen}
     </details>`;
   }
 
@@ -416,34 +420,37 @@ function renderEinsatzListe(liste, meineMap) {
     jahreMap[j].push(u);
   }
 
-  // Aktuelles Jahr zuerst, dann absteigende Archiv-Jahre
   const alleJahre = Object.keys(jahreMap).map(Number).sort((a,b) => b-a);
   let html = '';
 
-  for (const jahr of alleJahre) {
-    const eintraege = jahreMap[jahr];
-    if (jahr === jahrAkt) {
-      // Aktuelles Jahr: direkt anzeigen
-      if (!eintraege.length) {
-        html += `<div class="empty">${jahrAkt} noch kein Einsatz</div>`;
-      } else {
-        html += `<div style="font-size:0.78rem;color:var(--muted);padding:0.5rem 0 0.2rem;font-weight:600">${jahr} · ${eintraege.length} Einsatz${eintraege.length!==1?'ätze':''}</div>`;
-        html += eintraege.map(u => renderEintrag(u, meineMap)).join('');
-      }
-    } else {
-      // Vergangene Jahre: einklappbar
-      html += `<details style="margin-top:0.2rem">
-        <summary style="padding:0.6rem 0;cursor:pointer;color:var(--muted);font-size:0.85rem;list-style:none;display:flex;align-items:center;gap:0.4rem">
-          <span>▸</span> ${jahr} (${eintraege.length} Einsatz${eintraege.length!==1?'ätze':''})
+  // Aktuelles Jahr direkt anzeigen
+  const aktEintraege = jahreMap[jahrAkt] || [];
+  if (!aktEintraege.length) {
+    html += `<div class="empty">${jahrAkt} noch kein Einsatz</div>`;
+  } else {
+    html += `<div style="font-size:0.78rem;color:var(--muted);padding:0.5rem 0 0.2rem;font-weight:600">${jahrAkt} · ${aktEintraege.length===1?'1 Einsatz':aktEintraege.length+' Einträge'}</div>`;
+    html += aktEintraege.map(u => renderEintrag(u, meineMap)).join('');
+  }
+
+  // Vergangene Jahre → alle unter "Archiv" als eigene Dropdowns
+  const archivJahre = alleJahre.filter(j => j !== jahrAkt);
+  if (archivJahre.length) {
+    const archivGesamt = archivJahre.reduce((s, j) => s + jahreMap[j].length, 0);
+    const jahreInnen = archivJahre.map(jahr => {
+      const eintraege = jahreMap[jahr];
+      return `<details style="margin-top:0.1rem">
+        <summary style="padding:0.5rem 0;cursor:pointer;color:var(--muted);font-size:0.8rem;list-style:none;display:flex;align-items:center;gap:0.4rem;padding-left:0.5rem">
+          <span>▸</span> ${jahr} (${eintraege.length===1?'1 Einsatz':eintraege.length+' Einträge'})
         </summary>
         ${eintraege.map(u => renderEintrag(u, meineMap)).join('')}
       </details>`;
-    }
-  }
-
-  // Wenn kein Eintrag für aktuelles Jahr vorhanden
-  if (!jahreMap[jahrAkt]) {
-    html = `<div class="empty">${jahrAkt} noch kein Einsatz</div>` + html;
+    }).join('');
+    html += `<details style="margin-top:0.2rem">
+      <summary style="padding:0.6rem 0;cursor:pointer;color:var(--muted);font-size:0.85rem;list-style:none;display:flex;align-items:center;gap:0.4rem">
+        <span>▸</span> Archiv (${archivGesamt} Einträge)
+      </summary>
+      ${jahreInnen}
+    </details>`;
   }
 
   return html;
