@@ -1,8 +1,8 @@
 {
-  "version": "2.2.7",
+  "version": "2.2.8",
   "datum": "10.03.2026",
   "punkte": [
-    "Detail-View: importierte Teilnehmer (status bestaetigt) werden jetzt angezeigt",
-    "Detail-View: Entfernen-Button erscheint jetzt auch bei importierten Teilnehmern"
+    "Detail-View: importierte Teilnehmer werden jetzt angezeigt",
+    "Kamerad eintragen: LKW-Symbol erscheint jetzt korrekt (Führerschein wird mitgespeichert)"
   ]
 }
