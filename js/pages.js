@@ -1472,17 +1472,17 @@ function renderQualis(qualis, userId, u) {
       if (!bel  || bel  < j1) fehlt.push('Belastungsübung');
       agtWarnung = ok
         ? ' <span style="color:#22c55e;font-size:0.75rem">✅ aktiv</span>'
-        : \` <span style="color:#f59e0b;font-size:0.75rem" title="\${fehlt.join(', ')}">⚠️ nicht aktiv</span>\`;
+        : ` <span style="color:#f59e0b;font-size:0.75rem" title="${fehlt.join(', ')}">⚠️ nicht aktiv</span>`;
     }
-    html += \`<div class="list-item" style="border-bottom:1px solid var(--border)">
+    html += `<div class="list-item" style="border-bottom:1px solid var(--border)">
       <div class="list-item-body">
-        <div class="list-item-title">\${q.bezeichnung}\${agtWarnung}</div>
-        <div class="list-item-sub">\${q.datum?datum(q.datum):'Kein Datum'}
-          \${q.bemerkung?' · '+q.bemerkung:''}
+        <div class="list-item-title">${q.bezeichnung}${agtWarnung}</div>
+        <div class="list-item-sub">${q.datum?datum(q.datum):'Kein Datum'}
+          ${q.bemerkung?' · '+q.bemerkung:''}
         </div>
       </div>
-      <button class="btn btn-sm btn-danger" onclick="qualiLoeschen('\${userId}','\${q.id}')">🗑</button>
-    </div>\`;
+      <button class="btn btn-sm btn-danger" onclick="qualiLoeschen('${userId}','${q.id}')">🗑</button>
+    </div>`;
   }
   return html;
 }
@@ -1490,14 +1490,14 @@ function renderQualis(qualis, userId, u) {
 function renderAgtFelder(u, id) {
   const hatAgt = true; // immer zeigen wenn Wehrführer das Profil sieht
   if (!hatAgt) return '';
-  return \`<div class="card">
+  return `<div class="card">
     <div class="card-title">AGT-Nachweise</div>
     <div class="card-muted" style="font-size:0.82rem;margin-bottom:0.6rem">Für aktive AGT-Tauglichkeit erforderlich: G26 ≤ 3 Jahre · Wärme- und Belastungsübung ≤ 1 Jahr</div>
-    <div class="form-row"><label>G26-Untersuchung</label><input type="date" id="agt-unt" value="\${u.agt_untersuchung||''}"></div>
-    <div class="form-row"><label>Wärmeübung</label><input type="date" id="agt-waer" value="\${u.agt_waermeuebung||''}"></div>
-    <div class="form-row"><label>Belastungsübung</label><input type="date" id="agt-bel" value="\${u.agt_belastung||''}"></div>
-    <button class="btn btn-primary btn-sm" style="margin-top:0.3rem" onclick="agtSpeichern('\${id}')">💾 AGT-Daten speichern</button>
-  </div>\`;
+    <div class="form-row"><label>G26-Untersuchung</label><input type="date" id="agt-unt" value="${u.agt_untersuchung||''}"></div>
+    <div class="form-row"><label>Wärmeübung</label><input type="date" id="agt-waer" value="${u.agt_waermeuebung||''}"></div>
+    <div class="form-row"><label>Belastungsübung</label><input type="date" id="agt-bel" value="${u.agt_belastung||''}"></div>
+    <button class="btn btn-primary btn-sm" style="margin-top:0.3rem" onclick="agtSpeichern('${id}')">💾 AGT-Daten speichern</button>
+  </div>`;
 }
 
 registerPage('kamerad-detail', async (el, {id}) => {
