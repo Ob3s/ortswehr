@@ -1,8 +1,9 @@
 {
-  "version": "2.2.8",
+  "version": "2.2.9",
   "datum": "10.03.2026",
   "punkte": [
-    "Detail-View: importierte Teilnehmer werden jetzt angezeigt",
-    "Kamerad eintragen: LKW-Symbol erscheint jetzt korrekt (Führerschein wird mitgespeichert)"
+    "LKW-Symbol erscheint jetzt auch bei Diensten",
+    "Einsätze: AGT-Symbol 💨 bei Kameraden mit AGT-Qualifikation",
+    "Einsätze: Stärke-Zeile zeigt jetzt zusätzlich AGT-Anzahl"
   ]
 }
