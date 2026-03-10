@@ -1,9 +1,8 @@
 {
-  "version": "2.2.6",
+  "version": "2.2.7",
   "datum": "10.03.2026",
   "punkte": [
-    "Kamerad eintragen: erscheint jetzt sofort im Einsatz/Dienst",
-    "Kamerad eintragen: Zurück-Pfeil landet nicht mehr auf leerer Seite",
-    "Kamerad eintragen: Liste aktualisiert sich nach jedem Eintragen"
+    "Detail-View: importierte Teilnehmer (status bestaetigt) werden jetzt angezeigt",
+    "Detail-View: Entfernen-Button erscheint jetzt auch bei importierten Teilnehmern"
   ]
 }
