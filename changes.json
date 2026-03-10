@@ -1,8 +1,8 @@
 {
-  "version": "2.1.8",
+  "version": "2.1.9",
   "datum": "10.03.2026",
   "punkte": [
-    "Statistik-Tabelle: Zebra-Streifen in beiden Themes korrekt (Standard + Klassisch)",
-    "Statistik-Tabelle: Sticky-Spalte passt sich Theme-Hintergrund an"
+    "Statistik-Tabelle: Zebra-Streifen jetzt in beiden Themes sichtbar",
+    "Statistik-Tabelle: Gesamt-Zeile HTML-Fehler behoben"
   ]
 }
