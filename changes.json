@@ -1,9 +1,9 @@
 {
-  "version": "2.2.5",
+  "version": "2.2.6",
   "datum": "10.03.2026",
   "punkte": [
-    "Einsätze: Tippfehler 'Einsatzätze' behoben",
-    "Einsätze: Archiv-Dropdown mit Jahren als eigene Untermenüs",
-    "Dienste: Archiv-Dropdown mit Jahren als eigene Untermenüs"
+    "Kamerad eintragen: erscheint jetzt sofort im Einsatz/Dienst",
+    "Kamerad eintragen: Zurück-Pfeil landet nicht mehr auf leerer Seite",
+    "Kamerad eintragen: Liste aktualisiert sich nach jedem Eintragen"
   ]
 }
