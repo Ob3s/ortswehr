@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v2.3.1
+// js/pages.js – alle Seiten v2.3.2
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -1439,6 +1439,67 @@ window.ortswehrLoeschenInline = async (id) => {
   fw.toast('Gelöscht'); ladeOrtswehrenInline();
 };
 
+const QUALI_REIHENFOLGE = ['Truppmann','Sprechfunk','AGT','TH-Grund','Maschinist','Absturzsicherung','ABC-Grund','Truppführer','Gruppenführer','Zugführer','Wehrführer','Erste-Hilfe','Motorsäge A/B','Motorsäge C/D'];
+const QUALI_TRENNER_NACH = 'Wehrführer';
+
+function renderQualis(qualis, userId, u) {
+  if (!qualis.length) return '<p class="muted" style="font-size:0.85rem">Keine</p>';
+  const sorted = [...qualis].sort((a, b) => {
+    const ai = QUALI_REIHENFOLGE.indexOf(a.bezeichnung);
+    const bi = QUALI_REIHENFOLGE.indexOf(b.bezeichnung);
+    return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi);
+  });
+  let html = '';
+  let trennerGezeigt = false;
+  for (const q of sorted) {
+    if (!trennerGezeigt && QUALI_REIHENFOLGE.indexOf(q.bezeichnung) > QUALI_REIHENFOLGE.indexOf(QUALI_TRENNER_NACH)) {
+      html += '<hr style="margin:0.3rem 0;border-color:var(--border)">';
+      trennerGezeigt = true;
+    }
+    // AGT: Gültigkeit prüfen
+    let agtWarnung = '';
+    if (q.bezeichnung === 'AGT') {
+      const heute = new Date();
+      const j3 = new Date(); j3.setFullYear(heute.getFullYear()-3);
+      const j1 = new Date(); j1.setFullYear(heute.getFullYear()-1);
+      const unt  = u.agt_untersuchung ? new Date(u.agt_untersuchung) : null;
+      const waer = u.agt_waermeuebung ? new Date(u.agt_waermeuebung) : null;
+      const bel  = u.agt_belastung    ? new Date(u.agt_belastung)    : null;
+      const ok = unt && unt >= j3 && waer && waer >= j1 && bel && bel >= j1;
+      const fehlt = [];
+      if (!unt || unt < j3) fehlt.push('G26-Untersuchung');
+      if (!waer || waer < j1) fehlt.push('Wärmeübung');
+      if (!bel  || bel  < j1) fehlt.push('Belastungsübung');
+      agtWarnung = ok
+        ? ' <span style="color:#22c55e;font-size:0.75rem">✅ aktiv</span>'
+        : \` <span style="color:#f59e0b;font-size:0.75rem" title="\${fehlt.join(', ')}">⚠️ nicht aktiv</span>\`;
+    }
+    html += \`<div class="list-item" style="border-bottom:1px solid var(--border)">
+      <div class="list-item-body">
+        <div class="list-item-title">\${q.bezeichnung}\${agtWarnung}</div>
+        <div class="list-item-sub">\${q.datum?datum(q.datum):'Kein Datum'}
+          \${q.bemerkung?' · '+q.bemerkung:''}
+        </div>
+      </div>
+      <button class="btn btn-sm btn-danger" onclick="qualiLoeschen('\${userId}','\${q.id}')">🗑</button>
+    </div>\`;
+  }
+  return html;
+}
+
+function renderAgtFelder(u, id) {
+  const hatAgt = true; // immer zeigen wenn Wehrführer das Profil sieht
+  if (!hatAgt) return '';
+  return \`<div class="card">
+    <div class="card-title">AGT-Nachweise</div>
+    <div class="card-muted" style="font-size:0.82rem;margin-bottom:0.6rem">Für aktive AGT-Tauglichkeit erforderlich: G26 ≤ 3 Jahre · Wärme- und Belastungsübung ≤ 1 Jahr</div>
+    <div class="form-row"><label>G26-Untersuchung</label><input type="date" id="agt-unt" value="\${u.agt_untersuchung||''}"></div>
+    <div class="form-row"><label>Wärmeübung</label><input type="date" id="agt-waer" value="\${u.agt_waermeuebung||''}"></div>
+    <div class="form-row"><label>Belastungsübung</label><input type="date" id="agt-bel" value="\${u.agt_belastung||''}"></div>
+    <button class="btn btn-primary btn-sm" style="margin-top:0.3rem" onclick="agtSpeichern('\${id}')">💾 AGT-Daten speichern</button>
+  </div>\`;
+}
+
 registerPage('kamerad-detail', async (el, {id}) => {
   const snap = await fw.getDoc('users/'+id);
   if (!snap.exists()) { el.innerHTML='<div class="empty">Nicht gefunden</div>'; return; }
@@ -1478,30 +1539,22 @@ registerPage('kamerad-detail', async (el, {id}) => {
     </div>
     <div class="card">
       <div class="card-title">Lehrgänge</div>
-      ${qualis.length===0?'<p class="muted" style="font-size:0.85rem">Keine</p>':
-        qualis.map(q=>`
-          <div class="list-item">
-            <div class="list-item-body">
-              <div class="list-item-title">${q.bezeichnung}</div>
-              <div class="list-item-sub">${q.datum?datum(q.datum):''}${q.bemerkung?' · '+q.bemerkung:''}</div>
-            </div>
-            <button class="btn btn-sm btn-danger" onclick="qualiLoeschen('${id}','${q.id}')">🗑</button>
-          </div>`).join('')}
-      <hr>
-      <div style="display:flex;gap:0.5rem;flex-wrap:wrap;margin-top:0.6rem">
-        <div style="display:flex;flex-direction:column;gap:0.5rem;width:100%;margin-top:0.3rem">
-          <select id="q-bez" style="width:100%">
-            <option value="">– Lehrgang wählen –</option>
-            ${['Truppmann','Sprechfunk','AGT','TH-Grund','Maschinist','Absturzsicherung','ABC-Grund','Truppführer','Gruppenführer','Zugführer','Wehrführer','Erste-Hilfe','Motorsäge A/B','Motorsäge C/D'].map(l=>`<option value="${l}">${l}</option>`).join('')}
-          </select>
-          <input id="q-dat" type="date" placeholder="Datum bestanden" style="width:100%">
-          <div style="display:flex;gap:0.5rem">
-            <input id="q-bem" placeholder="Bemerkung (optional)" style="flex:1">
-            <button class="btn btn-primary btn-sm" onclick="qualiHinzufuegen('${id}')">+ Hinzufügen</button>
-          </div>
+      ${renderQualis(qualis, id, u)}
+      <div style="display:flex;flex-direction:column;gap:0.5rem;margin-top:0.8rem">
+        <select id="q-bez" style="width:100%">
+          <option value="">– Lehrgang wählen –</option>
+          ${['Truppmann','Sprechfunk','AGT','TH-Grund','Maschinist','Absturzsicherung','ABC-Grund','Truppführer','Gruppenführer','Zugführer','Wehrführer'].map(l=>`<option value="${l}">${l}</option>`).join('')}
+          <option disabled>──────────</option>
+          ${['Erste-Hilfe','Motorsäge A/B','Motorsäge C/D'].map(l=>`<option value="${l}">${l}</option>`).join('')}
+        </select>
+        <input id="q-dat" type="date" placeholder="Datum bestanden" style="width:100%">
+        <div style="display:flex;gap:0.5rem">
+          <input id="q-bem" placeholder="Bemerkung (optional)" style="flex:1">
+          <button class="btn btn-primary btn-sm" onclick="qualiHinzufuegen('${id}')">+ Hinzufügen</button>
         </div>
       </div>
     </div>
+    ${renderAgtFelder(u, id)}
     <div class="card" style="display:flex;flex-direction:column;gap:0.5rem">
       ${u.aktiv === false
         ? `<button class="btn btn-primary btn-full" onclick="kameradAktiv('${id}')">✅ Kamerad aktiv setzen</button>`
@@ -1558,6 +1611,15 @@ window.qualiHinzufuegen = async (userId) => {
 window.qualiLoeschen = async (userId, qualiId) => {
   await fw.deleteDoc('users/'+userId+'/qualifikationen/'+qualiId);
   fw.toast('Gelöscht'); navigate('kamerad-detail',{id:userId});
+};
+
+window.agtSpeichern = async (userId) => {
+  await fw.updateDoc('users/'+userId, {
+    agt_untersuchung: document.getElementById('agt-unt').value || null,
+    agt_waermeuebung: document.getElementById('agt-waer').value || null,
+    agt_belastung:    document.getElementById('agt-bel').value || null,
+  });
+  fw.toast('AGT-Daten gespeichert ✅'); navigate('kamerad-detail',{id:userId});
 };
 
 registerPage('kamerad-form', async (el, {id}) => {
