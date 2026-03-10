@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v2.3.2
+// js/pages.js – alle Seiten v2.3.3
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -1444,21 +1444,24 @@ const QUALI_TRENNER_NACH = 'Wehrführer';
 
 function renderQualis(qualis, userId, u) {
   if (!qualis.length) return '<p class="muted" style="font-size:0.85rem">Keine</p>';
-  const sorted = [...qualis].sort((a, b) => {
-    const ai = QUALI_REIHENFOLGE.indexOf(a.bezeichnung);
-    const bi = QUALI_REIHENFOLGE.indexOf(b.bezeichnung);
-    return (ai < 0 ? 99 : ai) - (bi < 0 ? 99 : bi);
-  });
+  // Bezeichnung normalisieren (trim + Groß-/Kleinschreibung)
+  const qualiIdx = (bez) => {
+    const b = (bez||'').trim();
+    const i = QUALI_REIHENFOLGE.findIndex(r => r.toLowerCase() === b.toLowerCase());
+    return i < 0 ? 99 : i;
+  };
+  const sorted = [...qualis].sort((a, b) => qualiIdx(a.bezeichnung) - qualiIdx(b.bezeichnung));
   let html = '';
   let trennerGezeigt = false;
+  const trennerIdx = QUALI_REIHENFOLGE.indexOf(QUALI_TRENNER_NACH);
   for (const q of sorted) {
-    if (!trennerGezeigt && QUALI_REIHENFOLGE.indexOf(q.bezeichnung) > QUALI_REIHENFOLGE.indexOf(QUALI_TRENNER_NACH)) {
+    if (!trennerGezeigt && qualiIdx(q.bezeichnung) > trennerIdx) {
       html += '<hr style="margin:0.3rem 0;border-color:var(--border)">';
       trennerGezeigt = true;
     }
     // AGT: Gültigkeit prüfen
     let agtWarnung = '';
-    if (q.bezeichnung === 'AGT') {
+    if ((q.bezeichnung||'').trim().toLowerCase() === 'agt') {
       const heute = new Date();
       const j3 = new Date(); j3.setFullYear(heute.getFullYear()-3);
       const j1 = new Date(); j1.setFullYear(heute.getFullYear()-1);
