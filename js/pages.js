@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v2.3.8
+// js/pages.js – alle Seiten v2.3.9
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -116,6 +116,7 @@ function initOrtAutocomplete(inputId, onSelect) {
       try {
         const r = await fetch(AC_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({input: q}) });
         const data = await r.json();
+        console.log('AC:', data);
         zeigeBox(data.suggestions || []);
       } catch(e) { console.warn('Autocomplete Fehler:', e); }
     }, 200);
@@ -761,12 +762,11 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
         const kommenNicht = alle.filter(a => a.status === 'kommt_nicht');
         const meineR      = alle.find(a => a.userId === fw.user.uid);
 
-        const normRolle = r => (r||'').trim().toLowerCase().normalize('NFC');
-        const ZUGF = normRolle('zugführer');
-        const GRUF = normRolle('gruppenführer');
-        const zugf  = kommen.filter(a => normRolle(a.rolle) === ZUGF).length;
-        const gruf  = kommen.filter(a => normRolle(a.rolle) === GRUF).length;
-        const kamf  = kommen.filter(a => normRolle(a.rolle) !== ZUGF && normRolle(a.rolle) !== GRUF).length;
+        const normRolle = r => (r||'').trim().toLowerCase()
+          .replace(/ü/g,'ue').replace(/ö/g,'oe').replace(/ä/g,'ae').replace(/ß/g,'ss');
+        const zugf  = kommen.filter(a => normRolle(a.rolle) === 'zugfuehrer').length;
+        const gruf  = kommen.filter(a => normRolle(a.rolle) === 'gruppenfuehrer').length;
+        const kamf  = kommen.filter(a => normRolle(a.rolle) !== 'zugfuehrer' && normRolle(a.rolle) !== 'gruppenfuehrer').length;
         const agtZ  = kommen.filter(a => agtMap.get(a.userId)).length;
         const zaehler = document.getElementById('einsatz-zaehler');
         if (zaehler) zaehler.textContent = isEinsatz
@@ -1760,16 +1760,16 @@ registerPage('kamerad-form', async (el, {id}) => {
       <div class="form-row"><label>Rolle</label>
         <select id="k-rolle" onchange="rolleGeaendert(this.value)">
           <option value="kamerad" ${u?.rolle==='kamerad'?'selected':''}>Kamerad</option>
-          <option value="gruppenführer" ${u?.rolle==='gruppenführer'?'selected':''}>Gruppenführer</option>
-          <option value="zugführer" ${u?.rolle==='zugführer'?'selected':''}>Zugführer</option>
+          <option value="gruppenfuehrer" ${u?.rolle==='gruppenfuehrer'?'selected':''}>Gruppenführer</option>
+          <option value="zugfuehrer" ${u?.rolle==='zugfuehrer'?'selected':''}>Zugführer</option>
           <option value="wehrfuehrer" ${u?.rolle==='wehrfuehrer'?'selected':''}>Wehrführer</option>
         </select>
         <div id="staerke-rolle-row" style="display:${u?.rolle==='wehrfuehrer'?'block':'none'};margin-top:0.5rem">
           <label style="font-size:0.82rem;color:var(--muted)">Zählt in der Einsatzstärke als</label>
           <select id="k-staerke-rolle">
             <option value="kamerad" ${(u?.staerkeRolle||'kamerad')==='kamerad'?'selected':''}>Kamerad</option>
-            <option value="gruppenführer" ${u?.staerkeRolle==='gruppenführer'?'selected':''}>Gruppenführer</option>
-            <option value="zugführer" ${u?.staerkeRolle==='zugführer'?'selected':''}>Zugführer</option>
+            <option value="gruppenfuehrer" ${u?.staerkeRolle==='gruppenfuehrer'?'selected':''}>Gruppenführer</option>
+            <option value="zugfuehrer" ${u?.staerkeRolle==='zugfuehrer'?'selected':''}>Zugführer</option>
           </select>
         </div>
       </div>
