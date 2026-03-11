@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v2.3.7
+// js/pages.js – alle Seiten v2.3.8
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -644,13 +644,13 @@ window.einsatzReagieren = async (uebungId, status) => {
   if (snap.docs.length > 0) {
     await fw.updateDoc('anwesenheiten/'+snap.docs[0].id, {
       status, typ, datum, dauer_h,
-      rolle: fw.profil.stärkeRolle || fw.profil.rolle || 'kamerad',
+      rolle: fw.profil.staerkeRolle || fw.profil.rolle || 'kamerad',
       fuehrerschein: fw.profil.fuehrerschein || '', aktualisiertAm: new Date()
     });
   } else {
     await fw.addDoc('anwesenheiten', {
       uebungId, userId: fw.user.uid, userName: name, typ, datum, dauer_h,
-      rolle: fw.profil.stärkeRolle || fw.profil.rolle || 'kamerad',
+      rolle: fw.profil.staerkeRolle || fw.profil.rolle || 'kamerad',
       fuehrerschein: fw.profil.fuehrerschein || '',
       status, gemeldetAm: new Date(),
     });
@@ -753,7 +753,7 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
         const alle = snap.docs.map(d => {
           const a = {id:d.id,...d.data()};
           const profil = usersMap.get(a.userId) || {};
-          a.rolle         = profil.stärkeRolle || profil.rolle || a.rolle || 'kamerad';
+          a.rolle         = profil.staerkeRolle || profil.rolle || a.rolle || 'kamerad';
           a.fuehrerschein = profil.fuehrerschein || a.fuehrerschein || '';
           return a;
         });
@@ -761,10 +761,12 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
         const kommenNicht = alle.filter(a => a.status === 'kommt_nicht');
         const meineR      = alle.find(a => a.userId === fw.user.uid);
 
-        const normRolle = r => (r||'').toLowerCase().normalize('NFC');
-        const zugf  = kommen.filter(a => normRolle(a.rolle) === 'zugführer').length;
-        const gruf  = kommen.filter(a => normRolle(a.rolle) === 'gruppenführer').length;
-        const kamf  = kommen.filter(a => !['zugführer','gruppenführer'].includes(normRolle(a.rolle))).length;
+        const normRolle = r => (r||'').trim().toLowerCase().normalize('NFC');
+        const ZUGF = normRolle('zugführer');
+        const GRUF = normRolle('gruppenführer');
+        const zugf  = kommen.filter(a => normRolle(a.rolle) === ZUGF).length;
+        const gruf  = kommen.filter(a => normRolle(a.rolle) === GRUF).length;
+        const kamf  = kommen.filter(a => normRolle(a.rolle) !== ZUGF && normRolle(a.rolle) !== GRUF).length;
         const agtZ  = kommen.filter(a => agtMap.get(a.userId)).length;
         const zaehler = document.getElementById('einsatz-zaehler');
         if (zaehler) zaehler.textContent = isEinsatz
@@ -854,7 +856,7 @@ window.direktEintragen = async (uebungId, userId, name, dauer_h, typ, datumStr) 
   await fw.addDoc('anwesenheiten', {
     uebungId, userId, userName: name, status:'kommt',
     dauer_h, typ, datum: new Date(datumStr), bestaetigtAm: new Date(),
-    rolle: profil.stärkeRolle || profil.rolle || 'kamerad',
+    rolle: profil.staerkeRolle || profil.rolle || 'kamerad',
     fuehrerschein: profil.fuehrerschein || '',
   });
   fw.toast(name+' eingetragen ✅');
@@ -1765,9 +1767,9 @@ registerPage('kamerad-form', async (el, {id}) => {
         <div id="staerke-rolle-row" style="display:${u?.rolle==='wehrfuehrer'?'block':'none'};margin-top:0.5rem">
           <label style="font-size:0.82rem;color:var(--muted)">Zählt in der Einsatzstärke als</label>
           <select id="k-staerke-rolle">
-            <option value="kamerad" ${(u?.stärkeRolle||'kamerad')==='kamerad'?'selected':''}>Kamerad</option>
-            <option value="gruppenführer" ${u?.stärkeRolle==='gruppenführer'?'selected':''}>Gruppenführer</option>
-            <option value="zugführer" ${u?.stärkeRolle==='zugführer'?'selected':''}>Zugführer</option>
+            <option value="kamerad" ${(u?.staerkeRolle||'kamerad')==='kamerad'?'selected':''}>Kamerad</option>
+            <option value="gruppenführer" ${u?.staerkeRolle==='gruppenführer'?'selected':''}>Gruppenführer</option>
+            <option value="zugführer" ${u?.staerkeRolle==='zugführer'?'selected':''}>Zugführer</option>
           </select>
         </div>
       </div>
@@ -1786,7 +1788,7 @@ window.kameradSpeichern = async (id) => {
     eintrittsdatum: document.getElementById('k-ed').value || null,
     ortswehrId: document.getElementById('k-ow').value || null,
     rolle: document.getElementById('k-rolle').value,
-    stärkeRolle: document.getElementById('k-rolle').value === 'wehrfuehrer'
+    staerkeRolle: document.getElementById('k-rolle').value === 'wehrfuehrer'
       ? (document.getElementById('k-staerke-rolle')?.value || 'kamerad')
       : document.getElementById('k-rolle').value,
     fuehrerschein: document.getElementById('k-fs').value,
