@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v2.3.5
+// js/pages.js – alle Seiten v2.3.6
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -78,65 +78,75 @@ function getStats(anwesenheiten, dienstMap, einsatzMap) {
 
 
 // ── Google Places Autocomplete ───────────────────────────
-function initOrtAutocomplete(inputId, onSelect) {
-  const input = document.getElementById(inputId);
-  if (!input) return;
-  let box = null;
-  let aktiv = -1;
+let _gmapsReady = false;
+function _ladeGMaps(cb) {
+  if (window.google?.maps?.places) { cb(); return; }
+  if (_gmapsReady === 'loading') { window._gmapsCb = cb; return; }
+  _gmapsReady = 'loading';
+  window._gmapsCb = cb;
+  const s = document.createElement('script');
+  s.src = 'https://maps.googleapis.com/maps/api/js?key=AIzaSyDvDKwYe4nFvth_ZHoZPE7JJFxEkUC3MUY&libraries=places&language=de&callback=_gmapsLoaded';
+  s.async = true;
+  document.head.appendChild(s);
+}
+window._gmapsLoaded = () => { _gmapsReady = true; if (window._gmapsCb) { window._gmapsCb(); window._gmapsCb = null; } };
 
-  input.addEventListener('input', async () => {
-    const q = input.value.trim();
-    if (q.length < 3) { if (box) box.remove(); box = null; return; }
-    try {
-      const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(q)}&language=de&components=country:de&key=AIzaSyDvDKwYe4nFvth_ZHoZPE7JJFxEkUC3MUY`;
-      // CORS: über fetch mit cors-proxy nicht möglich direkt → Places API (new) via fetch
-      const res = await fetch(`https://places.googleapis.com/v1/places:autocomplete`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Goog-Api-Key': 'AIzaSyDvDKwYe4nFvth_ZHoZPE7JJFxEkUC3MUY',
-        },
-        body: JSON.stringify({
-          input: q,
-          languageCode: 'de',
-          includedRegionCodes: ['de'],
-        }),
-      });
-      const data = await res.json();
-      const suggestions = data.suggestions || [];
+function initOrtAutocomplete(inputId, onSelect) {
+  _ladeGMaps(() => {
+    const input = document.getElementById(inputId);
+    if (!input) return;
+    const svc = new google.maps.places.AutocompleteService();
+    let box = null, aktiv = -1, timer = null;
+
+    const zeigeBox = (items) => {
       if (box) box.remove();
-      if (!suggestions.length) { box = null; return; }
+      if (!items.length) { box = null; return; }
       box = document.createElement('div');
-      box.style.cssText = `position:absolute;z-index:9999;background:var(--panel2);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.4);width:${input.offsetWidth}px;margin-top:2px;overflow:hidden`;
-      suggestions.forEach((s, i) => {
-        const text = s.placePrediction?.text?.text || s.placePrediction?.structuredFormat?.mainText?.text || '';
-        const sub  = s.placePrediction?.structuredFormat?.secondaryText?.text || '';
+      box.style.cssText = `position:absolute;z-index:9999;background:var(--panel2);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.5);width:${input.offsetWidth}px;margin-top:2px;overflow:hidden;left:0;top:100%`;
+      items.forEach((s) => {
+        const main = s.structured_formatting?.main_text || s.description;
+        const sub  = s.structured_formatting?.secondary_text || '';
         const div = document.createElement('div');
-        div.style.cssText = 'padding:0.6rem 0.8rem;cursor:pointer;font-size:0.88rem;border-bottom:1px solid var(--border)';
-        div.innerHTML = `<div>${text}</div>${sub ? `<div style="font-size:0.75rem;color:var(--muted)">${sub}</div>` : ''}`;
+        div.style.cssText = 'padding:0.65rem 0.9rem;cursor:pointer;font-size:0.88rem;border-bottom:1px solid var(--border);transition:background 0.1s';
+        div.innerHTML = `<div style="color:var(--text)">${main}</div>${sub ? `<div style="font-size:0.72rem;color:var(--muted);margin-top:0.1rem">${sub}</div>` : ''}`;
         div.addEventListener('mousedown', e => {
           e.preventDefault();
-          input.value = text + (sub ? ', ' + sub : '');
-          box.remove(); box = null;
+          input.value = s.description;
+          box.remove(); box = null; aktiv = -1;
           if (onSelect) onSelect(input.value);
         });
-        div.addEventListener('mouseover', () => div.style.background = 'var(--panel)');
+        div.addEventListener('mouseover', () => div.style.background = 'rgba(255,255,255,0.06)');
         div.addEventListener('mouseout',  () => div.style.background = '');
         box.appendChild(div);
       });
       input.parentNode.style.position = 'relative';
       input.parentNode.appendChild(box);
-    } catch(e) { console.warn('Autocomplete Fehler:', e); }
-  });
+    };
 
-  input.addEventListener('blur', () => setTimeout(() => { if (box) { box.remove(); box = null; } }, 200));
-  input.addEventListener('keydown', e => {
-    if (!box) return;
-    const items = box.querySelectorAll('div');
-    if (e.key === 'ArrowDown') { aktiv = Math.min(aktiv+1, items.length-1); items.forEach((d,i) => d.style.background = i===aktiv ? 'var(--panel)' : ''); e.preventDefault(); }
-    if (e.key === 'ArrowUp')   { aktiv = Math.max(aktiv-1, 0); items.forEach((d,i) => d.style.background = i===aktiv ? 'var(--panel)' : ''); e.preventDefault(); }
-    if (e.key === 'Enter' && aktiv >= 0) { items[aktiv].dispatchEvent(new MouseEvent('mousedown')); e.preventDefault(); }
-    if (e.key === 'Escape')    { box.remove(); box = null; }
+    input.addEventListener('input', () => {
+      clearTimeout(timer);
+      const q = input.value.trim();
+      if (q.length < 2) { if (box) box.remove(); box = null; return; }
+      timer = setTimeout(() => {
+        svc.getPlacePredictions(
+          { input: q, language: 'de', componentRestrictions: { country: 'de' } },
+          (results, status) => {
+            if (status === google.maps.places.PlacesServiceStatus.OK && results) zeigeBox(results);
+            else { if (box) box.remove(); box = null; }
+          }
+        );
+      }, 200);
+    });
+
+    input.addEventListener('blur',    () => setTimeout(() => { if (box) { box.remove(); box = null; } }, 200));
+    input.addEventListener('keydown', e => {
+      if (!box) return;
+      const items = box.querySelectorAll('div');
+      if (e.key === 'ArrowDown') { aktiv = Math.min(aktiv+1, items.length-1); items.forEach((d,i) => d.style.background = i===aktiv ? 'rgba(255,255,255,0.06)' : ''); e.preventDefault(); }
+      if (e.key === 'ArrowUp')   { aktiv = Math.max(aktiv-1, 0); items.forEach((d,i) => d.style.background = i===aktiv ? 'rgba(255,255,255,0.06)' : ''); e.preventDefault(); }
+      if (e.key === 'Enter' && aktiv >= 0) { items[aktiv].dispatchEvent(new MouseEvent('mousedown')); e.preventDefault(); }
+      if (e.key === 'Escape')    { box.remove(); box = null; }
+    });
   });
 }
 
@@ -695,7 +705,7 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
       <div style="margin-top:0.6rem;font-weight:600;font-size:1.1rem">${u.titel}</div>
       <div style="margin-top:0.3rem;color:var(--muted);font-size:0.85rem">${datum(u.datum)}${zeitZeile(u) ? ' · '+zeitZeile(u) : ''}</div>
       ${u.beschreibung ? `<p class="muted" style="margin-top:0.4rem;font-size:0.85rem">${u.beschreibung}</p>` : ''}
-      ${u.ort ? `<div style="margin-top:0.5rem;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
+      ${isEinsatz && u.ort ? `<div style="margin-top:0.5rem;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
         <span style="font-size:0.85rem">📍 ${u.ort}</span>
         <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(u.ort)}" target="_blank"
           style="font-size:0.75rem;padding:0.2rem 0.6rem;background:var(--panel2);border-radius:20px;color:var(--blue);text-decoration:none;border:1px solid var(--border)">
@@ -976,6 +986,27 @@ window.uebungSpeichern = async (id, forcTyp) => {
   } catch(e) { fw.toast(e.message, true); }
 };
 
+// Profil-Ansicht: sortierte Lehrgänge ohne Bearbeiten-Button
+function renderQualisProfil(qualis, me) {
+  if (!qualis.length) return '<p class="muted" style="font-size:0.85rem">Keine eingetragen</p>';
+  const QUALI_REIHENFOLGE = ['Truppmann','Sprechfunk','AGT','TH-Grund','Maschinist','Absturzsicherung','ABC-Grund','Truppführer','Gruppenführer','Zugführer','Wehrführer','Erste-Hilfe','Motorsäge A/B','Motorsäge C/D'];
+  const qualiIdx = (bez) => { const i = QUALI_REIHENFOLGE.findIndex(r => r.toLowerCase() === (bez||'').trim().toLowerCase()); return i < 0 ? 99 : i; };
+  const trennerIdx = QUALI_REIHENFOLGE.indexOf('Wehrführer');
+  const sorted = [...qualis].sort((a,b) => qualiIdx(a.bezeichnung) - qualiIdx(b.bezeichnung));
+  let html = '', trennerGezeigt = false;
+  for (const q of sorted) {
+    const istErsterNachTrenner = !trennerGezeigt && qualiIdx(q.bezeichnung) > trennerIdx;
+    if (istErsterNachTrenner) trennerGezeigt = true;
+    html += `<div class="list-item" style="border-bottom:1px solid var(--border);${istErsterNachTrenner?'margin-top:0.6rem':''}">
+      <div class="list-item-body">
+        <div class="list-item-title">${q.bezeichnung}</div>
+        <div class="list-item-sub">${q.datum?datum(q.datum):'Kein Datum'}${q.bemerkung?' · '+q.bemerkung:''}</div>
+      </div>
+    </div>`;
+  }
+  return html;
+}
+
 window.ortSpeichern = async (einsatzId) => {
   const ort = document.getElementById('ort-inline')?.value?.trim();
   if (!ort) { fw.toast('Bitte Adresse eingeben', true); return; }
@@ -1120,14 +1151,7 @@ registerPage('profil', async (el) => {
       </div>
       <hr>
       <div class="card-title" style="margin-bottom:0.5rem">Lehrgänge</div>
-      ${qualis.length===0 ? '<p class="muted" style="font-size:0.85rem">Keine eingetragen</p>' :
-        qualis.map(q => `
-          <div class="list-item">
-            <div class="list-item-body">
-              <div class="list-item-title">${q.bezeichnung}</div>
-              <div class="list-item-sub">${q.datum?datum(q.datum):''}${q.bemerkung?' · '+q.bemerkung:''}</div>
-            </div>
-          </div>`).join('')}
+      ${renderQualisProfil(qualis, me)}
     </div>
 
     <div class="section-header">Passwort ändern</div>
@@ -1555,10 +1579,8 @@ function renderQualis(qualis, userId, u) {
   let trennerGezeigt = false;
   const trennerIdx = QUALI_REIHENFOLGE.indexOf(QUALI_TRENNER_NACH);
   for (const q of sorted) {
-    if (!trennerGezeigt && qualiIdx(q.bezeichnung) > trennerIdx) {
-      html += '<hr style="margin:0.3rem 0;border-color:var(--border)">';
-      trennerGezeigt = true;
-    }
+    const istErsterNachTrenner = !trennerGezeigt && qualiIdx(q.bezeichnung) > trennerIdx;
+    if (istErsterNachTrenner) trennerGezeigt = true;
     // AGT: Gültigkeit prüfen
     let agtWarnung = '';
     if ((q.bezeichnung||'').trim().toLowerCase() === 'agt') {
@@ -1577,7 +1599,7 @@ function renderQualis(qualis, userId, u) {
         ? ' <span style="color:#22c55e;font-size:0.75rem">✅ aktiv</span>'
         : ` <span style="color:#f59e0b;font-size:0.75rem" title="${fehlt.join(', ')}">⚠️ nicht aktiv</span>`;
     }
-    html += `<div class="list-item" style="border-bottom:1px solid var(--border)">
+    html += `<div class="list-item" style="border-bottom:1px solid var(--border);${istErsterNachTrenner?'margin-top:0.6rem':''}">
       <div class="list-item-body">
         <div class="list-item-title">${q.bezeichnung}${agtWarnung}</div>
         <div class="list-item-sub">${q.datum?datum(q.datum):'Kein Datum'}
