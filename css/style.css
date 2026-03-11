@@ -426,3 +426,34 @@ body[data-theme="klassisch"] .form-row label {
 body[data-theme="klassisch"] .stat-tr-odd  { background: rgba(0,0,0,0.08); }
 body[data-theme="klassisch"] .stat-td-sticky      { background: #d0d4d8; }
 body[data-theme="klassisch"] .stat-td-sticky-odd  { background: #c4c8cc; }
+
+/* ── Autocomplete Dropdown ── */
+.ac-wrapper { position: relative; }
+.ac-dropdown {
+  position: absolute;
+  z-index: 9999;
+  left: 0; right: 0;
+  top: calc(100% + 4px);
+  background: var(--panel);
+  border: 1.5px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0,0,0,0.18);
+  overflow: hidden;
+}
+.ac-row {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.55rem 0.8rem;
+  cursor: pointer;
+  border-bottom: 1px solid var(--border);
+  transition: background 0.1s;
+}
+.ac-row:last-child { border-bottom: none; }
+.ac-row:hover, .ac-row.aktiv { background: rgba(0,0,0,0.06); }
+.ac-row-icon { font-size: 0.85rem; flex-shrink: 0; color: var(--muted); }
+.ac-row-main { font-size: 0.88rem; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ac-row-sub  { font-size: 0.74rem; color: var(--muted); margin-top: 0.05rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+body[data-theme="klassisch"] .ac-dropdown { box-shadow: 0 8px 28px rgba(0,0,0,0.12); }
+body[data-theme="klassisch"] .ac-row:hover, body[data-theme="klassisch"] .ac-row.aktiv { background: rgba(0,0,0,0.07); }
