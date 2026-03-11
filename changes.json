@@ -1,14 +1,8 @@
 {
-  "version": "2.3.7",
+  "version": "2.3.8",
   "datum": "11.03.2026",
   "punkte": [
-    "Einsatzort: Autocomplete über Cloud Function (kein CORS mehr)",
-    "AGT-Nachweise: Karte wird nur angezeigt wenn AGT-Lehrgang vorhanden",
-    "Profil: Bestätigungs-Benachrichtigung entfernt (wurde nie gesendet)",
-    "Lehrgänge: Kein extra Abstand zwischen Wehrführer und Erste-Hilfe",
-    "Stärke: Gruppenführer-Zählung korrigiert (Umlaut-Normalisierung)",
-    "Dienste: Adressfeld und Navigation entfernt",
-    "Eigenes Profil: Lehrgänge werden korrekt sortiert",
-    "Kameraden: Doppelte Linie zwischen Wehrführer und Erste-Hilfe behoben"
+    "Stärke: Feldname staerkeRolle ohne Umlaut (Firestore-Kompatibilität)",
+    "Stärke: Rollen-Normalisierung robuster gegen Unicode-Varianten"
   ]
 }
