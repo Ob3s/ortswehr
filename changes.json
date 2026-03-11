@@ -1,8 +1,8 @@
 {
-  "version": "2.3.9",
+  "version": "2.4.1",
   "datum": "11.03.2026",
   "punkte": [
-    "Stärke: Rollen-Werte auf ASCII (gruppenfuehrer/zugfuehrer) – behebt Zählfehler",
-    "Stärke: normRolle konvertiert Umlaute für zuverlässigen Vergleich"
+    "Einsatzort Autocomplete: Cloud Function nutzt built-in fetch (Node 22)",
+    "Einsatzort Autocomplete: Initialisierung nach DOM-Render zuverlässiger"
   ]
 }
