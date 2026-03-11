@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v2.4.1
+// js/pages.js – alle Seiten 2.4.2
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -82,54 +82,89 @@ const AC_URL = 'https://europe-west3-ffw-oegeln-791ca.cloudfunctions.net/ortAuto
 
 function initOrtAutocomplete(inputId, onSelect) {
   const input = document.getElementById(inputId);
-  if (!input) return;
+  if (!input || input._acInit) return;
+  input._acInit = true;
   let box = null, aktiv = -1, timer = null;
 
+  const schliesseBox = () => { if (box) { box.remove(); box = null; aktiv = -1; } };
+
   const zeigeBox = (items) => {
-    if (box) box.remove();
-    if (!items.length) { box = null; return; }
+    schliesseBox();
+    if (!items.length) return;
+
+    // Wrapper: position:relative nötig für absolute Box
+    const wrapper = input.closest('.ac-wrapper') || input.parentNode;
+    if (!wrapper.style.position) wrapper.style.position = 'relative';
+
     box = document.createElement('div');
-    box.style.cssText = `position:absolute;z-index:9999;background:var(--panel2);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.5);width:${input.offsetWidth}px;margin-top:2px;overflow:hidden;left:0;top:100%`;
-    items.forEach((s) => {
-      const div = document.createElement('div');
-      div.style.cssText = 'padding:0.65rem 0.9rem;cursor:pointer;font-size:0.88rem;border-bottom:1px solid var(--border);transition:background 0.1s';
-      div.innerHTML = `<div style="color:var(--text)">${s.main}</div>${s.secondary ? `<div style="font-size:0.72rem;color:var(--muted);margin-top:0.1rem">${s.secondary}</div>` : ''}`;
-      div.addEventListener('mousedown', e => {
+    box.className = 'ac-dropdown';
+    box.style.cssText = [
+      'position:absolute',
+      'z-index:9999',
+      'left:0',
+      'right:0',
+      'top:calc(100% + 4px)',
+      'background:var(--panel2,#1e2530)',
+      'border:1px solid var(--border,#2e3a4e)',
+      'border-radius:10px',
+      'box-shadow:0 8px 32px rgba(0,0,0,0.6)',
+      'overflow:hidden',
+    ].join(';');
+
+    items.forEach((s, i) => {
+      const row = document.createElement('div');
+      row.style.cssText = [
+        'display:flex',
+        'align-items:center',
+        'gap:0.6rem',
+        'padding:0.55rem 0.85rem',
+        'cursor:pointer',
+        'transition:background 0.12s',
+        i < items.length-1 ? 'border-bottom:1px solid var(--border,#2e3a4e)' : '',
+      ].join(';');
+      row.innerHTML =
+        `<span style="font-size:0.9rem;flex-shrink:0;color:var(--muted,#8899aa)">📍</span>` +
+        `<span style="min-width:0">` +
+          `<div style="font-size:0.88rem;color:var(--text,#e8edf3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.main}</div>` +
+          (s.secondary ? `<div style="font-size:0.74rem;color:var(--muted,#8899aa);margin-top:0.05rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.secondary}</div>` : '') +
+        `</span>`;
+      const markiere = (on) => row.style.background = on ? 'rgba(255,255,255,0.07)' : '';
+      row.addEventListener('mouseover', () => { aktiv = i; box.querySelectorAll('div[data-ac]').forEach((r,j) => r.style.background = j===i?'rgba(255,255,255,0.07)':''); });
+      row.addEventListener('mouseout',  () => markiere(false));
+      row.setAttribute('data-ac', i);
+      row.addEventListener('mousedown', e => {
         e.preventDefault();
         input.value = s.description;
-        box.remove(); box = null; aktiv = -1;
+        schliesseBox();
         if (onSelect) onSelect(input.value);
       });
-      div.addEventListener('mouseover', () => div.style.background = 'rgba(255,255,255,0.06)');
-      div.addEventListener('mouseout',  () => div.style.background = '');
-      box.appendChild(div);
+      box.appendChild(row);
     });
-    input.parentNode.style.position = 'relative';
-    input.parentNode.appendChild(box);
+
+    wrapper.appendChild(box);
   };
 
   input.addEventListener('input', () => {
     clearTimeout(timer);
     const q = input.value.trim();
-    if (q.length < 2) { if (box) box.remove(); box = null; return; }
+    if (q.length < 2) { schliesseBox(); return; }
     timer = setTimeout(async () => {
       try {
         const r = await fetch(AC_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({input: q}) });
         const data = await r.json();
-        console.log('AC:', data);
         zeigeBox(data.suggestions || []);
       } catch(e) { console.warn('Autocomplete Fehler:', e); }
-    }, 200);
+    }, 220);
   });
 
-  input.addEventListener('blur',    () => setTimeout(() => { if (box) { box.remove(); box = null; } }, 200));
+  input.addEventListener('blur',    () => setTimeout(schliesseBox, 180));
   input.addEventListener('keydown', e => {
     if (!box) return;
-    const items = box.querySelectorAll('div');
-    if (e.key === 'ArrowDown') { aktiv = Math.min(aktiv+1, items.length-1); items.forEach((d,i) => d.style.background = i===aktiv ? 'rgba(255,255,255,0.06)' : ''); e.preventDefault(); }
-    if (e.key === 'ArrowUp')   { aktiv = Math.max(aktiv-1, 0); items.forEach((d,i) => d.style.background = i===aktiv ? 'rgba(255,255,255,0.06)' : ''); e.preventDefault(); }
-    if (e.key === 'Enter' && aktiv >= 0) { items[aktiv].dispatchEvent(new MouseEvent('mousedown')); e.preventDefault(); }
-    if (e.key === 'Escape')    { box.remove(); box = null; }
+    const rows = box.querySelectorAll('[data-ac]');
+    if (e.key === 'ArrowDown') { aktiv = Math.min(aktiv+1, rows.length-1); rows.forEach((d,i) => d.style.background = i===aktiv?'rgba(255,255,255,0.07)':''); e.preventDefault(); }
+    if (e.key === 'ArrowUp')   { aktiv = Math.max(aktiv-1, 0);             rows.forEach((d,i) => d.style.background = i===aktiv?'rgba(255,255,255,0.07)':''); e.preventDefault(); }
+    if (e.key === 'Enter' && aktiv >= 0) { rows[aktiv].dispatchEvent(new MouseEvent('mousedown')); e.preventDefault(); }
+    if (e.key === 'Escape') schliesseBox();
   });
 }
 
@@ -699,11 +734,10 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
         <button class="btn btn-secondary btn-sm" style="margin-top:0.6rem" onclick="navigate('uebung-form',{id:'${u.id}',typ:'einsatz'})">⏱ Endzeit nachtragen</button>
       ` : ''}
       ${isEinsatz && !u.ort && fw.isWehrfuehrer() ? `
-        <div style="display:flex;gap:0.5rem;margin-top:0.6rem;align-items:center">
+        <div class="ac-wrapper" style="display:flex;gap:0.5rem;margin-top:0.6rem;align-items:center;position:relative">
           <input id="ort-inline" placeholder="Adresse eintragen…" style="flex:1;font-size:0.85rem">
           <button class="btn btn-secondary btn-sm" onclick="ortSpeichern('${u.id}')">📍 Speichern</button>
         </div>
-        <script>setTimeout(()=>initOrtAutocomplete('ort-inline'),100)<\/script>
       ` : ''}
     </div>
     <div class="section-header">Wer kommt? <span id="einsatz-zaehler" style="font-weight:400;font-size:0.85rem"></span></div>
@@ -718,6 +752,9 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
     </div>
     ${fw.isWehrfuehrer() ? `<div style="padding:0 0 0.5rem">${eintragBtn}</div>` : ''}
   `;
+
+  // Autocomplete für inline Adress-Eingabe (Detail-Seite, kein <script> in innerHTML)
+  requestAnimationFrame(() => initOrtAutocomplete('ort-inline'));
 
   // Live-Listener für Reaktionen (Einsatz + Dienst)
   if (true) {
@@ -895,7 +932,7 @@ registerPage('uebung-form', async (el, {id, typ: vorTyp, alarm: mitAlarm}) => {
           <label>Ende (optional, kann nachgetragen werden)</label>
           <input id="f-ende" type="time" value="${u?.zeitEnde||''}">
         </div>
-        <div class="form-row">
+        <div class="form-row ac-wrapper" style="position:relative">
           <label>Einsatzort / Adresse (optional)</label>
           <input id="f-ort" value="${u?.ort||''}" placeholder="Hauptstr. 12, Oegeln">
         </div>
