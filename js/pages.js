@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v2.3.6
+// js/pages.js – alle Seiten v2.3.7
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -77,76 +77,58 @@ function getStats(anwesenheiten, dienstMap, einsatzMap) {
 }
 
 
-// ── Google Places Autocomplete ───────────────────────────
-let _gmapsReady = false;
-function _ladeGMaps(cb) {
-  if (window.google?.maps?.places) { cb(); return; }
-  if (_gmapsReady === 'loading') { window._gmapsCb = cb; return; }
-  _gmapsReady = 'loading';
-  window._gmapsCb = cb;
-  const s = document.createElement('script');
-  s.src = 'https://maps.googleapis.com/maps/api/js?key=AIzaSyDvDKwYe4nFvth_ZHoZPE7JJFxEkUC3MUY&libraries=places&language=de&callback=_gmapsLoaded';
-  s.async = true;
-  document.head.appendChild(s);
-}
-window._gmapsLoaded = () => { _gmapsReady = true; if (window._gmapsCb) { window._gmapsCb(); window._gmapsCb = null; } };
+// ── Google Places Autocomplete (via Cloud Function Proxy) ─
+const AC_URL = 'https://europe-west3-ffw-oegeln-791ca.cloudfunctions.net/ortAutoComplete';
 
 function initOrtAutocomplete(inputId, onSelect) {
-  _ladeGMaps(() => {
-    const input = document.getElementById(inputId);
-    if (!input) return;
-    const svc = new google.maps.places.AutocompleteService();
-    let box = null, aktiv = -1, timer = null;
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  let box = null, aktiv = -1, timer = null;
 
-    const zeigeBox = (items) => {
-      if (box) box.remove();
-      if (!items.length) { box = null; return; }
-      box = document.createElement('div');
-      box.style.cssText = `position:absolute;z-index:9999;background:var(--panel2);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.5);width:${input.offsetWidth}px;margin-top:2px;overflow:hidden;left:0;top:100%`;
-      items.forEach((s) => {
-        const main = s.structured_formatting?.main_text || s.description;
-        const sub  = s.structured_formatting?.secondary_text || '';
-        const div = document.createElement('div');
-        div.style.cssText = 'padding:0.65rem 0.9rem;cursor:pointer;font-size:0.88rem;border-bottom:1px solid var(--border);transition:background 0.1s';
-        div.innerHTML = `<div style="color:var(--text)">${main}</div>${sub ? `<div style="font-size:0.72rem;color:var(--muted);margin-top:0.1rem">${sub}</div>` : ''}`;
-        div.addEventListener('mousedown', e => {
-          e.preventDefault();
-          input.value = s.description;
-          box.remove(); box = null; aktiv = -1;
-          if (onSelect) onSelect(input.value);
-        });
-        div.addEventListener('mouseover', () => div.style.background = 'rgba(255,255,255,0.06)');
-        div.addEventListener('mouseout',  () => div.style.background = '');
-        box.appendChild(div);
+  const zeigeBox = (items) => {
+    if (box) box.remove();
+    if (!items.length) { box = null; return; }
+    box = document.createElement('div');
+    box.style.cssText = `position:absolute;z-index:9999;background:var(--panel2);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 20px rgba(0,0,0,0.5);width:${input.offsetWidth}px;margin-top:2px;overflow:hidden;left:0;top:100%`;
+    items.forEach((s) => {
+      const div = document.createElement('div');
+      div.style.cssText = 'padding:0.65rem 0.9rem;cursor:pointer;font-size:0.88rem;border-bottom:1px solid var(--border);transition:background 0.1s';
+      div.innerHTML = `<div style="color:var(--text)">${s.main}</div>${s.secondary ? `<div style="font-size:0.72rem;color:var(--muted);margin-top:0.1rem">${s.secondary}</div>` : ''}`;
+      div.addEventListener('mousedown', e => {
+        e.preventDefault();
+        input.value = s.description;
+        box.remove(); box = null; aktiv = -1;
+        if (onSelect) onSelect(input.value);
       });
-      input.parentNode.style.position = 'relative';
-      input.parentNode.appendChild(box);
-    };
-
-    input.addEventListener('input', () => {
-      clearTimeout(timer);
-      const q = input.value.trim();
-      if (q.length < 2) { if (box) box.remove(); box = null; return; }
-      timer = setTimeout(() => {
-        svc.getPlacePredictions(
-          { input: q, language: 'de', componentRestrictions: { country: 'de' } },
-          (results, status) => {
-            if (status === google.maps.places.PlacesServiceStatus.OK && results) zeigeBox(results);
-            else { if (box) box.remove(); box = null; }
-          }
-        );
-      }, 200);
+      div.addEventListener('mouseover', () => div.style.background = 'rgba(255,255,255,0.06)');
+      div.addEventListener('mouseout',  () => div.style.background = '');
+      box.appendChild(div);
     });
+    input.parentNode.style.position = 'relative';
+    input.parentNode.appendChild(box);
+  };
 
-    input.addEventListener('blur',    () => setTimeout(() => { if (box) { box.remove(); box = null; } }, 200));
-    input.addEventListener('keydown', e => {
-      if (!box) return;
-      const items = box.querySelectorAll('div');
-      if (e.key === 'ArrowDown') { aktiv = Math.min(aktiv+1, items.length-1); items.forEach((d,i) => d.style.background = i===aktiv ? 'rgba(255,255,255,0.06)' : ''); e.preventDefault(); }
-      if (e.key === 'ArrowUp')   { aktiv = Math.max(aktiv-1, 0); items.forEach((d,i) => d.style.background = i===aktiv ? 'rgba(255,255,255,0.06)' : ''); e.preventDefault(); }
-      if (e.key === 'Enter' && aktiv >= 0) { items[aktiv].dispatchEvent(new MouseEvent('mousedown')); e.preventDefault(); }
-      if (e.key === 'Escape')    { box.remove(); box = null; }
-    });
+  input.addEventListener('input', () => {
+    clearTimeout(timer);
+    const q = input.value.trim();
+    if (q.length < 2) { if (box) box.remove(); box = null; return; }
+    timer = setTimeout(async () => {
+      try {
+        const r = await fetch(AC_URL, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({input: q}) });
+        const data = await r.json();
+        zeigeBox(data.suggestions || []);
+      } catch(e) { console.warn('Autocomplete Fehler:', e); }
+    }, 200);
+  });
+
+  input.addEventListener('blur',    () => setTimeout(() => { if (box) { box.remove(); box = null; } }, 200));
+  input.addEventListener('keydown', e => {
+    if (!box) return;
+    const items = box.querySelectorAll('div');
+    if (e.key === 'ArrowDown') { aktiv = Math.min(aktiv+1, items.length-1); items.forEach((d,i) => d.style.background = i===aktiv ? 'rgba(255,255,255,0.06)' : ''); e.preventDefault(); }
+    if (e.key === 'ArrowUp')   { aktiv = Math.max(aktiv-1, 0); items.forEach((d,i) => d.style.background = i===aktiv ? 'rgba(255,255,255,0.06)' : ''); e.preventDefault(); }
+    if (e.key === 'Enter' && aktiv >= 0) { items[aktiv].dispatchEvent(new MouseEvent('mousedown')); e.preventDefault(); }
+    if (e.key === 'Escape')    { box.remove(); box = null; }
   });
 }
 
@@ -779,9 +761,10 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
         const kommenNicht = alle.filter(a => a.status === 'kommt_nicht');
         const meineR      = alle.find(a => a.userId === fw.user.uid);
 
-        const zugf  = kommen.filter(a => a.rolle === 'zugführer').length;
-        const gruf  = kommen.filter(a => a.rolle === 'gruppenführer').length;
-        const kamf  = kommen.filter(a => !['zugführer','gruppenführer'].includes(a.rolle)).length;
+        const normRolle = r => (r||'').toLowerCase().normalize('NFC');
+        const zugf  = kommen.filter(a => normRolle(a.rolle) === 'zugführer').length;
+        const gruf  = kommen.filter(a => normRolle(a.rolle) === 'gruppenführer').length;
+        const kamf  = kommen.filter(a => !['zugführer','gruppenführer'].includes(normRolle(a.rolle))).length;
         const agtZ  = kommen.filter(a => agtMap.get(a.userId)).length;
         const zaehler = document.getElementById('einsatz-zaehler');
         if (zaehler) zaehler.textContent = isEinsatz
@@ -997,7 +980,7 @@ function renderQualisProfil(qualis, me) {
   for (const q of sorted) {
     const istErsterNachTrenner = !trennerGezeigt && qualiIdx(q.bezeichnung) > trennerIdx;
     if (istErsterNachTrenner) trennerGezeigt = true;
-    html += `<div class="list-item" style="border-bottom:1px solid var(--border);${istErsterNachTrenner?'margin-top:0.6rem':''}">
+    html += `<div class="list-item" style="border-bottom:1px solid var(--border);${istErsterNachTrenner?'margin-top:0':''}">
       <div class="list-item-body">
         <div class="list-item-title">${q.bezeichnung}</div>
         <div class="list-item-sub">${q.datum?datum(q.datum):'Kein Datum'}${q.bemerkung?' · '+q.bemerkung:''}</div>
@@ -1126,10 +1109,6 @@ registerPage('profil', async (el) => {
       <div class="notif-row" style="display:flex;align-items:center;gap:0.8rem;padding:0.6rem 0;border-bottom:1px solid var(--border)">
         <div style="flex:1"><div style="font-weight:600">📅 Neuer Dienst</div><div class="muted" style="font-size:0.78rem">Bei neuen Diensten</div></div>
         <input type="checkbox" id="n-uebung" style="width:24px;height:24px;accent-color:var(--red);cursor:pointer;flex-shrink:0">
-      </div>
-      <div class="notif-row" style="display:flex;align-items:center;gap:0.8rem;padding:0.6rem 0;border-bottom:1px solid var(--border)">
-        <div style="flex:1"><div style="font-weight:600">✅ Bestätigung</div><div class="muted" style="font-size:0.78rem">Wenn Teilnahme bestätigt wird</div></div>
-        <input type="checkbox" id="n-best" style="width:24px;height:24px;accent-color:var(--red);cursor:pointer;flex-shrink:0">
       </div>
       <div class="notif-row" style="display:flex;align-items:center;gap:0.8rem;padding:0.6rem 0;border-bottom:1px solid var(--border)">
         <div style="flex:1"><div style="font-weight:600">⚠️ Status-Warnung</div><div class="muted" style="font-size:0.78rem">Wenn App offline oder Push nicht bereit</div></div>
@@ -1599,7 +1578,7 @@ function renderQualis(qualis, userId, u) {
         ? ' <span style="color:#22c55e;font-size:0.75rem">✅ aktiv</span>'
         : ` <span style="color:#f59e0b;font-size:0.75rem" title="${fehlt.join(', ')}">⚠️ nicht aktiv</span>`;
     }
-    html += `<div class="list-item" style="border-bottom:1px solid var(--border);${istErsterNachTrenner?'margin-top:0.6rem':''}">
+    html += `<div class="list-item" style="border-bottom:1px solid var(--border);${istErsterNachTrenner?'margin-top:0':''}">
       <div class="list-item-body">
         <div class="list-item-title">${q.bezeichnung}${agtWarnung}</div>
         <div class="list-item-sub">${q.datum?datum(q.datum):'Kein Datum'}
@@ -1612,8 +1591,8 @@ function renderQualis(qualis, userId, u) {
   return html;
 }
 
-function renderAgtFelder(u, id) {
-  const hatAgt = true; // immer zeigen wenn Wehrführer das Profil sieht
+function renderAgtFelder(u, id, qualis) {
+  const hatAgt = (qualis||[]).some(q => (q.bezeichnung||'').trim().toLowerCase() === 'agt');
   if (!hatAgt) return '';
   return `<div class="card">
     <div class="card-title">AGT-Nachweise</div>
@@ -1679,7 +1658,7 @@ registerPage('kamerad-detail', async (el, {id}) => {
         </div>
       </div>
     </div>
-    ${renderAgtFelder(u, id)}
+    ${renderAgtFelder(u, id, qualis)}
     <div class="card" style="display:flex;flex-direction:column;gap:0.5rem">
       ${u.aktiv === false
         ? `<button class="btn btn-primary btn-full" onclick="kameradAktiv('${id}')">✅ Kamerad aktiv setzen</button>`
