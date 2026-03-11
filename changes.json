@@ -1,8 +1,8 @@
 {
-  "version": "2.3.8",
+  "version": "2.3.9",
   "datum": "11.03.2026",
   "punkte": [
-    "Stärke: Feldname staerkeRolle ohne Umlaut (Firestore-Kompatibilität)",
-    "Stärke: Rollen-Normalisierung robuster gegen Unicode-Varianten"
+    "Stärke: Rollen-Werte auf ASCII (gruppenfuehrer/zugfuehrer) – behebt Zählfehler",
+    "Stärke: normRolle konvertiert Umlaute für zuverlässigen Vergleich"
   ]
 }
