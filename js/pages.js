@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v2.3.9
+// js/pages.js – alle Seiten v2.4.1
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -754,7 +754,7 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
         const alle = snap.docs.map(d => {
           const a = {id:d.id,...d.data()};
           const profil = usersMap.get(a.userId) || {};
-          a.rolle         = profil.staerkeRolle || profil.rolle || a.rolle || 'kamerad';
+          a.rolle         = profil.staerkeRolle || profil['stärkeRolle'] || profil.rolle || a.rolle || 'kamerad';
           a.fuehrerschein = profil.fuehrerschein || a.fuehrerschein || '';
           return a;
         });
@@ -762,8 +762,8 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
         const kommenNicht = alle.filter(a => a.status === 'kommt_nicht');
         const meineR      = alle.find(a => a.userId === fw.user.uid);
 
-        const normRolle = r => (r||'').trim().toLowerCase()
-          .replace(/ü/g,'ue').replace(/ö/g,'oe').replace(/ä/g,'ae').replace(/ß/g,'ss');
+        const normRolle = r => [...(r||'').trim().toLowerCase()]
+          .map(ch => ({'ü':'ue','ö':'oe','ä':'ae','ß':'ss'}[ch]||ch)).join('');
         const zugf  = kommen.filter(a => normRolle(a.rolle) === 'zugfuehrer').length;
         const gruf  = kommen.filter(a => normRolle(a.rolle) === 'gruppenfuehrer').length;
         const kamf  = kommen.filter(a => normRolle(a.rolle) !== 'zugfuehrer' && normRolle(a.rolle) !== 'gruppenfuehrer').length;
@@ -905,7 +905,7 @@ registerPage('uebung-form', async (el, {id, typ: vorTyp, alarm: mitAlarm}) => {
           ${u ? `<button class="btn btn-danger" onclick="uebungLoeschen('${id}','einsatz')">🗑 Löschen</button>` : ''}
         </div>
       </div>`;
-    setTimeout(() => initOrtAutocomplete('f-ort'), 100);
+    requestAnimationFrame(() => setTimeout(() => initOrtAutocomplete('f-ort'), 50));
   } else {
     // Dienst: vollständiges Formular
     el.innerHTML = `
