@@ -1,7 +1,9 @@
 {
-  "version": "2.3.3",
-  "datum": "10.03.2026",
+  "version": "2.3.4",
+  "datum": "11.03.2026",
   "punkte": [
-    "Lehrgänge: Sortierung korrigiert (Groß-/Kleinschreibung und Leerzeichen werden ignoriert)"
+    "Einsätze: Adressfeld zum Eintragen des Einsatzorts",
+    "Einsätze: Navigations-Button öffnet Google Maps direkt zur Adresse",
+    "Einsätze: Adresse wird in der Übersicht mit 📍 angezeigt"
   ]
 }
