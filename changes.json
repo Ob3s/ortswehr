@@ -1,8 +1,10 @@
 {
-  "version": "2.4.1",
+  "version": "2.4.2",
   "datum": "11.03.2026",
   "punkte": [
-    "Einsatzort Autocomplete: Cloud Function nutzt built-in fetch (Node 22)",
-    "Einsatzort Autocomplete: Initialisierung nach DOM-Render zuverlässiger"
+    "Autocomplete: Detail-Seite Fix (kein <script> in innerHTML)",
+    "Dropdown-Styling verbessert",
+    "Gebiets-Bias auf Oegeln (30 km)",
+    "Debug-Logs entfernt"
   ]
 }
