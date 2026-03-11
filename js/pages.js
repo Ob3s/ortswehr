@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v2.3.4
+// js/pages.js – alle Seiten v2.3.5
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -76,6 +76,69 @@ function getStats(anwesenheiten, dienstMap, einsatzMap) {
   };
 }
 
+
+// ── Google Places Autocomplete ───────────────────────────
+function initOrtAutocomplete(inputId, onSelect) {
+  const input = document.getElementById(inputId);
+  if (!input) return;
+  let box = null;
+  let aktiv = -1;
+
+  input.addEventListener('input', async () => {
+    const q = input.value.trim();
+    if (q.length < 3) { if (box) box.remove(); box = null; return; }
+    try {
+      const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(q)}&language=de&components=country:de&key=AIzaSyDvDKwYe4nFvth_ZHoZPE7JJFxEkUC3MUY`;
+      // CORS: über fetch mit cors-proxy nicht möglich direkt → Places API (new) via fetch
+      const res = await fetch(`https://places.googleapis.com/v1/places:autocomplete`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': 'AIzaSyDvDKwYe4nFvth_ZHoZPE7JJFxEkUC3MUY',
+        },
+        body: JSON.stringify({
+          input: q,
+          languageCode: 'de',
+          includedRegionCodes: ['de'],
+        }),
+      });
+      const data = await res.json();
+      const suggestions = data.suggestions || [];
+      if (box) box.remove();
+      if (!suggestions.length) { box = null; return; }
+      box = document.createElement('div');
+      box.style.cssText = `position:absolute;z-index:9999;background:var(--panel2);border:1px solid var(--border);border-radius:8px;box-shadow:0 4px 16px rgba(0,0,0,0.4);width:${input.offsetWidth}px;margin-top:2px;overflow:hidden`;
+      suggestions.forEach((s, i) => {
+        const text = s.placePrediction?.text?.text || s.placePrediction?.structuredFormat?.mainText?.text || '';
+        const sub  = s.placePrediction?.structuredFormat?.secondaryText?.text || '';
+        const div = document.createElement('div');
+        div.style.cssText = 'padding:0.6rem 0.8rem;cursor:pointer;font-size:0.88rem;border-bottom:1px solid var(--border)';
+        div.innerHTML = `<div>${text}</div>${sub ? `<div style="font-size:0.75rem;color:var(--muted)">${sub}</div>` : ''}`;
+        div.addEventListener('mousedown', e => {
+          e.preventDefault();
+          input.value = text + (sub ? ', ' + sub : '');
+          box.remove(); box = null;
+          if (onSelect) onSelect(input.value);
+        });
+        div.addEventListener('mouseover', () => div.style.background = 'var(--panel)');
+        div.addEventListener('mouseout',  () => div.style.background = '');
+        box.appendChild(div);
+      });
+      input.parentNode.style.position = 'relative';
+      input.parentNode.appendChild(box);
+    } catch(e) { console.warn('Autocomplete Fehler:', e); }
+  });
+
+  input.addEventListener('blur', () => setTimeout(() => { if (box) { box.remove(); box = null; } }, 200));
+  input.addEventListener('keydown', e => {
+    if (!box) return;
+    const items = box.querySelectorAll('div');
+    if (e.key === 'ArrowDown') { aktiv = Math.min(aktiv+1, items.length-1); items.forEach((d,i) => d.style.background = i===aktiv ? 'var(--panel)' : ''); e.preventDefault(); }
+    if (e.key === 'ArrowUp')   { aktiv = Math.max(aktiv-1, 0); items.forEach((d,i) => d.style.background = i===aktiv ? 'var(--panel)' : ''); e.preventDefault(); }
+    if (e.key === 'Enter' && aktiv >= 0) { items[aktiv].dispatchEvent(new MouseEvent('mousedown')); e.preventDefault(); }
+    if (e.key === 'Escape')    { box.remove(); box = null; }
+  });
+}
 
 // ── Dienst-Sichtbarkeit ───────────────────────────────────
 function dienstSichtbar(d, profil, qualis) {
@@ -640,7 +703,14 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
         </a>
       </div>` : ''}
       ${isEinsatz && !u.zeitEnde && fw.isWehrfuehrer() ? `
-        <button class="btn btn-secondary btn-sm" style="margin-top:0.6rem" onclick="navigate('uebung-form',{id:'${u.id}'})">⏱ Endzeit nachtragen</button>
+        <button class="btn btn-secondary btn-sm" style="margin-top:0.6rem" onclick="navigate('uebung-form',{id:'${u.id}',typ:'einsatz'})">⏱ Endzeit nachtragen</button>
+      ` : ''}
+      ${isEinsatz && !u.ort && fw.isWehrfuehrer() ? `
+        <div style="display:flex;gap:0.5rem;margin-top:0.6rem;align-items:center">
+          <input id="ort-inline" placeholder="Adresse eintragen…" style="flex:1;font-size:0.85rem">
+          <button class="btn btn-secondary btn-sm" onclick="ortSpeichern('${u.id}')">📍 Speichern</button>
+        </div>
+        <script>setTimeout(()=>initOrtAutocomplete('ort-inline'),100)<\/script>
       ` : ''}
     </div>
     <div class="section-header">Wer kommt? <span id="einsatz-zaehler" style="font-weight:400;font-size:0.85rem"></span></div>
@@ -666,9 +736,19 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
       usersMap = new Map(usersSnap.docs.map(d => [d.id, d.data()]));
       agtMap   = new Map();
       await Promise.all(usersSnap.docs.map(async d => {
+        const profil = d.data();
         const qSnap = await fw.getDocs('users/'+d.id+'/qualifikationen');
         const hatAgt = qSnap.docs.some(q => (q.data().bezeichnung||q.data().titel||q.data().name||'').toLowerCase().includes('agt'));
-        if (hatAgt) agtMap.set(d.id, true);
+        if (!hatAgt) return;
+        // AGT nur aktiv wenn alle 3 Nachweise gültig
+        const heute = new Date();
+        const j3 = new Date(); j3.setFullYear(heute.getFullYear()-3); j3.setHours(0,0,0,0);
+        const j1 = new Date(); j1.setFullYear(heute.getFullYear()-1); j1.setHours(0,0,0,0);
+        const unt  = profil.agt_untersuchung ? new Date(profil.agt_untersuchung) : null;
+        const waer = profil.agt_waermeuebung ? new Date(profil.agt_waermeuebung) : null;
+        const bel  = profil.agt_belastung    ? new Date(profil.agt_belastung)    : null;
+        const agtAktiv = unt && unt >= j3 && waer && waer >= j1 && bel && bel >= j1;
+        if (agtAktiv) agtMap.set(d.id, true);
       }));
     };
     await ladeProfilDaten();
@@ -830,6 +910,7 @@ registerPage('uebung-form', async (el, {id, typ: vorTyp, alarm: mitAlarm}) => {
           ${u ? `<button class="btn btn-danger" onclick="uebungLoeschen('${id}','einsatz')">🗑 Löschen</button>` : ''}
         </div>
       </div>`;
+    setTimeout(() => initOrtAutocomplete('f-ort'), 100);
   } else {
     // Dienst: vollständiges Formular
     el.innerHTML = `
@@ -893,6 +974,13 @@ window.uebungSpeichern = async (id, forcTyp) => {
     fw.toast(isEinsatz ? 'Einsatz gemeldet 🚨' : 'Gespeichert ✅');
     navigate(typ === 'einsatz' ? 'einsaetze' : 'dienste');
   } catch(e) { fw.toast(e.message, true); }
+};
+
+window.ortSpeichern = async (einsatzId) => {
+  const ort = document.getElementById('ort-inline')?.value?.trim();
+  if (!ort) { fw.toast('Bitte Adresse eingeben', true); return; }
+  await fw.updateDoc('einsaetze/'+einsatzId, { ort });
+  fw.toast('Adresse gespeichert 📍'); navigate('uebung-detail', {id: einsatzId, typ: 'einsatz'});
 };
 
 window.uebungLoeschen = async (id, typ) => {
