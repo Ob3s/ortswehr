@@ -1,9 +1,10 @@
 {
-  "version": "2.3.4",
+  "version": "2.3.5",
   "datum": "11.03.2026",
   "punkte": [
-    "Einsätze: Adressfeld zum Eintragen des Einsatzorts",
+    "AGT-Symbol 💨: wird nur angezeigt wenn G26, Wärmeübung und Belastungsübung gültig hinterlegt sind",
+    "Einsätze: Adressfeld mit Google Places Autocomplete",
     "Einsätze: Navigations-Button öffnet Google Maps direkt zur Adresse",
-    "Einsätze: Adresse wird in der Übersicht mit 📍 angezeigt"
+    "Einsätze: Adresse direkt in der Detailansicht nachtragen"
   ]
 }
