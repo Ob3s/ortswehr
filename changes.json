@@ -1,10 +1,8 @@
 {
-  "version": "2.4.2",
+  "version": "2.4.3",
   "datum": "11.03.2026",
   "punkte": [
-    "Autocomplete: Detail-Seite Fix (kein <script> in innerHTML)",
-    "Dropdown-Styling verbessert",
-    "Gebiets-Bias auf Oegeln (30 km)",
-    "Debug-Logs entfernt"
+    "Autocomplete: Dropdown-Farben via CSS-Klassen (Theme-kompatibel)",
+    "Gebiets-Bias auf Beeskow (Brandenburg, 30 km)"
   ]
 }
