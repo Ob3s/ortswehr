@@ -88,50 +88,29 @@ function initOrtAutocomplete(inputId, onSelect) {
 
   const schliesseBox = () => { if (box) { box.remove(); box = null; aktiv = -1; } };
 
+  const setAktiv = (idx) => {
+    aktiv = idx;
+    box?.querySelectorAll('.ac-row').forEach((r, i) => r.classList.toggle('aktiv', i === idx));
+  };
+
   const zeigeBox = (items) => {
     schliesseBox();
     if (!items.length) return;
-
-    // Wrapper: position:relative nötig für absolute Box
     const wrapper = input.closest('.ac-wrapper') || input.parentNode;
-    if (!wrapper.style.position) wrapper.style.position = 'relative';
-
     box = document.createElement('div');
     box.className = 'ac-dropdown';
-    box.style.cssText = [
-      'position:absolute',
-      'z-index:9999',
-      'left:0',
-      'right:0',
-      'top:calc(100% + 4px)',
-      'background:var(--panel2,#1e2530)',
-      'border:1px solid var(--border,#2e3a4e)',
-      'border-radius:10px',
-      'box-shadow:0 8px 32px rgba(0,0,0,0.6)',
-      'overflow:hidden',
-    ].join(';');
-
     items.forEach((s, i) => {
       const row = document.createElement('div');
-      row.style.cssText = [
-        'display:flex',
-        'align-items:center',
-        'gap:0.6rem',
-        'padding:0.55rem 0.85rem',
-        'cursor:pointer',
-        'transition:background 0.12s',
-        i < items.length-1 ? 'border-bottom:1px solid var(--border,#2e3a4e)' : '',
-      ].join(';');
-      row.innerHTML =
-        `<span style="font-size:0.9rem;flex-shrink:0;color:var(--muted,#8899aa)">📍</span>` +
-        `<span style="min-width:0">` +
-          `<div style="font-size:0.88rem;color:var(--text,#e8edf3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.main}</div>` +
-          (s.secondary ? `<div style="font-size:0.74rem;color:var(--muted,#8899aa);margin-top:0.05rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.secondary}</div>` : '') +
-        `</span>`;
-      const markiere = (on) => row.style.background = on ? 'rgba(255,255,255,0.07)' : '';
-      row.addEventListener('mouseover', () => { aktiv = i; box.querySelectorAll('div[data-ac]').forEach((r,j) => r.style.background = j===i?'rgba(255,255,255,0.07)':''); });
-      row.addEventListener('mouseout',  () => markiere(false));
+      row.className = 'ac-row';
       row.setAttribute('data-ac', i);
+      row.innerHTML =
+        `<span class="ac-row-icon">📍</span>` +
+        `<span style="min-width:0;flex:1">` +
+          `<div class="ac-row-main">${s.main}</div>` +
+          (s.secondary ? `<div class="ac-row-sub">${s.secondary}</div>` : '') +
+        `</span>`;
+      row.addEventListener('mouseover', () => setAktiv(i));
+      row.addEventListener('mouseout',  () => row.classList.remove('aktiv'));
       row.addEventListener('mousedown', e => {
         e.preventDefault();
         input.value = s.description;
@@ -140,7 +119,6 @@ function initOrtAutocomplete(inputId, onSelect) {
       });
       box.appendChild(row);
     });
-
     wrapper.appendChild(box);
   };
 
@@ -160,9 +138,9 @@ function initOrtAutocomplete(inputId, onSelect) {
   input.addEventListener('blur',    () => setTimeout(schliesseBox, 180));
   input.addEventListener('keydown', e => {
     if (!box) return;
-    const rows = box.querySelectorAll('[data-ac]');
-    if (e.key === 'ArrowDown') { aktiv = Math.min(aktiv+1, rows.length-1); rows.forEach((d,i) => d.style.background = i===aktiv?'rgba(255,255,255,0.07)':''); e.preventDefault(); }
-    if (e.key === 'ArrowUp')   { aktiv = Math.max(aktiv-1, 0);             rows.forEach((d,i) => d.style.background = i===aktiv?'rgba(255,255,255,0.07)':''); e.preventDefault(); }
+    const rows = box.querySelectorAll('.ac-row');
+    if (e.key === 'ArrowDown') { setAktiv(Math.min(aktiv+1, rows.length-1)); e.preventDefault(); }
+    if (e.key === 'ArrowUp')   { setAktiv(Math.max(aktiv-1, 0));             e.preventDefault(); }
     if (e.key === 'Enter' && aktiv >= 0) { rows[aktiv].dispatchEvent(new MouseEvent('mousedown')); e.preventDefault(); }
     if (e.key === 'Escape') schliesseBox();
   });
