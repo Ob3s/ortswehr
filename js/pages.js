@@ -1,4 +1,4 @@
-// js/pages.js – alle Seiten v2.3.3
+// js/pages.js – alle Seiten v2.3.4
 function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50); }
 
 waitFw(() => {
@@ -632,6 +632,13 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
       <div style="margin-top:0.6rem;font-weight:600;font-size:1.1rem">${u.titel}</div>
       <div style="margin-top:0.3rem;color:var(--muted);font-size:0.85rem">${datum(u.datum)}${zeitZeile(u) ? ' · '+zeitZeile(u) : ''}</div>
       ${u.beschreibung ? `<p class="muted" style="margin-top:0.4rem;font-size:0.85rem">${u.beschreibung}</p>` : ''}
+      ${u.ort ? `<div style="margin-top:0.5rem;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
+        <span style="font-size:0.85rem">📍 ${u.ort}</span>
+        <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(u.ort)}" target="_blank"
+          style="font-size:0.75rem;padding:0.2rem 0.6rem;background:var(--panel2);border-radius:20px;color:var(--blue);text-decoration:none;border:1px solid var(--border)">
+          🗺 Navigation
+        </a>
+      </div>` : ''}
       ${isEinsatz && !u.zeitEnde && fw.isWehrfuehrer() ? `
         <button class="btn btn-secondary btn-sm" style="margin-top:0.6rem" onclick="navigate('uebung-form',{id:'${u.id}'})">⏱ Endzeit nachtragen</button>
       ` : ''}
@@ -813,6 +820,10 @@ registerPage('uebung-form', async (el, {id, typ: vorTyp, alarm: mitAlarm}) => {
           <label>Ende (optional, kann nachgetragen werden)</label>
           <input id="f-ende" type="time" value="${u?.zeitEnde||''}">
         </div>
+        <div class="form-row">
+          <label>Einsatzort / Adresse (optional)</label>
+          <input id="f-ort" value="${u?.ort||''}" placeholder="Hauptstr. 12, Oegeln">
+        </div>
         <input type="hidden" id="f-alarm" value="${mitAlarm ? '1' : '0'}">
         <div class="btn-row" style="margin-top:0.5rem">
           <button class="btn btn-primary btn-full" onclick="uebungSpeichern('${id||''}','einsatz')">${u ? '💾 Speichern' : mitAlarm ? '🚨 Einsatz melden & Alarm senden' : '💾 Einsatz speichern'}</button>
@@ -865,7 +876,8 @@ window.uebungSpeichern = async (id, forcTyp) => {
 
   if (!titel) { fw.toast('Stichwort erforderlich', true); return; }
 
-  const data = { titel, datum: new Date(datumStr), typ, dauer_h, beschreibung: beschr, zeitBeginn, zeitEnde };
+  const ort = document.getElementById('f-ort')?.value?.trim() || '';
+  const data = { titel, datum: new Date(datumStr), typ, dauer_h, beschreibung: beschr, zeitBeginn, zeitEnde, ort };
   const isNeu = !id;
   try {
     let uebungId = id;
