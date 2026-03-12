@@ -273,6 +273,7 @@ function renderNewsBeitrag(b, usersMap) {
   return `<div class="card" style="margin-bottom:0.6rem">
     <div style="font-weight:600;margin-bottom:0.3rem">${b.titel||''}</div>
     <div style="font-size:0.88rem;color:var(--muted);white-space:pre-wrap">${b.inhalt||''}</div>
+    ${b.pdf ? `<a href="${b.pdf.url}" target="_blank" style="display:inline-flex;align-items:center;gap:0.4rem;margin-top:0.5rem;padding:0.4rem 0.8rem;background:var(--panel2);border:1px solid var(--border);border-radius:8px;font-size:0.82rem;color:var(--blue);text-decoration:none">📄 ${b.pdf.name}</a>` : ''}
     ${abstimmungHtml}
     <div style="font-size:0.72rem;color:var(--muted);margin-top:0.5rem">${datum(b.erstelltAm)}</div>
     ${fw.isWehrfuehrer() ? `<button onclick="newsLoeschen('${b.id}')" style="background:none;border:none;color:#9ca3af;font-size:0.75rem;cursor:pointer;padding:0;margin-top:0.3rem">🗑 Löschen</button>` : ''}
@@ -1099,15 +1100,18 @@ registerPage('profil', async (el) => {
   const stats  = getStats(aSnap.docs.map(d => d.data()), pDienstMap, pEinsatzMap);
 
   el.innerHTML = `
+    <div class="card" style="background:${stats.ziel?'#14532d':'#450a0a'};border-color:${stats.ziel?'#166534':'#7f1d1d'};display:flex;align-items:center;gap:0.8rem;padding:0.9rem 1rem">
+      <div style="font-size:1.6rem">${stats.ziel?'✅':'⚠️'}</div>
+      <div>
+        <div style="font-weight:700;font-size:1rem;color:${stats.ziel?'#4ade80':'#fca5a5'}">${stats.ziel?'40-Stunden-Ziel erreicht':'40-Stunden-Ziel nicht erreicht'}</div>
+        <div style="font-size:0.8rem;color:${stats.ziel?'#86efac':'#fca5a5'};margin-top:0.1rem">${dauerFormat(stats.stunden12m)}h von 40:00h in den letzten 12 Monaten</div>
+      </div>
+    </div>
     <div class="stats-grid">
       <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.gesamtEinsatz)}h</div><div class="stat-label">Einsatzstunden ${new Date().getFullYear()}</div></div>
       <div class="stat-card"><div class="stat-zahl">${stats.einsaetze}</div><div class="stat-label">${stats.einsaetze===1?'Einsatz':'Einsätze'} ${new Date().getFullYear()}</div></div>
       <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.gesamtDienst)}h</div><div class="stat-label">Dienststunden (12 Mon.)</div></div>
       <div class="stat-card"><div class="stat-zahl">${stats.dienste}</div><div class="stat-label">${stats.dienste===1?'Dienst':'Dienste'} (12 Mon.)</div></div>
-      <div class="stat-card wide ${stats.ziel?'erreicht':'fehlt'}">
-        <div class="stat-zahl">${dauerFormat(stats.stunden12m)} / 40:00h</div>
-        <div class="stat-label">${stats.ziel?'✅ Ziel erreicht':'⚠️ Ziel nicht erreicht'}</div>
-      </div>
     </div>
     <div class="section-header">Persönliche Daten</div>
     <div class="card">
@@ -1121,7 +1125,7 @@ registerPage('profil', async (el) => {
         <div style="display:flex;gap:0.6rem;margin-top:0.3rem">
           <button id="theme-standard" onclick="themeWaehlen('standard')"
             class="btn btn-sm ${(me.theme||'standard')==='standard'?'btn-primary':'btn-secondary'}"
-            style="flex:1">🎨 Standard</button>
+            style="flex:1">🎨 Modern</button>
           <button id="theme-klassisch" onclick="themeWaehlen('klassisch')"
             class="btn btn-sm ${(me.theme||'standard')==='klassisch'?'btn-primary':'btn-secondary'}"
             style="flex:1">🖥️ Klassisch</button>
@@ -1196,7 +1200,7 @@ window.themeWaehlen = async (theme) => {
   document.getElementById('theme-standard')?.classList.toggle('btn-secondary',  theme === 'klassisch');
   document.getElementById('theme-klassisch')?.classList.toggle('btn-primary',  theme === 'klassisch');
   document.getElementById('theme-klassisch')?.classList.toggle('btn-secondary', theme !== 'klassisch');
-  fw.toast(theme === 'klassisch' ? '🖥️ Design: Klassisch' : '🎨 Design: Standard');
+  fw.toast(theme === 'klassisch' ? '🖥️ Design: Klassisch' : '🎨 Design: Modern');
 };
 
 window.profilSpeichern = async () => {
@@ -1565,9 +1569,9 @@ registerPage('lehrgaenge', async (el) => {
             <tbody>
               ${rows.map((r, idx) => {
                 const odd = idx % 2 !== 0;
-                const bg = odd ? 'background:rgba(255,255,255,0.05)' : '';
+                const bg = odd ? 'background:rgba(255,255,255,0.08)' : '';
                 return `<tr style="${bg}">
-                  <td style="padding:0.4rem 0.6rem;font-weight:500;position:sticky;left:0;${odd?'background:#1e2535':'background:var(--panel)'};z-index:1;border-right:1px solid var(--border)">
+                  <td style="padding:0.4rem 0.6rem;font-weight:500;position:sticky;left:0;${odd?'background:rgba(255,255,255,0.08)':'background:var(--panel)'};z-index:1;border-right:1px solid var(--border)">
                     ${kurzName(r.u.vorname, r.u.nachname)}
                   </td>
                   ${r.checks.map(hat => `<td style="text-align:center;padding:0.3rem 0.2rem">${hat ? '<span style="color:#22c55e">✓</span>' : '<span style="color:var(--border)">·</span>'}</td>`).join('')}
@@ -1800,12 +1804,18 @@ registerPage('news-form', async (el) => {
   fw.setTitle('Beitrag erstellen');
   fw.showBack(() => navigate('dashboard'));
   let optionen = ['', ''];
+  let pdfFile = null;
 
   const render = () => {
     el.innerHTML = `
       <div class="card">
         <div class="form-row"><label>Titel</label><input id="nf-titel" placeholder="Überschrift" value="${document.getElementById('nf-titel')?.value||''}"></div>
         <div class="form-row"><label>Text</label><textarea id="nf-inhalt" rows="4" style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;font-size:0.9rem;resize:vertical">${document.getElementById('nf-inhalt')?.value||''}</textarea></div>
+        <div class="form-row">
+          <label>PDF anhängen (optional)</label>
+          <input type="file" id="nf-pdf" accept="application/pdf" style="font-size:0.88rem">
+          <div id="nf-pdf-hint" style="font-size:0.75rem;color:var(--muted);margin-top:0.2rem">${pdfFile?'📎 '+pdfFile.name:'Kein PDF ausgewählt'}</div>
+        </div>
         <div style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0">
           <input type="checkbox" id="nf-abstimmung-cb" style="width:20px;height:20px" ${document.getElementById('nf-abstimmung-cb')?.checked?'checked':''}>
           <label for="nf-abstimmung-cb" style="font-size:0.88rem">Abstimmung hinzufügen</label>
@@ -1816,11 +1826,15 @@ registerPage('news-form', async (el) => {
           <button class="btn btn-secondary btn-sm" onclick="nfAddOption()">+ Option</button>
         </div>
         <div class="btn-row" style="margin-top:1rem">
-          <button class="btn btn-primary" onclick="newsSpeichern()">💾 Veröffentlichen</button>
+          <button class="btn btn-primary" onclick="newsSpeichern()" id="nf-save-btn">💾 Veröffentlichen</button>
         </div>
       </div>`;
     document.getElementById('nf-abstimmung-cb')?.addEventListener('change', e => {
       document.getElementById('nf-abstimmung-block').style.display = e.target.checked ? 'block' : 'none';
+    });
+    document.getElementById('nf-pdf')?.addEventListener('change', e => {
+      pdfFile = e.target.files[0] || null;
+      document.getElementById('nf-pdf-hint').textContent = pdfFile ? '📎 '+pdfFile.name : 'Kein PDF ausgewählt';
     });
     document.querySelectorAll('.nf-opt').forEach(inp => {
       inp.addEventListener('input', e => { optionen[+e.target.dataset.i] = e.target.value; });
@@ -1833,17 +1847,27 @@ registerPage('news-form', async (el) => {
     const titel  = document.getElementById('nf-titel').value.trim();
     const inhalt = document.getElementById('nf-inhalt').value.trim();
     if (!titel) { fw.toast('Titel fehlt', true); return; }
+    const btn = document.getElementById('nf-save-btn');
+    btn.disabled = true; btn.textContent = '⏳ Wird gespeichert...';
     const hatAbst = document.getElementById('nf-abstimmung-cb')?.checked;
-    const data = {
-      titel, inhalt,
-      erstelltAm: new Date(),
-      erstelltVon: fw.user.uid,
-    };
+    const data = { titel, inhalt, erstelltAm: new Date(), erstelltVon: fw.user.uid };
     if (hatAbst) {
       const frage = document.getElementById('nf-frage').value.trim();
       const opts  = optionen.filter(o => o.trim());
-      if (!frage || opts.length < 2) { fw.toast('Frage und mind. 2 Optionen erforderlich', true); return; }
+      if (!frage || opts.length < 2) { fw.toast('Frage und mind. 2 Optionen erforderlich', true); btn.disabled=false; btn.textContent='💾 Veröffentlichen'; return; }
       data.abstimmung = { frage, optionen: opts.map(text => ({text, stimmen:[]})) };
+    }
+    // PDF hochladen
+    if (pdfFile) {
+      try {
+        btn.textContent = '⏳ PDF wird hochgeladen...';
+        const pfad = `news-pdfs/${Date.now()}_${pdfFile.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
+        const url  = await fw.uploadPdf(pdfFile, pfad);
+        data.pdf = { name: pdfFile.name, url, pfad };
+      } catch(e) {
+        fw.toast('PDF-Upload fehlgeschlagen: '+e.message, true);
+        btn.disabled=false; btn.textContent='💾 Veröffentlichen'; return;
+      }
     }
     await fw.addDoc('news', data);
     fw.toast('Veröffentlicht ✅');
@@ -1858,7 +1882,12 @@ registerPage('kameraden', async (el) => {
 
   const snap = await fw.getDocs('users');
   const users = snap.docs.map(d => ({id:d.id,...d.data()}))
-    .sort((a,b) => (a.nachname||'').localeCompare(b.nachname||''));
+    .sort((a,b) => {
+      const aAktiv = a.aktiv !== false;
+      const bAktiv = b.aktiv !== false;
+      if (aAktiv !== bAktiv) return aAktiv ? -1 : 1;
+      return (a.nachname||'').localeCompare(b.nachname||'', 'de');
+    });
 
   // Anwesenheiten der letzten 12 Monate laden
   const vor12Monaten = new Date();
@@ -2030,14 +2059,33 @@ registerPage('kamerad-detail', async (el, {id}) => {
   fw.showBack(() => navigate('kameraden'));
   fw.showHeaderAction('✏️ Edit', () => navigate('kamerad-form',{id}));
 
-  const [aSnap, qSnap, ortSnap] = await Promise.all([
+  const [aSnap, qSnap, ortSnap, planSnap] = await Promise.all([
     fw.getDocs('anwesenheiten', fw.where('userId','==',id)),
     fw.getDocs('users/'+id+'/qualifikationen'),
     u.ortswehrId ? fw.getDoc('ortswehren/'+u.ortswehrId) : Promise.resolve(null),
+    fw.getDocs('lehrgangsplanung', fw.where('userId','==',id)),
   ]);
-  const stats  = getStats(aSnap.docs.map(d => d.data()));
-  const qualis = qSnap.docs.map(d => ({id:d.id,...d.data()}));
+  const stats    = getStats(aSnap.docs.map(d => d.data()));
+  const qualis   = qSnap.docs.map(d => ({id:d.id,...d.data()}));
+  const planung  = planSnap.docs.map(d => ({id:d.id,...d.data()}));
   const wehrName = ortSnap?.exists?.() ? ortSnap.data().name : '–';
+
+  // Geplante Lehrgänge die noch nicht in qualis sind
+  const vorhandeneBezeichnungen = new Set(qualis.map(q => (q.bezeichnung||'').toLowerCase()));
+  const geplanteNeu = planung.filter(p => !vorhandeneBezeichnungen.has((p.lehrgang||'').toLowerCase()));
+
+  const planungHtml = geplanteNeu.length ? `
+    <div class="card">
+      <div class="card-title">Geplante Lehrgänge</div>
+      ${geplanteNeu.map(p => `
+        <div class="list-item" style="border-bottom:1px solid var(--border)">
+          <div class="list-item-body">
+            <div class="list-item-title">${p.lehrgang}</div>
+            <div class="list-item-sub">${p.startdatum ? datum(p.startdatum) : (p.jahr ? p.jahr : '–')}${p.bemerkung?' · '+p.bemerkung:''}</div>
+          </div>
+          <span class="badge badge-blue">geplant</span>
+        </div>`).join('')}
+    </div>` : '';
 
   el.innerHTML = `
     <div class="stats-grid">
@@ -2054,7 +2102,7 @@ registerPage('kamerad-detail', async (el, {id}) => {
       <div class="card-title">Stammdaten</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.7rem">
         ${[['Dienstgrad',u.dienstgrad],['Ortswehr',wehrName],
-           ['Eingetreten',datum(u.eintrittsdatum)],['Telefon',u.telefon],
+           ['Eingetreten',datum(u.eintrittsdatum)],
            ['Führerschein',u.fuehrerschein],
         ].map(([l,v]) => `<div><div class="muted" style="font-size:0.72rem">${l}</div><div style="font-size:0.88rem">${v||'–'}</div></div>`).join('')}
       </div>
@@ -2063,6 +2111,7 @@ registerPage('kamerad-detail', async (el, {id}) => {
       <div class="card-title">Lehrgänge</div>
       ${renderQualis(qualis, id, u)}
     </div>
+    ${planungHtml}
     ${renderAgtFelder(u, id, qualis)}
     <div class="card" style="display:flex;flex-direction:column;gap:0.5rem">
       ${u.aktiv === false
