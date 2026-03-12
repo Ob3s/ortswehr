@@ -1,8 +1,10 @@
 {
-  "version": "2.4.4",
+  "version": "2.4.5",
   "datum": "12.03.2026",
   "punkte": [
-    "Einsatzort nur speichern wenn vorhanden (null statt leer)",
-    "Datenpflege: Einsatzorte bereinigen (Admin > Datenpflege)"
+    "Statistik aus Navigation entfernt, erreichbar über Kameraden",
+    "Lehrgangsverwaltung: Übersicht (Kameraden × Lehrgänge) + Jahresplanung",
+    "Lehrgangstage eintragbar, fließt in Statistik ein",
+    "Autocomplete: ', Deutschland' wird nicht mehr angezeigt"
   ]
 }
