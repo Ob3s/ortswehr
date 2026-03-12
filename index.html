@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="theme-color" content="#cc2200">
-  <meta name="app-version" content="2.5.8">
+  <meta name="app-version" content="2.6.0">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ortswehr">
@@ -77,6 +77,8 @@
     from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
   import { getMessaging, getToken, onMessage }
     from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging.js';
+  import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject }
+    from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js';
 
   const firebaseConfig = {
     apiKey: "AIzaSyDwV6LJUnL660nQnnlQ47QZnBc_bXzIezU",
@@ -91,11 +93,20 @@
   const firebaseApp = initializeApp(firebaseConfig);
   const auth      = getAuth(firebaseApp);
   const db        = getFirestore(firebaseApp);
+  const storage   = getStorage(firebaseApp);
   let   messaging = null;
   try { messaging = getMessaging(firebaseApp); } catch(e) {}
 
   window.fw = {
-    auth, db, messaging, app: firebaseApp, user: null, profil: null,
+    auth, db, messaging, storage, app: firebaseApp, user: null, profil: null,
+    uploadPdf: async (file, path) => {
+      const storageRef = ref(storage, path);
+      await uploadBytes(storageRef, file);
+      return await getDownloadURL(storageRef);
+    },
+    deletePdf: async (path) => {
+      try { await deleteObject(ref(storage, path)); } catch(e) {}
+    },
 
     async getDoc(path)          { return getDoc(doc(db, path)); },
     async setDoc(path, data)    { return setDoc(doc(db, path), data, { merge: true }); },
