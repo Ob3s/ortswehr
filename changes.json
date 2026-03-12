@@ -1,8 +1,12 @@
 {
-  "version": "2.4.8",
+  "version": "2.5.0",
   "datum": "12.03.2026",
   "punkte": [
-    "Lehrgangsstunden statt -tage in Statistik",
-    "Erfassen + Qualifikationen: Tage × Stunden/Tag speichern"
+    "Einsatzzeit ohne 'ab' – nur 16:34 Uhr oder 16:13 – 17:30 Uhr",
+    "Statistik aus Navigation entfernt, erreichbar über Kameraden",
+    "Lehrgangsverwaltung: Übersicht + Planung + Erfassen",
+    "Lehrgangsstunden in Statistik (Tage × Stunden/Tag)",
+    "Lehrgang erfassen: Prüfungsdatum = letzter Tag",
+    "Autocomplete: ', Deutschland' wird nicht mehr angezeigt"
   ]
 }
