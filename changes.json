@@ -1,12 +1,11 @@
 {
-  "version": "2.6.1",
+  "version": "2.6.2",
   "datum": "12.03.2026",
   "punkte": [
-    "News: PDF wird beim Löschen des Beitrags mitgelöscht",
-    "News: Kommentare für alle Kameraden",
-    "Kamerad-Profil: 40h-Banner jetzt ganz oben",
-    "Eigenes Profil: 40h-Status dezent (kein grüner Hintergrund)",
-    "Lehrgänge-Tabelle: Design gleicht jetzt der Statistik-Tabelle",
-    "News: Langer PDF-Name wird mit '...' gekürzt"
+    "News-Kommentare: Uhrzeit hinter dem Datum",
+    "Erste-Hilfe: 2 Jahre Gültigkeit (abgelaufen/bald ablaufend/gültig)",
+    "Dienststunden: Berechnung auf aktuelles Jahr umgestellt",
+    "Header: Uhrzeit wird auf allen Seiten angezeigt",
+    "Kameraden-Tab: Aufgaben-Übersicht für Wehrführer (fehlende Daten, AGT, Erste-Hilfe)"
   ]
 }
