@@ -10,6 +10,13 @@ function datum(d) {
   if (isNaN(ts)) return '–';
   return ts.toLocaleDateString('de-DE', { day:'2-digit', month:'2-digit', year:'numeric' });
 }
+function datumUhrzeit(d) {
+  if (!d) return '–';
+  const ts = d?.toDate ? d.toDate() : new Date(d);
+  if (isNaN(ts)) return '–';
+  return ts.toLocaleDateString('de-DE', { day:'2-digit', month:'2-digit', year:'numeric' })
+    + ' ' + ts.toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit' });
+}
 function plural(n, singular, plural_) {
   return n + ' ' + (n === 1 ? singular : plural_);
 }
@@ -45,10 +52,10 @@ function anwesenheitBadge(s) {
 }
 function getStats(anwesenheiten, dienstMap, einsatzMap) {
   const jetzt   = new Date();
-  const vor12m  = new Date(); vor12m.setFullYear(vor12m.getFullYear()-1); vor12m.setHours(0,0,0,0);
   const jahrAkt = jetzt.getFullYear();
+  const jahresStart = new Date(jahrAkt, 0, 1);
 
-  let gesamtEinsatz=0, gesamtDienst=0, einsaetze=0, dienste=0, dienstStunden12m=0;
+  let gesamtEinsatz=0, gesamtDienst=0, einsaetze=0, dienste=0, dienstStundenJahr=0;
   for (const a of anwesenheiten) {
     if (a.status !== 'bestaetigt' && a.status !== 'kommt') continue;
     const dienstEintrag  = dienstMap?.get(a.uebungId)  || null;
@@ -60,19 +67,17 @@ function getStats(anwesenheiten, dienstMap, einsatzMap) {
     const d = a.datum?.toDate ? a.datum.toDate() : (eintrag?.datum?.toDate?.()  || new Date(a.datum));
 
     if (istEinsatz) {
-      // Einsätze: nur aktuelles Jahr
       if (d.getFullYear() === jahrAkt) { gesamtEinsatz += h; einsaetze++; }
     } else {
-      // Dienste: nur letzte 12 Monate
-      if (d >= vor12m) { gesamtDienst += h; dienste++; dienstStunden12m += h; }
+      if (d.getFullYear() === jahrAkt) { gesamtDienst += h; dienste++; dienstStundenJahr += h; }
     }
   }
   return {
     gesamtEinsatz:  Math.round(gesamtEinsatz*10)/10,
     gesamtDienst:   Math.round(gesamtDienst*10)/10,
     einsaetze, dienste,
-    stunden12m: Math.round(dienstStunden12m*10)/10,
-    ziel: dienstStunden12m >= 40,
+    stunden12m: Math.round(dienstStundenJahr*10)/10,
+    ziel: dienstStundenJahr >= 40,
   };
 }
 
@@ -288,7 +293,7 @@ function renderNewsBeitrag(b, usersMap) {
             <div style="width:26px;height:26px;border-radius:50%;background:var(--panel2);display:flex;align-items:center;justify-content:center;font-size:0.7rem;flex-shrink:0;font-weight:600">${(u?.vorname||'?')[0]}${(u?.nachname||'')[0]||''}</div>
             <div style="flex:1;background:var(--panel2);border-radius:10px;padding:0.4rem 0.6rem;font-size:0.82rem">
               <span style="font-weight:600;font-size:0.75rem">${name}</span>
-              <span style="font-size:0.7rem;color:var(--muted);margin-left:0.4rem">${datum(k.datum)}</span>
+              <span style="font-size:0.7rem;color:var(--muted);margin-left:0.4rem">${datumUhrzeit(k.datum)}</span>
               ${(istEigener||istAdmin)?`<button onclick="newsKommentarLoeschen('${b.id}','${k.id}')" style="float:right;background:none;border:none;color:var(--muted);font-size:0.7rem;cursor:pointer;padding:0">✕</button>`:''}
               <div style="margin-top:0.15rem;word-break:break-word">${k.text}</div>
             </div>
@@ -1058,9 +1063,23 @@ function renderQualisProfil(qualis, me) {
   for (const q of sorted) {
     const istErsterNachTrenner = !trennerGezeigt && qualiIdx(q.bezeichnung) > trennerIdx;
     if (istErsterNachTrenner) trennerGezeigt = true;
+    let badge = '';
+    if ((q.bezeichnung||'').trim().toLowerCase() === 'erste-hilfe' && q.datum) {
+      const ablauf = new Date(q.datum?.toDate ? q.datum.toDate() : q.datum);
+      ablauf.setFullYear(ablauf.getFullYear() + 2);
+      const heute = new Date();
+      const baldAblaufend = new Date(); baldAblaufend.setMonth(heute.getMonth() + 3);
+      if (ablauf < heute) {
+        badge = ` <span style="color:#ef4444;font-size:0.75rem">⚠️ abgelaufen</span>`;
+      } else if (ablauf < baldAblaufend) {
+        badge = ` <span style="color:#f59e0b;font-size:0.75rem">⚠️ läuft ab ${datum(ablauf)}</span>`;
+      } else {
+        badge = ` <span style="color:#22c55e;font-size:0.75rem">✅ bis ${datum(ablauf)}</span>`;
+      }
+    }
     html += `<div class="list-item" style="border-bottom:1px solid var(--border);${istErsterNachTrenner?'margin-top:0':''}">
       <div class="list-item-body">
-        <div class="list-item-title">${q.bezeichnung}</div>
+        <div class="list-item-title">${q.bezeichnung}${badge}</div>
         <div class="list-item-sub">${q.datum?datum(q.datum):'Kein Datum'}${q.bemerkung?' · '+q.bemerkung:''}</div>
       </div>
     </div>`;
@@ -1151,14 +1170,14 @@ registerPage('profil', async (el) => {
       <div style="font-size:1.4rem">${stats.ziel?'✅':'⚠️'}</div>
       <div>
         <div style="font-weight:600;font-size:0.95rem">${stats.ziel?'40-Stunden-Ziel erreicht':'40-Stunden-Ziel nicht erreicht'}</div>
-        <div style="font-size:0.8rem;color:var(--muted);margin-top:0.1rem">${dauerFormat(stats.stunden12m)}h von 40:00h in den letzten 12 Monaten</div>
+        <div style="font-size:0.8rem;color:var(--muted);margin-top:0.1rem">${dauerFormat(stats.stunden12m)}h von 40:00h im Jahr ${new Date().getFullYear()}</div>
       </div>
     </div>
     <div class="stats-grid">
       <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.gesamtEinsatz)}h</div><div class="stat-label">Einsatzstunden ${new Date().getFullYear()}</div></div>
       <div class="stat-card"><div class="stat-zahl">${stats.einsaetze}</div><div class="stat-label">${stats.einsaetze===1?'Einsatz':'Einsätze'} ${new Date().getFullYear()}</div></div>
-      <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.gesamtDienst)}h</div><div class="stat-label">Dienststunden (12 Mon.)</div></div>
-      <div class="stat-card"><div class="stat-zahl">${stats.dienste}</div><div class="stat-label">${stats.dienste===1?'Dienst':'Dienste'} (12 Mon.)</div></div>
+      <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.gesamtDienst)}h</div><div class="stat-label">Dienststunden ${new Date().getFullYear()}</div></div>
+      <div class="stat-card"><div class="stat-zahl">${stats.dienste}</div><div class="stat-label">${stats.dienste===1?'Dienst':'Dienste'} ${new Date().getFullYear()}</div></div>
     </div>
     <div class="section-header">Persönliche Daten</div>
     <div class="card">
@@ -1936,23 +1955,23 @@ registerPage('kameraden', async (el) => {
       if (aAktiv !== bAktiv) return aAktiv ? -1 : 1;
       return (a.nachname||'').localeCompare(b.nachname||'', 'de');
     });
+  const aktiveUsers = users.filter(u => u.aktiv !== false);
 
-  // Anwesenheiten der letzten 12 Monate laden
-  const vor12Monaten = new Date();
-  vor12Monaten.setFullYear(vor12Monaten.getFullYear() - 1);
+  // Anwesenheiten aktuelles Jahr laden
+  const jahrStart = new Date(new Date().getFullYear(), 0, 1);
   const anwSnap = await fw.getDocs('anwesenheiten');
-  const stunden12 = {};
+  const stundenJahr = {};
   for (const d of anwSnap.docs) {
     const a = d.data();
     if (a.status !== 'kommt') continue;
     const dat = a.datum?.toDate ? a.datum.toDate() : new Date(a.datum);
-    if (dat < vor12Monaten) continue;
-    stunden12[a.userId] = (stunden12[a.userId] || 0) + (a.dauer_h || 0);
+    if (dat < jahrStart) continue;
+    stundenJahr[a.userId] = (stundenJahr[a.userId] || 0) + (a.dauer_h || 0);
   }
 
   const ZIEL = 40;
   function stundenBadge(userId) {
-    const h = Math.round((stunden12[userId] || 0) * 10) / 10;
+    const h = Math.round((stundenJahr[userId] || 0) * 10) / 10;
     const pct = Math.min(100, Math.round(h / ZIEL * 100));
     const erreicht = h >= ZIEL;
     const farbe = erreicht ? '#22c55e' : h >= ZIEL * 0.75 ? '#f59e0b' : 'var(--muted)';
@@ -1964,6 +1983,72 @@ registerPage('kameraden', async (el) => {
     </div>`;
   }
 
+  // Aufgaben für Wehrführer berechnen
+  let aufgabenHtml = '';
+  if (fw.isWehrfuehrer()) {
+    // Alle Qualifikationen aktiver Kameraden laden
+    const qualiPromises = aktiveUsers.map(u =>
+      fw.getDocs('users/'+u.id+'/qualifikationen').then(s => ({
+        user: u,
+        qualis: s.docs.map(d => ({id:d.id,...d.data()}))
+      }))
+    );
+    const alleQualis = await Promise.all(qualiPromises);
+    const heute = new Date();
+    const j3 = new Date(); j3.setFullYear(heute.getFullYear()-3);
+    const j1 = new Date(); j1.setFullYear(heute.getFullYear()-1);
+    const aufgaben = [];
+
+    for (const {user, qualis} of alleQualis) {
+      const name = `${user.vorname||''} ${user.nachname||''}`.trim();
+      // Lehrgänge ohne Datum
+      for (const q of qualis) {
+        if (!q.datum) {
+          aufgaben.push({ typ: 'kein-datum', text: `${name}: „${q.bezeichnung}" hat kein Datum`, userId: user.id });
+        }
+      }
+      // AGT: Gültigkeit prüfen
+      const hatAgt = qualis.some(q => (q.bezeichnung||'').trim().toLowerCase() === 'agt');
+      if (hatAgt) {
+        const unt  = user.agt_untersuchung ? new Date(user.agt_untersuchung) : null;
+        const waer = user.agt_waermeuebung ? new Date(user.agt_waermeuebung) : null;
+        const bel  = user.agt_belastung    ? new Date(user.agt_belastung)    : null;
+        const fehlt = [];
+        if (!unt  || unt  < j3) fehlt.push('G26 ' + (unt  ? `(${datum(unt)})` : 'fehlt'));
+        if (!waer || waer < j1) fehlt.push('Wärmeübung ' + (waer ? `(${datum(waer)})` : 'fehlt'));
+        if (!bel  || bel  < j1) fehlt.push('Belastung ' + (bel  ? `(${datum(bel)})` : 'fehlt'));
+        if (fehlt.length) {
+          aufgaben.push({ typ: 'agt', text: `${name} (AGT): ${fehlt.join(', ')}`, userId: user.id });
+        }
+      }
+      // Erste-Hilfe abgelaufen
+      const eh = qualis.find(q => (q.bezeichnung||'').trim().toLowerCase() === 'erste-hilfe');
+      if (eh?.datum) {
+        const ablauf = new Date(eh.datum?.toDate ? eh.datum.toDate() : eh.datum);
+        ablauf.setFullYear(ablauf.getFullYear() + 2);
+        if (ablauf < heute) {
+          aufgaben.push({ typ: 'eh', text: `${name}: Erste-Hilfe abgelaufen (${datum(ablauf)})`, userId: user.id });
+        }
+      }
+    }
+
+    if (aufgaben.length) {
+      const icons = { 'kein-datum': '📅', 'agt': '🔴', 'eh': '⚠️' };
+      aufgabenHtml = `
+        <div class="card" style="margin-bottom:0.6rem">
+          <div class="card-title" style="color:#f59e0b">⚠️ Offene Aufgaben (${aufgaben.length})</div>
+          ${aufgaben.map(a => `
+            <div class="list-item" onclick="navigate('kamerad-detail',{id:'${a.userId}'})" style="border-bottom:1px solid var(--border);cursor:pointer">
+              <div style="font-size:1rem;margin-right:0.5rem">${icons[a.typ]||'•'}</div>
+              <div class="list-item-body"><div style="font-size:0.83rem">${a.text}</div></div>
+              <div class="list-chevron">›</div>
+            </div>`).join('')}
+        </div>`;
+    } else {
+      aufgabenHtml = `<div class="card" style="margin-bottom:0.6rem;color:#22c55e;font-size:0.88rem">✅ Keine offenen Aufgaben</div>`;
+    }
+  }
+
   el.innerHTML = `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.6rem;margin-bottom:0.2rem">
       <button class="btn btn-secondary btn-full" onclick="navigate('lehrgaenge')" style="display:flex;align-items:center;justify-content:center;gap:0.4rem;padding:0.7rem">
@@ -1973,7 +2058,8 @@ registerPage('kameraden', async (el) => {
         <span style="font-size:1.2rem">📊</span><span style="font-weight:600">Statistiken</span>
       </button>
     </div>
-    <div style="font-size:0.72rem;color:var(--muted);text-align:right;padding:0 0.2rem 0.3rem">Stunden letzte 12 Monate · Ziel: ${ZIEL}h</div>
+    ${aufgabenHtml}
+    <div style="font-size:0.72rem;color:var(--muted);text-align:right;padding:0 0.2rem 0.3rem">Dienststunden ${new Date().getFullYear()} · Ziel: ${ZIEL}h</div>
     <div class="card">
       ${users.map(u => `
         <div class="list-item" onclick="navigate('kamerad-detail',{id:'${u.id}'})">
@@ -2074,6 +2160,20 @@ function renderQualis(qualis, userId, u) {
         ? ' <span style="color:#22c55e;font-size:0.75rem">✅ aktiv</span>'
         : ` <span style="color:#f59e0b;font-size:0.75rem" title="${fehlt.join(', ')}">⚠️ nicht aktiv</span>`;
     }
+    // Erste-Hilfe: 2 Jahre Gültigkeit
+    if ((q.bezeichnung||'').trim().toLowerCase() === 'erste-hilfe' && q.datum) {
+      const ablauf = new Date(q.datum?.toDate ? q.datum.toDate() : q.datum);
+      ablauf.setFullYear(ablauf.getFullYear() + 2);
+      const heute = new Date();
+      const baldAblaufend = new Date(); baldAblaufend.setMonth(heute.getMonth() + 3);
+      if (ablauf < heute) {
+        agtWarnung = ` <span style="color:#ef4444;font-size:0.75rem">⚠️ abgelaufen (${datum(ablauf)})</span>`;
+      } else if (ablauf < baldAblaufend) {
+        agtWarnung = ` <span style="color:#f59e0b;font-size:0.75rem">⚠️ läuft ab ${datum(ablauf)}</span>`;
+      } else {
+        agtWarnung = ` <span style="color:#22c55e;font-size:0.75rem">✅ bis ${datum(ablauf)}</span>`;
+      }
+    }
     html += `<div class="list-item" style="border-bottom:1px solid var(--border);${istErsterNachTrenner?'margin-top:0':''}">
       <div class="list-item-body">
         <div class="list-item-title">${q.bezeichnung}${agtWarnung}</div>
@@ -2140,14 +2240,14 @@ registerPage('kamerad-detail', async (el, {id}) => {
       <div style="font-size:1.4rem">${stats.ziel?'✅':'⚠️'}</div>
       <div>
         <div style="font-weight:600;font-size:0.95rem">${stats.ziel?'40-Stunden-Ziel erreicht':'40-Stunden-Ziel nicht erreicht'}</div>
-        <div style="font-size:0.8rem;color:var(--muted);margin-top:0.1rem">${dauerFormat(stats.stunden12m)}h von 40:00h in den letzten 12 Monaten</div>
+        <div style="font-size:0.8rem;color:var(--muted);margin-top:0.1rem">${dauerFormat(stats.stunden12m)}h von 40:00h im Jahr ${new Date().getFullYear()}</div>
       </div>
     </div>
     <div class="stats-grid">
       <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.gesamtEinsatz)}h</div><div class="stat-label">Einsatzstunden ${new Date().getFullYear()}</div></div>
       <div class="stat-card"><div class="stat-zahl">${stats.einsaetze}</div><div class="stat-label">${stats.einsaetze===1?'Einsatz':'Einsätze'} ${new Date().getFullYear()}</div></div>
-      <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.gesamtDienst)}h</div><div class="stat-label">Dienststunden (12 Mon.)</div></div>
-      <div class="stat-card"><div class="stat-zahl">${stats.dienste}</div><div class="stat-label">${stats.dienste===1?'Dienst':'Dienste'} (12 Mon.)</div></div>
+      <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.gesamtDienst)}h</div><div class="stat-label">Dienststunden ${new Date().getFullYear()}</div></div>
+      <div class="stat-card"><div class="stat-zahl">${stats.dienste}</div><div class="stat-label">${stats.dienste===1?'Dienst':'Dienste'} ${new Date().getFullYear()}</div></div>
     </div>
     <div class="card">
       <div class="card-title">Stammdaten</div>
