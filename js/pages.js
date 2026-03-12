@@ -701,12 +701,12 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
       <div style="margin-top:0.6rem;font-weight:600;font-size:1.1rem">${u.titel}</div>
       <div style="margin-top:0.3rem;color:var(--muted);font-size:0.85rem">${datum(u.datum)}${zeitZeile(u) ? ' · '+zeitZeile(u) : ''}</div>
       ${u.beschreibung ? `<p class="muted" style="margin-top:0.4rem;font-size:0.85rem">${u.beschreibung}</p>` : ''}
-      ${isEinsatz && u.ort ? `<div style="margin-top:0.5rem;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
+      ${u.ort ? `<div style="margin-top:0.5rem;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
         <span style="font-size:0.85rem">📍 ${u.ort}</span>
-        <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(u.ort)}" target="_blank"
+        ${isEinsatz ? `<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(u.ort)}" target="_blank"
           style="font-size:0.75rem;padding:0.2rem 0.6rem;background:var(--panel2);border-radius:20px;color:var(--blue);text-decoration:none;border:1px solid var(--border)">
           🗺 Navigation
-        </a>
+        </a>` : ''}
       </div>` : ''}
       ${isEinsatz && !u.zeitEnde && fw.isWehrfuehrer() ? `
         <button class="btn btn-secondary btn-sm" style="margin-top:0.6rem" onclick="navigate('uebung-form',{id:'${u.id}',typ:'einsatz'})">⏱ Endzeit nachtragen</button>
@@ -929,9 +929,9 @@ registerPage('uebung-form', async (el, {id, typ: vorTyp, alarm: mitAlarm}) => {
           <input id="f-titel" value="${u?.titel||''}" placeholder="Monatsübung April…">
         </div>
         <div class="form-row"><label>Datum</label><input id="f-datum" type="date" value="${datumVal}"></div>
-        <div class="form-row"><label>Beginn</label><input id="f-beginn" type="time" value="${u?.zeitBeginn||''}"></div>
-        <div class="form-row"><label>Ende</label><input id="f-ende" type="time" value="${u?.zeitEnde||''}"></div>
-        <div class="form-row"><label>Dauer (Stunden, wird aus Zeiten berechnet)</label>
+        <div class="form-row"><label>Beginn</label><input id="f-beginn" type="time" value="${u?.zeitBeginn||''}" oninput="berechneDauer()"></div>
+        <div class="form-row"><label>Ende</label><input id="f-ende" type="time" value="${u?.zeitEnde||''}" oninput="berechneDauer()"></div>
+        <div class="form-row"><label>Dauer (Stunden)</label>
           <input id="f-dauer" type="number" step="0.5" min="0.5" value="${u?.dauer_h||2}">
         </div>
         <div class="form-row"><label>Beschreibung (optional)</label>
@@ -947,6 +947,16 @@ registerPage('uebung-form', async (el, {id, typ: vorTyp, alarm: mitAlarm}) => {
       </div>`;
   }
 });
+
+window.berechneDauer = () => {
+  const b = document.getElementById('f-beginn')?.value;
+  const e = document.getElementById('f-ende')?.value;
+  if (!b || !e) return;
+  const [bh, bm] = b.split(':').map(Number);
+  const [eh, em] = e.split(':').map(Number);
+  const diff = (eh * 60 + em) - (bh * 60 + bm);
+  if (diff > 0) document.getElementById('f-dauer').value = Math.round(diff / 60 * 100) / 100;
+};
 
 window.uebungSpeichern = async (id, forcTyp) => {
   const titel   = document.getElementById('f-titel').value.trim();
