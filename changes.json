@@ -1,7 +1,13 @@
 {
-  "version": "2.5.8",
+  "version": "2.6.0",
   "datum": "12.03.2026",
   "punkte": [
-    "Kameraden-Liste: Dienstgrad und Aktiv-Text entfernt, 🧑 aktiv / grau-transparent inaktiv"
+    "Design 'Standard' → 'Modern' umbenannt",
+    "Kameraden: aktive alphabetisch oben, inaktive alphabetisch darunter",
+    "Lehrgänge-Übersicht: Zebrastreifen heller (wie Statistik-Tabelle)",
+    "Kamerad-Profil: geplante Lehrgänge werden angezeigt",
+    "Kamerad-Profil: Telefonnummer entfernt",
+    "Profil: 40-Stunden-Status als Banner ganz oben",
+    "News: PDF-Anhang hochladen und anzeigen (Firebase Storage)"
   ]
 }
