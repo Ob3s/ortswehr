@@ -1,8 +1,7 @@
 {
-  "version": "2.5.7",
+  "version": "2.5.8",
   "datum": "12.03.2026",
   "punkte": [
-    "Dienst-Detailansicht: Ort wird jetzt angezeigt",
-    "Dienst-Formular: Dauer wird live aus Beginn/Ende berechnet"
+    "Kameraden-Liste: Dienstgrad und Aktiv-Text entfernt, 🧑 aktiv / grau-transparent inaktiv"
   ]
 }
