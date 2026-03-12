@@ -937,6 +937,9 @@ registerPage('uebung-form', async (el, {id, typ: vorTyp, alarm: mitAlarm}) => {
         <div class="form-row"><label>Beschreibung (optional)</label>
           <textarea id="f-beschr">${u?.beschreibung||''}</textarea>
         </div>
+        <div class="form-row"><label>Ort (optional)</label>
+          <input id="f-ort" value="${u?.ort||''}" placeholder="Gerätehaus Oegeln">
+        </div>
         <div class="btn-row">
           <button class="btn btn-primary" onclick="uebungSpeichern('${id||''}','dienst')">💾 Speichern & Benachrichtigen</button>
           ${u ? `<button class="btn btn-danger" onclick="uebungLoeschen('${id}','dienst')">🗑 Löschen</button>` : ''}
@@ -1842,9 +1845,38 @@ registerPage('news-form', async (el) => {
 registerPage('kameraden', async (el) => {
   fw.setTitle('Kameraden');
   fw.showHeaderAction('+ Neu', () => navigate('kamerad-form', {}));
+
   const snap = await fw.getDocs('users');
   const users = snap.docs.map(d => ({id:d.id,...d.data()}))
     .sort((a,b) => (a.nachname||'').localeCompare(b.nachname||''));
+
+  // Anwesenheiten der letzten 12 Monate laden
+  const vor12Monaten = new Date();
+  vor12Monaten.setFullYear(vor12Monaten.getFullYear() - 1);
+  const anwSnap = await fw.getDocs('anwesenheiten');
+  const stunden12 = {};
+  for (const d of anwSnap.docs) {
+    const a = d.data();
+    if (a.status !== 'kommt') continue;
+    const dat = a.datum?.toDate ? a.datum.toDate() : new Date(a.datum);
+    if (dat < vor12Monaten) continue;
+    stunden12[a.userId] = (stunden12[a.userId] || 0) + (a.dauer_h || 0);
+  }
+
+  const ZIEL = 40;
+  function stundenBadge(userId) {
+    const h = Math.round((stunden12[userId] || 0) * 10) / 10;
+    const pct = Math.min(100, Math.round(h / ZIEL * 100));
+    const erreicht = h >= ZIEL;
+    const farbe = erreicht ? '#22c55e' : h >= ZIEL * 0.75 ? '#f59e0b' : 'var(--muted)';
+    return `<div style="text-align:right;min-width:64px">
+      <div style="font-size:0.8rem;font-weight:600;color:${farbe}">${h}h</div>
+      <div style="background:var(--border);border-radius:3px;height:4px;width:64px;margin-top:3px">
+        <div style="background:${farbe};width:${pct}%;height:4px;border-radius:3px"></div>
+      </div>
+    </div>`;
+  }
+
   el.innerHTML = `
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.6rem;margin-bottom:0.2rem">
       <button class="btn btn-secondary btn-full" onclick="navigate('lehrgaenge')" style="display:flex;align-items:center;justify-content:center;gap:0.4rem;padding:0.7rem">
@@ -1854,6 +1886,7 @@ registerPage('kameraden', async (el) => {
         <span style="font-size:1.2rem">📊</span><span style="font-weight:600">Statistiken</span>
       </button>
     </div>
+    <div style="font-size:0.72rem;color:var(--muted);text-align:right;padding:0 0.2rem 0.3rem">Stunden letzte 12 Monate · Ziel: ${ZIEL}h</div>
     <div class="card">
       ${users.map(u => `
         <div class="list-item" onclick="navigate('kamerad-detail',{id:'${u.id}'})">
@@ -1862,6 +1895,7 @@ registerPage('kameraden', async (el) => {
             <div class="list-item-title">${u.nachname||''}, ${u.vorname||''}</div>
             <div class="list-item-sub">${u.dienstgrad||'–'} · ${u.aktiv===false?'<span style="color:var(--muted)">Inaktiv</span>':'Aktiv'}</div>
           </div>
+          ${stundenBadge(u.id)}
           <div class="list-chevron">›</div>
         </div>`).join('')}
     </div>
