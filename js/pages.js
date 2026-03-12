@@ -1456,7 +1456,24 @@ registerPage('statistik', async (el) => {
 const ALLE_LEHRGAENGE = ['Truppmann','Truppführer','Gruppenführer','Zugführer','Wehrführer','AGT','Maschinist','Sprechfunk','TH-Grund','Absturzsicherung','ABC-Grund','Erste-Hilfe','Motorsäge A/B','Motorsäge C/D'];
 
 // Lehrgänge die ausschließlich an Werktagen stattfinden
-const WERKTAG_LEHRGAENGE = ['Gruppenführer','Zugführer','Wehrführer','Motorsäge A/B','Motorsäge C/D'];
+const WERKTAG_LEHRGAENGE = ['Gruppenführer','Zugführer','Wehrführer'];
+
+// Vorlagen: { tage, stunden } – Stunden/Tag wird berechnet
+const LEHRGANG_VORLAGEN = {
+  'Truppführer':     { tage: 5,  stunden: 35 },
+  'Gruppenführer':   { tage: 10, stunden: 70 },
+  'Zugführer':       { tage: 10, stunden: 70 },
+  'Wehrführer':      { tage: 3,  stunden: 24 },
+  'AGT':             { tage: 4,  stunden: 38 },
+  'Maschinist':      { tage: 4,  stunden: 35 },
+  'Sprechfunk':      { tage: 3,  stunden: 32 },
+  'TH-Grund':        { tage: 4,  stunden: 35 },
+  'Absturzsicherung':{ tage: 3,  stunden: 29 },
+  'ABC-Grund':       { tage: 10, stunden: 70 },
+  'Erste-Hilfe':     { tage: 1,  stunden: 8  },
+  'Motorsäge A/B':   { tage: 2,  stunden: 16 },
+  'Motorsäge C/D':   { tage: 2,  stunden: 16 },
+};
 
 function berechneEndDatum(startDatumStr, tage, lehrgang) {
   const nurWerktage = WERKTAG_LEHRGAENGE.includes(lehrgang);
@@ -1627,24 +1644,24 @@ registerPage('lehrgaenge', async (el) => {
         </p>
         <div class="form-row">
           <label>Lehrgang</label>
-          <select id="erf-lehrgang">
+          <select id="erf-lehrgang" onchange="erfVorlageLaden()">
             <option value="">– wählen –</option>
             ${ALLE_LEHRGAENGE.map(l => `<option value="${l}">${l}</option>`).join('')}
           </select>
         </div>
         <div class="form-row">
           <label>Datum (erster Tag)</label>
-          <input id="erf-datum" type="date" value="${new Date().toISOString().slice(0,10)}">
-          <div style="font-size:0.78rem;color:var(--muted);margin-top:0.2rem">Im Profil wird der letzte Tag (Prüfungsdatum) gespeichert</div>
+          <input id="erf-datum" type="date" value="${new Date().toISOString().slice(0,10)}" oninput="erfEndDatumAnzeigen()">
+          <div id="erf-enddatum-hint" style="font-size:0.78rem;color:var(--muted);margin-top:0.2rem">Im Profil wird der letzte Tag (Prüfungsdatum) gespeichert</div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.6rem">
           <div class="form-row">
             <label>Lehrgangstage</label>
-            <input id="erf-tage" type="number" min="1" max="30" value="1">
+            <input id="erf-tage" type="number" min="1" max="30" value="1" oninput="erfEndDatumAnzeigen()">
           </div>
           <div class="form-row">
-            <label>Stunden / Tag</label>
-            <input id="erf-stunden" type="number" min="1" max="24" step="0.5" value="8">
+            <label>Gesamtstunden</label>
+            <input id="erf-stunden" type="number" min="1" max="300" step="0.5" value="8">
           </div>
         </div>
         <div class="form-row">
@@ -1669,13 +1686,35 @@ registerPage('lehrgaenge', async (el) => {
     window.erfAlleWaehlen = (an) => {
       document.querySelectorAll('.erf-user-cb').forEach(cb => cb.checked = an);
     };
+
+    window.erfVorlageLaden = () => {
+      const lehrgang = document.getElementById('erf-lehrgang').value;
+      const vorlage = LEHRGANG_VORLAGEN[lehrgang];
+      if (vorlage) {
+        document.getElementById('erf-tage').value = vorlage.tage;
+        document.getElementById('erf-stunden').value = vorlage.stunden;
+      }
+      erfEndDatumAnzeigen();
+    };
+
+    window.erfEndDatumAnzeigen = () => {
+      const lehrgang = document.getElementById('erf-lehrgang').value;
+      const datumStr = document.getElementById('erf-datum').value;
+      const tage     = parseInt(document.getElementById('erf-tage').value) || 1;
+      const hint     = document.getElementById('erf-enddatum-hint');
+      if (!datumStr || !lehrgang) { hint.textContent = 'Im Profil wird der letzte Tag (Prüfungsdatum) gespeichert'; return; }
+      const end = berechneEndDatum(datumStr, tage, lehrgang);
+      const [y,m,d] = end.split('-');
+      const typ = WERKTAG_LEHRGAENGE.includes(lehrgang) ? 'Werktage' : 'Wochenendtage';
+      hint.textContent = `Prüfungsdatum: ${d}.${m}.${y} (${tage} ${typ})`;
+    };
   };
 
   window.lehrgangsErfassen = async () => {
     const lehrgang = document.getElementById('erf-lehrgang').value;
     const datumStr = document.getElementById('erf-datum').value;
-    const tage     = parseFloat(document.getElementById('erf-tage').value) || 1;
-    const stundenProTag = parseFloat(document.getElementById('erf-stunden').value) || 8;
+    const tage          = parseFloat(document.getElementById('erf-tage').value) || 1;
+    const gesamtStunden = parseFloat(document.getElementById('erf-stunden').value) || 8;
     const ausgewaehlte = [...document.querySelectorAll('.erf-user-cb:checked')].map(cb => cb.value);
 
     if (!lehrgang)               { fw.toast('Bitte Lehrgang wählen', true); return; }
@@ -1700,13 +1739,13 @@ registerPage('lehrgaenge', async (el) => {
           bezeichnung: lehrgang,
           datum: endDatumStr,
           tage,
-          stunden: Math.round(tage * stundenProTag * 100) / 100,
+          stunden: gesamtStunden,
           bemerkung: '',
         });
       }));
 
       fw.toast(`✅ ${ausgewaehlte.length} Kamerad${ausgewaehlte.length!==1?'en':''} eingetragen`);
-      status.textContent = `✅ ${ausgewaehlte.length} Teilnehmer · ${tage} Tage × ${stundenProTag}h = ${tage*stundenProTag}h · Prüfungsdatum: ${endDatumStr}`;
+      status.textContent = `✅ ${ausgewaehlte.length} Teilnehmer · ${tage} Tage · ${gesamtStunden}h · Prüfungsdatum: ${endDatumStr}`;
     } catch(e) {
       fw.toast('Fehler: ' + e.message, true);
       status.textContent = '❌ ' + e.message;
