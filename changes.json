@@ -1,7 +1,8 @@
 {
-  "version": "2.5.6",
+  "version": "2.5.7",
   "datum": "12.03.2026",
   "punkte": [
-    "Dienst-Formular: Ort-Feld hinzugefügt (neu anlegen + bearbeiten)"
+    "Dienst-Detailansicht: Ort wird jetzt angezeigt",
+    "Dienst-Formular: Dauer wird live aus Beginn/Ende berechnet"
   ]
 }
