@@ -1455,6 +1455,27 @@ registerPage('statistik', async (el) => {
 // ── Lehrgangsverwaltung ───────────────────────────────────
 const ALLE_LEHRGAENGE = ['Truppmann','Truppführer','Gruppenführer','Zugführer','Wehrführer','AGT','Maschinist','Sprechfunk','TH-Grund','Absturzsicherung','ABC-Grund','Erste-Hilfe','Motorsäge A/B','Motorsäge C/D'];
 
+// Lehrgänge die ausschließlich an Werktagen stattfinden
+const WERKTAG_LEHRGAENGE = ['Gruppenführer','Zugführer','Wehrführer','Motorsäge A/B','Motorsäge C/D'];
+
+function berechneEndDatum(startDatumStr, tage, lehrgang) {
+  const nurWerktage = WERKTAG_LEHRGAENGE.includes(lehrgang);
+  const d = new Date(startDatumStr);
+  let gezaehlt = 0;
+  while (gezaehlt < tage) {
+    const wt = d.getDay(); // 0=So, 6=Sa
+    const istWerktag   = wt >= 1 && wt <= 5;
+    const istWochenende = wt === 0 || wt === 6;
+    if ((nurWerktage && istWerktag) || (!nurWerktage && istWochenende)) {
+      gezaehlt++;
+      if (gezaehlt < tage) d.setDate(d.getDate() + 1);
+    } else {
+      d.setDate(d.getDate() + 1);
+    }
+  }
+  return d.toISOString().slice(0, 10);
+}
+
 registerPage('lehrgaenge', async (el) => {
   fw.setTitle('Lehrgänge');
   fw.showBack(() => navigate('kameraden'));
@@ -1666,23 +1687,26 @@ registerPage('lehrgaenge', async (el) => {
     document.querySelector('#l-inhalt .btn-primary').disabled = true;
 
     try {
-      // Für jeden Teilnehmer einen Qualifikations-Eintrag anlegen
-      const endDatum = new Date(datumStr);
-      endDatum.setDate(endDatum.getDate() + tage - 1);
-      const endDatumStr = endDatum.toISOString().slice(0, 10);
+      const endDatumStr = berechneEndDatum(datumStr, tage, lehrgang);
 
-      await Promise.all(ausgewaehlte.map(userId =>
-        fw.addDoc('users/'+userId+'/qualifikationen', {
+      // Für jeden Teilnehmer: vorhandenen Eintrag löschen, dann neu anlegen
+      await Promise.all(ausgewaehlte.map(async userId => {
+        const snap = await fw.getDocs('users/'+userId+'/qualifikationen');
+        const vorhandene = snap.docs.filter(d =>
+          (d.data().bezeichnung||'').trim().toLowerCase() === lehrgang.trim().toLowerCase()
+        );
+        await Promise.all(vorhandene.map(d => fw.deleteDoc('users/'+userId+'/qualifikationen/'+d.id)));
+        await fw.addDoc('users/'+userId+'/qualifikationen', {
           bezeichnung: lehrgang,
           datum: endDatumStr,
           tage,
           stunden: Math.round(tage * stundenProTag * 100) / 100,
           bemerkung: '',
-        })
-      ));
+        });
+      }));
 
       fw.toast(`✅ ${ausgewaehlte.length} Kamerad${ausgewaehlte.length!==1?'en':''} eingetragen`);
-      status.textContent = `✅ ${ausgewaehlte.length} Teilnehmer · ${tage} Tage × ${stundenProTag}h = ${tage*stundenProTag}h pro Person`;
+      status.textContent = `✅ ${ausgewaehlte.length} Teilnehmer · ${tage} Tage × ${stundenProTag}h = ${tage*stundenProTag}h · Prüfungsdatum: ${endDatumStr}`;
     } catch(e) {
       fw.toast('Fehler: ' + e.message, true);
       status.textContent = '❌ ' + e.message;
