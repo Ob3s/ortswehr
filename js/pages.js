@@ -1457,6 +1457,7 @@ const ALLE_LEHRGAENGE = ['Truppmann','Truppführer','Gruppenführer','Zugführer
 
 // Lehrgänge die ausschließlich an Werktagen stattfinden
 const WERKTAG_LEHRGAENGE = ['Gruppenführer','Zugführer','Wehrführer'];
+const BELIEBIG_LEHRGAENGE  = ['Erste-Hilfe']; // beliebige Wochentage
 
 // Vorlagen: { tage, stunden } – Stunden/Tag wird berechnet
 const LEHRGANG_VORLAGEN = {
@@ -1477,13 +1478,15 @@ const LEHRGANG_VORLAGEN = {
 
 function berechneEndDatum(startDatumStr, tage, lehrgang) {
   const nurWerktage = WERKTAG_LEHRGAENGE.includes(lehrgang);
+  const beliebig    = BELIEBIG_LEHRGAENGE.includes(lehrgang);
   const d = new Date(startDatumStr);
   let gezaehlt = 0;
   while (gezaehlt < tage) {
-    const wt = d.getDay(); // 0=So, 6=Sa
-    const istWerktag   = wt >= 1 && wt <= 5;
-    const istWochenende = wt === 0 || wt === 6;
-    if ((nurWerktage && istWerktag) || (!nurWerktage && istWochenende)) {
+    const wt = d.getDay();
+    const zaehlt = beliebig
+      || (nurWerktage  && wt >= 1 && wt <= 5)
+      || (!nurWerktage && !beliebig && (wt === 0 || wt === 6));
+    if (zaehlt) {
       gezaehlt++;
       if (gezaehlt < tage) d.setDate(d.getDate() + 1);
     } else {
@@ -1705,7 +1708,7 @@ registerPage('lehrgaenge', async (el) => {
       if (!datumStr || !lehrgang) { hint.textContent = 'Im Profil wird der letzte Tag (Prüfungsdatum) gespeichert'; return; }
       const end = berechneEndDatum(datumStr, tage, lehrgang);
       const [y,m,d] = end.split('-');
-      const typ = WERKTAG_LEHRGAENGE.includes(lehrgang) ? 'Werktage' : 'Wochenendtage';
+      const typ = WERKTAG_LEHRGAENGE.includes(lehrgang) ? 'Werktage' : BELIEBIG_LEHRGAENGE.includes(lehrgang) ? 'Tage' : 'Wochenendtage';
       hint.textContent = `Prüfungsdatum: ${d}.${m}.${y} (${tage} ${typ})`;
     };
   };
@@ -1949,8 +1952,7 @@ function renderQualis(qualis, userId, u) {
     html += `<div class="list-item" style="border-bottom:1px solid var(--border);${istErsterNachTrenner?'margin-top:0':''}">
       <div class="list-item-body">
         <div class="list-item-title">${q.bezeichnung}${agtWarnung}</div>
-        <div class="list-item-sub">${q.datum?datum(q.datum):'Kein Datum'}${q.tage ? ' · '+q.tage+' Tage' : ''}${q.stunden ? ' · '+q.stunden+'h' : ''}
-          ${q.bemerkung?' · '+q.bemerkung:''}
+        <div class="list-item-sub">${q.datum?datum(q.datum):'Kein Datum'}${q.bemerkung?' · '+q.bemerkung:''}
         </div>
       </div>
       <button class="btn btn-sm btn-danger" onclick="qualiLoeschen('${userId}','${q.id}')">🗑</button>
