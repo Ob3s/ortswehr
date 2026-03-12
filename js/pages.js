@@ -24,7 +24,7 @@ function dauerFormat(h) {
 function zeitZeile(u) {
   const z = u.zeitBeginn && u.zeitEnde
     ? `${u.zeitBeginn} – ${u.zeitEnde} Uhr`
-    : u.zeitBeginn ? `ab ${u.zeitBeginn} Uhr` : '';
+    : u.zeitBeginn ? `${u.zeitBeginn} Uhr` : '';
   const d = u.dauer_h ? dauerFormat(u.dauer_h) + 'h' : '';
   return [z, d].filter(Boolean).join(' · ');
 }
@@ -1614,6 +1614,7 @@ registerPage('lehrgaenge', async (el) => {
         <div class="form-row">
           <label>Datum (erster Tag)</label>
           <input id="erf-datum" type="date" value="${new Date().toISOString().slice(0,10)}">
+          <div style="font-size:0.78rem;color:var(--muted);margin-top:0.2rem">Im Profil wird der letzte Tag (Prüfungsdatum) gespeichert</div>
         </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.6rem">
           <div class="form-row">
@@ -1666,10 +1667,14 @@ registerPage('lehrgaenge', async (el) => {
 
     try {
       // Für jeden Teilnehmer einen Qualifikations-Eintrag anlegen
+      const endDatum = new Date(datumStr);
+      endDatum.setDate(endDatum.getDate() + tage - 1);
+      const endDatumStr = endDatum.toISOString().slice(0, 10);
+
       await Promise.all(ausgewaehlte.map(userId =>
         fw.addDoc('users/'+userId+'/qualifikationen', {
           bezeichnung: lehrgang,
-          datum: datumStr,
+          datum: endDatumStr,
           tage,
           stunden: Math.round(tage * stundenProTag * 100) / 100,
           bemerkung: '',
