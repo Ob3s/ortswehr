@@ -1323,17 +1323,17 @@ registerPage('statistik', async (el) => {
       return typ==='einsatz' && jahrvon(datum, jahr);
     }).length;
   }
-  function lehrgangTage(userId, jahr) {
+  function lehrgangStunden(userId, jahr) {
     return (qualiPerUser[userId]||[])
       .filter(q => q.datum && jahrvon(q.datum, jahr))
-      .reduce((s, q) => s + (q.tage || 1), 0); // Fallback: 1 Tag pro Lehrgang
+      .reduce((s, q) => s + (q.stunden || (q.tage || 1) * 8), 0);
   }
 
   // Jahresvergleich gesamt
   const gesamt = (jahr) => ({
     einsaetze: einsaetze.filter(e => jahrvon(e.datum, jahr)).length,
     dienststunden: users.reduce((s,u) => s + stunden(u.id,'dienst',jahr), 0),
-    lehrgangtage: users.reduce((s,u) => s + lehrgangTage(u.id,jahr), 0),
+    lehrgangsstunden: users.reduce((s,u) => s + lehrgangStunden(u.id,jahr), 0),
   });
   const gAkt = gesamt(jahrAkt);
   const gVor = gesamt(jahrVor);
@@ -1351,8 +1351,8 @@ registerPage('statistik', async (el) => {
     .map(u => {
       const dAkt = stunden(u.id,'dienst',jahrAkt);
       const dVor = stunden(u.id,'dienst',jahrVor);
-      const lAkt = lehrgangTage(u.id,jahrAkt);
-      const lVor = lehrgangTage(u.id,jahrVor);
+      const lAkt = lehrgangStunden(u.id,jahrAkt);
+      const lVor = lehrgangStunden(u.id,jahrVor);
       const eAkt = einsatzAnzahl(u.id,jahrAkt);
       const eVor = einsatzAnzahl(u.id,jahrVor);
       return {u, dAkt, dVor, lAkt, lVor, eAkt, eVor};
@@ -1388,10 +1388,10 @@ registerPage('statistik', async (el) => {
             <td style="text-align:right;padding:0.5rem 0.3rem">${diff(gAkt.dienststunden,gVor.dienststunden,'h')}</td>
           </tr>
           <tr style="border-top:1px solid var(--border)">
-            <td style="padding:0.5rem 0.3rem">Lehrgangstage</td>
-            <td style="text-align:right;padding:0.5rem 0.3rem">${gVor.lehrgangtage}</td>
-            <td style="text-align:right;padding:0.5rem 0.3rem;font-weight:600">${gAkt.lehrgangtage}</td>
-            <td style="text-align:right;padding:0.5rem 0.3rem">${diff(gAkt.lehrgangtage,gVor.lehrgangtage)}</td>
+            <td style="padding:0.5rem 0.3rem">Lehrgangsstunden</td>
+            <td style="text-align:right;padding:0.5rem 0.3rem">${dauerFormat(gVor.lehrgangsstunden)}h</td>
+            <td style="text-align:right;padding:0.5rem 0.3rem;font-weight:600">${dauerFormat(gAkt.lehrgangsstunden)}h</td>
+            <td style="text-align:right;padding:0.5rem 0.3rem">${diff(gAkt.lehrgangsstunden,gVor.lehrgangsstunden,'h')}</td>
           </tr>
         </tbody>
       </table>
@@ -1427,8 +1427,8 @@ registerPage('statistik', async (el) => {
                 <td class="${odd?'stat-td-sticky-odd':'stat-td-sticky'}" style="padding:0.4rem 0.6rem;font-weight:500">${kurzName(r.u.vorname, r.u.nachname)}</td>
                 <td style="text-align:right;padding:0.4rem 0.4rem;border-left:1px solid var(--border);color:var(--muted)">${dauerFormat(r.dVor)}h</td>
                 <td style="text-align:right;padding:0.4rem 0.4rem">${dauerFormat(r.dAkt)}h</td>
-                <td style="text-align:right;padding:0.4rem 0.4rem;border-left:1px solid var(--border);color:var(--muted)">${r.lVor}</td>
-                <td style="text-align:right;padding:0.4rem 0.4rem">${r.lAkt}</td>
+                <td style="text-align:right;padding:0.4rem 0.4rem;border-left:1px solid var(--border);color:var(--muted)">${dauerFormat(r.lVor)}h</td>
+                <td style="text-align:right;padding:0.4rem 0.4rem">${dauerFormat(r.lAkt)}h</td>
                 <td style="text-align:right;padding:0.4rem 0.4rem;border-left:1px solid var(--border);color:var(--muted)">${r.eVor}</td>
                 <td style="text-align:right;padding:0.4rem 0.4rem">${r.eAkt}</td>
               </tr>`;
@@ -1439,8 +1439,8 @@ registerPage('statistik', async (el) => {
               <td class="stat-td-sticky" style="padding:0.4rem 0.6rem">Gesamt</td>
               <td style="text-align:right;padding:0.4rem 0.4rem;border-left:1px solid var(--border);color:var(--muted)">${dauerFormat(sumD(jahrVor))}h</td>
               <td style="text-align:right;padding:0.4rem 0.4rem">${dauerFormat(sumD(jahrAkt))}h</td>
-              <td style="text-align:right;padding:0.4rem 0.4rem;border-left:1px solid var(--border);color:var(--muted)">${sumL(jahrVor)}</td>
-              <td style="text-align:right;padding:0.4rem 0.4rem">${sumL(jahrAkt)}</td>
+              <td style="text-align:right;padding:0.4rem 0.4rem;border-left:1px solid var(--border);color:var(--muted)">${dauerFormat(sumL(jahrVor))}h</td>
+              <td style="text-align:right;padding:0.4rem 0.4rem">${dauerFormat(sumL(jahrAkt))}h</td>
               <td style="text-align:right;padding:0.4rem 0.4rem;border-left:1px solid var(--border);color:var(--muted)">${sumE(jahrVor)}</td>
               <td style="text-align:right;padding:0.4rem 0.4rem">${sumE(jahrAkt)}</td>
             </tr>
@@ -1468,13 +1468,15 @@ registerPage('lehrgaenge', async (el) => {
       <div style="display:flex;gap:0.4rem;margin-bottom:0.8rem">
         <button class="btn btn-sm ${aktivTab==='uebersicht'?'btn-primary':'btn-secondary'}" onclick="lTab('uebersicht')">📋 Übersicht</button>
         <button class="btn btn-sm ${aktivTab==='planung'?'btn-primary':'btn-secondary'}" onclick="lTab('planung')">📅 Planung</button>
+        <button class="btn btn-sm ${aktivTab==='erfassen'?'btn-primary':'btn-secondary'}" onclick="lTab('erfassen')">✏️ Erfassen</button>
       </div>
       <div id="l-inhalt"><div class="empty">⏳ Lade...</div></div>`;
 
     window.lTab = (tab) => { aktivTab = tab; render(); };
 
     if (aktivTab === 'uebersicht') await renderUebersicht();
-    else await renderPlanung();
+    else if (aktivTab === 'planung') await renderPlanung();
+    else await renderErfassen();
   };
 
   const renderUebersicht = async () => {
@@ -1587,6 +1589,100 @@ registerPage('lehrgaenge', async (el) => {
       </div>`;
 
     window.planJahrWechsel = (j) => { planJahr = parseInt(j); renderPlanung(); };
+  };
+
+  const renderErfassen = async () => {
+    const inh = document.getElementById('l-inhalt');
+    const usersSnap = await fw.getDocs('users');
+    const users = usersSnap.docs.map(d => ({id:d.id,...d.data()}))
+      .filter(u => u.aktiv !== false && u.vorname)
+      .sort((a,b) => (a.nachname||'').localeCompare(b.nachname||'', 'de'));
+
+    inh.innerHTML = `
+      <div class="card">
+        <div class="card-title" style="margin-bottom:0.7rem">Lehrgang nacherfassen</div>
+        <p style="font-size:0.82rem;color:var(--muted);margin-bottom:0.8rem">
+          Erstellt einen Dienst-Eintrag der in die Statistik einfließt.
+        </p>
+        <div class="form-row">
+          <label>Lehrgang</label>
+          <select id="erf-lehrgang">
+            <option value="">– wählen –</option>
+            ${ALLE_LEHRGAENGE.map(l => `<option value="${l}">${l}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-row">
+          <label>Datum (erster Tag)</label>
+          <input id="erf-datum" type="date" value="${new Date().toISOString().slice(0,10)}">
+        </div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.6rem">
+          <div class="form-row">
+            <label>Lehrgangstage</label>
+            <input id="erf-tage" type="number" min="1" max="30" value="1">
+          </div>
+          <div class="form-row">
+            <label>Stunden / Tag</label>
+            <input id="erf-stunden" type="number" min="1" max="24" step="0.5" value="8">
+          </div>
+        </div>
+        <div class="form-row">
+          <label>Teilnehmer</label>
+          <div style="border:1.5px solid var(--border);border-radius:10px;overflow:hidden;margin-top:0.2rem">
+            <div style="padding:0.4rem 0.7rem;border-bottom:1px solid var(--border);display:flex;gap:0.5rem">
+              <button class="btn btn-sm btn-secondary" onclick="erfAlleWaehlen(true)" style="font-size:0.78rem;padding:0.2rem 0.6rem">Alle</button>
+              <button class="btn btn-sm btn-secondary" onclick="erfAlleWaehlen(false)" style="font-size:0.78rem;padding:0.2rem 0.6rem">Keine</button>
+            </div>
+            ${users.map(u => `
+              <label style="display:flex;align-items:center;gap:0.6rem;padding:0.45rem 0.7rem;cursor:pointer;border-bottom:1px solid var(--border)">
+                <input type="checkbox" class="erf-user-cb" value="${u.id}" style="width:1rem;height:1rem;flex-shrink:0">
+                <span style="font-size:0.88rem">${u.nachname||''}, ${u.vorname||''}</span>
+                <span style="font-size:0.78rem;color:var(--muted);margin-left:auto">${u.dienstgrad||''}</span>
+              </label>`).join('')}
+          </div>
+        </div>
+        <button class="btn btn-primary btn-full" style="margin-top:0.6rem" onclick="lehrgangsErfassen()">💾 Lehrgang speichern</button>
+        <div id="erf-status" style="font-size:0.82rem;color:var(--muted);margin-top:0.5rem;text-align:center"></div>
+      </div>`;
+
+    window.erfAlleWaehlen = (an) => {
+      document.querySelectorAll('.erf-user-cb').forEach(cb => cb.checked = an);
+    };
+  };
+
+  window.lehrgangsErfassen = async () => {
+    const lehrgang = document.getElementById('erf-lehrgang').value;
+    const datumStr = document.getElementById('erf-datum').value;
+    const tage     = parseFloat(document.getElementById('erf-tage').value) || 1;
+    const stundenProTag = parseFloat(document.getElementById('erf-stunden').value) || 8;
+    const ausgewaehlte = [...document.querySelectorAll('.erf-user-cb:checked')].map(cb => cb.value);
+
+    if (!lehrgang)               { fw.toast('Bitte Lehrgang wählen', true); return; }
+    if (!datumStr)               { fw.toast('Bitte Datum eintragen', true); return; }
+    if (!ausgewaehlte.length)    { fw.toast('Mindestens einen Teilnehmer wählen', true); return; }
+
+    const status = document.getElementById('erf-status');
+    status.textContent = '⏳ Wird gespeichert…';
+    document.querySelector('#l-inhalt .btn-primary').disabled = true;
+
+    try {
+      // Für jeden Teilnehmer einen Qualifikations-Eintrag anlegen
+      await Promise.all(ausgewaehlte.map(userId =>
+        fw.addDoc('users/'+userId+'/qualifikationen', {
+          bezeichnung: lehrgang,
+          datum: datumStr,
+          tage,
+          stunden: Math.round(tage * stundenProTag * 100) / 100,
+          bemerkung: '',
+        })
+      ));
+
+      fw.toast(`✅ ${ausgewaehlte.length} Kamerad${ausgewaehlte.length!==1?'en':''} eingetragen`);
+      status.textContent = `✅ ${ausgewaehlte.length} Teilnehmer · ${tage} Tage × ${stundenProTag}h = ${tage*stundenProTag}h pro Person`;
+    } catch(e) {
+      fw.toast('Fehler: ' + e.message, true);
+      status.textContent = '❌ ' + e.message;
+      document.querySelector('#l-inhalt .btn-primary').disabled = false;
+    }
   };
 
   window.planungSpeichern = async (jahr) => {
@@ -1785,7 +1881,7 @@ function renderQualis(qualis, userId, u) {
     html += `<div class="list-item" style="border-bottom:1px solid var(--border);${istErsterNachTrenner?'margin-top:0':''}">
       <div class="list-item-body">
         <div class="list-item-title">${q.bezeichnung}${agtWarnung}</div>
-        <div class="list-item-sub">${q.datum?datum(q.datum):'Kein Datum'}${q.tage ? ' · '+q.tage+' Tage' : ''}
+        <div class="list-item-sub">${q.datum?datum(q.datum):'Kein Datum'}${q.tage ? ' · '+q.tage+' Tage' : ''}${q.stunden ? ' · '+q.stunden+'h' : ''}
           ${q.bemerkung?' · '+q.bemerkung:''}
         </div>
       </div>
@@ -1856,7 +1952,10 @@ registerPage('kamerad-detail', async (el, {id}) => {
           ${['Erste-Hilfe','Motorsäge A/B','Motorsäge C/D'].map(l=>`<option value="${l}">${l}</option>`).join('')}
         </select>
         <input id="q-dat" type="date" placeholder="Datum bestanden" style="width:100%">
-        <input id="q-tage" type="number" min="1" max="30" placeholder="Lehrgangstage (z.B. 5)" style="width:100%">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem">
+          <input id="q-tage" type="number" min="1" max="30" placeholder="Tage (z.B. 5)" style="width:100%">
+          <input id="q-stunden" type="number" min="1" max="24" step="0.5" placeholder="Stunden/Tag" style="width:100%">
+        </div>
         <div style="display:flex;gap:0.5rem">
           <input id="q-bem" placeholder="Bemerkung (optional)" style="flex:1">
           <button class="btn btn-primary btn-sm" onclick="qualiHinzufuegen('${id}')">+ Hinzufügen</button>
@@ -1911,10 +2010,12 @@ window.qualiHinzufuegen = async (userId) => {
   const bez = document.getElementById('q-bez').value;
   if (!bez) { fw.toast('Bitte einen Lehrgang wählen', true); return; }
   const tage = parseInt(document.getElementById('q-tage')?.value) || null;
+  const stundenProTag = parseFloat(document.getElementById('q-stunden')?.value) || null;
   await fw.addDoc('users/'+userId+'/qualifikationen', {
     bezeichnung: bez,
     datum: document.getElementById('q-dat').value || null,
     tage,
+    stunden: (tage && stundenProTag) ? Math.round(tage * stundenProTag * 100) / 100 : null,
     bemerkung: document.getElementById('q-bem').value || '',
   });
   fw.toast('Hinzugefügt'); navigate('kamerad-detail',{id:userId});
