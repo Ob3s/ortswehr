@@ -273,12 +273,55 @@ function renderNewsBeitrag(b, usersMap) {
   return `<div class="card" style="margin-bottom:0.6rem">
     <div style="font-weight:600;margin-bottom:0.3rem">${b.titel||''}</div>
     <div style="font-size:0.88rem;color:var(--muted);white-space:pre-wrap">${b.inhalt||''}</div>
-    ${b.pdf ? `<a href="${b.pdf.url}" target="_blank" style="display:inline-flex;align-items:center;gap:0.4rem;margin-top:0.5rem;padding:0.4rem 0.8rem;background:var(--panel2);border:1px solid var(--border);border-radius:8px;font-size:0.82rem;color:var(--blue);text-decoration:none">📄 ${b.pdf.name}</a>` : ''}
+    ${b.pdf ? `<a href="${b.pdf.url}" target="_blank" style="display:inline-flex;align-items:center;gap:0.4rem;margin-top:0.5rem;padding:0.4rem 0.8rem;background:var(--panel2);border:1px solid var(--border);border-radius:8px;font-size:0.82rem;color:var(--blue);text-decoration:none;max-width:100%;overflow:hidden">📄 <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px">${b.pdf.name}</span></a>` : ''}
     ${abstimmungHtml}
     <div style="font-size:0.72rem;color:var(--muted);margin-top:0.5rem">${datum(b.erstelltAm)}</div>
     ${fw.isWehrfuehrer() ? `<button onclick="newsLoeschen('${b.id}')" style="background:none;border:none;color:#9ca3af;font-size:0.75rem;cursor:pointer;padding:0;margin-top:0.3rem">🗑 Löschen</button>` : ''}
+    <div style="margin-top:0.7rem;border-top:1px solid var(--border);padding-top:0.6rem">
+      <div id="kommentare-${b.id}" style="margin-bottom:0.4rem">
+        ${(b.kommentare||[]).map(k => {
+          const u = usersMap?.get(k.userId);
+          const name = u ? kurzName(u.vorname, u.nachname) : '?';
+          const istEigener = k.userId === fw.user.uid;
+          const istAdmin = fw.isWehrfuehrer();
+          return `<div style="display:flex;gap:0.5rem;margin-bottom:0.5rem;align-items:flex-start">
+            <div style="width:26px;height:26px;border-radius:50%;background:var(--panel2);display:flex;align-items:center;justify-content:center;font-size:0.7rem;flex-shrink:0;font-weight:600">${(u?.vorname||'?')[0]}${(u?.nachname||'')[0]||''}</div>
+            <div style="flex:1;background:var(--panel2);border-radius:10px;padding:0.4rem 0.6rem;font-size:0.82rem">
+              <span style="font-weight:600;font-size:0.75rem">${name}</span>
+              <span style="font-size:0.7rem;color:var(--muted);margin-left:0.4rem">${datum(k.datum)}</span>
+              ${(istEigener||istAdmin)?`<button onclick="newsKommentarLoeschen('${b.id}','${k.id}')" style="float:right;background:none;border:none;color:var(--muted);font-size:0.7rem;cursor:pointer;padding:0">✕</button>`:''}
+              <div style="margin-top:0.15rem;word-break:break-word">${k.text}</div>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+      <div style="display:flex;gap:0.4rem;align-items:center">
+        <input id="ki-${b.id}" placeholder="Kommentar…" style="flex:1;padding:0.45rem 0.7rem;border:1px solid var(--border);border-radius:20px;background:var(--panel2);color:var(--text);font-size:0.82rem;outline:none"
+          onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();newsKommentarSenden('${b.id}');}">
+        <button onclick="newsKommentarSenden('${b.id}')" style="background:var(--blue);border:none;border-radius:50%;width:30px;height:30px;display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;font-size:0.85rem">➤</button>
+      </div>
+    </div>
   </div>`;
 }
+
+window.newsKommentarSenden = async (newsId) => {
+  const inp = document.getElementById('ki-'+newsId);
+  const text = inp?.value?.trim();
+  if (!text) return;
+  inp.value = '';
+  const kommentar = { id: Date.now()+'_'+fw.user.uid, userId: fw.user.uid, text, datum: new Date() };
+  const snap = await fw.getDoc('news/'+newsId);
+  if (!snap.exists()) return;
+  const bestehende = snap.data().kommentare || [];
+  await fw.setDoc('news/'+newsId, { kommentare: [...bestehende, kommentar] });
+};
+
+window.newsKommentarLoeschen = async (newsId, komId) => {
+  const snap = await fw.getDoc('news/'+newsId);
+  if (!snap.exists()) return;
+  const gefiltert = (snap.data().kommentare||[]).filter(k => k.id !== komId);
+  await fw.setDoc('news/'+newsId, { kommentare: gefiltert });
+};
 
 async function ladeNewsFeed() {
   const el = document.getElementById('news-feed');
@@ -333,6 +376,10 @@ window.newsAbstimmen = async (newsId, optionIndex) => {
 
 window.newsLoeschen = async (id) => {
   if (!confirm('Beitrag löschen?')) return;
+  const snap = await fw.getDoc('news/'+id);
+  if (snap.exists() && snap.data().pdf?.pfad) {
+    await fw.deletePdf(snap.data().pdf.pfad);
+  }
   await fw.deleteDoc('news/'+id);
   ladeNewsFeed();
 };
@@ -1100,11 +1147,11 @@ registerPage('profil', async (el) => {
   const stats  = getStats(aSnap.docs.map(d => d.data()), pDienstMap, pEinsatzMap);
 
   el.innerHTML = `
-    <div class="card" style="background:${stats.ziel?'#14532d':'#450a0a'};border-color:${stats.ziel?'#166534':'#7f1d1d'};display:flex;align-items:center;gap:0.8rem;padding:0.9rem 1rem">
-      <div style="font-size:1.6rem">${stats.ziel?'✅':'⚠️'}</div>
+    <div class="card" style="display:flex;align-items:center;gap:0.8rem;padding:0.9rem 1rem">
+      <div style="font-size:1.4rem">${stats.ziel?'✅':'⚠️'}</div>
       <div>
-        <div style="font-weight:700;font-size:1rem;color:${stats.ziel?'#4ade80':'#fca5a5'}">${stats.ziel?'40-Stunden-Ziel erreicht':'40-Stunden-Ziel nicht erreicht'}</div>
-        <div style="font-size:0.8rem;color:${stats.ziel?'#86efac':'#fca5a5'};margin-top:0.1rem">${dauerFormat(stats.stunden12m)}h von 40:00h in den letzten 12 Monaten</div>
+        <div style="font-weight:600;font-size:0.95rem">${stats.ziel?'40-Stunden-Ziel erreicht':'40-Stunden-Ziel nicht erreicht'}</div>
+        <div style="font-size:0.8rem;color:var(--muted);margin-top:0.1rem">${dauerFormat(stats.stunden12m)}h von 40:00h in den letzten 12 Monaten</div>
       </div>
     </div>
     <div class="stats-grid">
@@ -1561,7 +1608,7 @@ registerPage('lehrgaenge', async (el) => {
         <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
           <table style="border-collapse:collapse;font-size:0.75rem;min-width:600px">
             <thead>
-              <tr style="background:var(--panel)">
+              <tr style="color:var(--muted);font-size:0.72rem;background:var(--panel)">
                 <th style="text-align:left;padding:0.5rem 0.6rem;position:sticky;left:0;background:var(--panel);z-index:2;min-width:90px;border-bottom:2px solid var(--border)">Kamerad</th>
                 ${cols.map(l => `<th style="padding:0.3rem 0.2rem;writing-mode:vertical-rl;transform:rotate(180deg);height:80px;font-weight:500;border-bottom:2px solid var(--border);min-width:28px">${l}</th>`).join('')}
               </tr>
@@ -1569,9 +1616,10 @@ registerPage('lehrgaenge', async (el) => {
             <tbody>
               ${rows.map((r, idx) => {
                 const odd = idx % 2 !== 0;
-                const bg = odd ? 'background:rgba(255,255,255,0.08)' : '';
-                return `<tr style="${bg}">
-                  <td style="padding:0.4rem 0.6rem;font-weight:500;position:sticky;left:0;${odd?'background:rgba(255,255,255,0.08)':'background:var(--panel)'};z-index:1;border-right:1px solid var(--border)">
+                const isKlassisch = document.body.getAttribute('data-theme') === 'klassisch';
+                const zebraStyle = odd ? (isKlassisch ? 'background:rgba(0,0,0,0.07)' : 'background:rgba(255,255,255,0.08)') : '';
+                return `<tr style="${zebraStyle}">
+                  <td class="${odd?'stat-td-sticky-odd':'stat-td-sticky'}" style="padding:0.4rem 0.6rem;font-weight:500">
                     ${kurzName(r.u.vorname, r.u.nachname)}
                   </td>
                   ${r.checks.map(hat => `<td style="text-align:center;padding:0.3rem 0.2rem">${hat ? '<span style="color:#22c55e">✓</span>' : '<span style="color:var(--border)">·</span>'}</td>`).join('')}
@@ -2088,15 +2136,18 @@ registerPage('kamerad-detail', async (el, {id}) => {
     </div>` : '';
 
   el.innerHTML = `
+    <div class="card" style="display:flex;align-items:center;gap:0.8rem;padding:0.9rem 1rem">
+      <div style="font-size:1.4rem">${stats.ziel?'✅':'⚠️'}</div>
+      <div>
+        <div style="font-weight:600;font-size:0.95rem">${stats.ziel?'40-Stunden-Ziel erreicht':'40-Stunden-Ziel nicht erreicht'}</div>
+        <div style="font-size:0.8rem;color:var(--muted);margin-top:0.1rem">${dauerFormat(stats.stunden12m)}h von 40:00h in den letzten 12 Monaten</div>
+      </div>
+    </div>
     <div class="stats-grid">
       <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.gesamtEinsatz)}h</div><div class="stat-label">Einsatzstunden ${new Date().getFullYear()}</div></div>
       <div class="stat-card"><div class="stat-zahl">${stats.einsaetze}</div><div class="stat-label">${stats.einsaetze===1?'Einsatz':'Einsätze'} ${new Date().getFullYear()}</div></div>
       <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.gesamtDienst)}h</div><div class="stat-label">Dienststunden (12 Mon.)</div></div>
       <div class="stat-card"><div class="stat-zahl">${stats.dienste}</div><div class="stat-label">${stats.dienste===1?'Dienst':'Dienste'} (12 Mon.)</div></div>
-      <div class="stat-card wide ${stats.ziel?'erreicht':'fehlt'}">
-        <div class="stat-zahl">${dauerFormat(stats.stunden12m)} / 40:00h</div>
-        <div class="stat-label">${stats.ziel?'✅ Ziel erreicht':'⚠️ Ziel nicht erreicht'}</div>
-      </div>
     </div>
     <div class="card">
       <div class="card-title">Stammdaten</div>
