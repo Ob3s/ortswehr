@@ -1613,7 +1613,7 @@ registerPage('lehrgaenge', async (el) => {
         </div>
         <div class="form-row">
           <label>Lehrgang</label>
-          <select id="plan-lehrgang">
+          <select id="plan-lehrgang" onchange="planVorlageLaden()">
             <option value="">– wählen –</option>
             ${ALLE_LEHRGAENGE.map(l => `<option value="${l}">${l}</option>`).join('')}
           </select>
@@ -1630,6 +1630,11 @@ registerPage('lehrgaenge', async (el) => {
       </div>`;
 
     window.planJahrWechsel = (j) => { planJahr = parseInt(j); renderPlanung(); };
+    window.planVorlageLaden = () => {
+      const l = document.getElementById('plan-lehrgang').value;
+      const v = LEHRGANG_VORLAGEN[l];
+      if (v) document.getElementById('plan-tage').value = v.tage;
+    };
   };
 
   const renderErfassen = async () => {
@@ -2014,23 +2019,6 @@ registerPage('kamerad-detail', async (el, {id}) => {
     <div class="card">
       <div class="card-title">Lehrgänge</div>
       ${renderQualis(qualis, id, u)}
-      <div style="display:flex;flex-direction:column;gap:0.5rem;margin-top:0.8rem">
-        <select id="q-bez" style="width:100%">
-          <option value="">– Lehrgang wählen –</option>
-          ${['Truppmann','Sprechfunk','AGT','TH-Grund','Maschinist','Absturzsicherung','ABC-Grund','Truppführer','Gruppenführer','Zugführer','Wehrführer'].map(l=>`<option value="${l}">${l}</option>`).join('')}
-          <option disabled>──────────</option>
-          ${['Erste-Hilfe','Motorsäge A/B','Motorsäge C/D'].map(l=>`<option value="${l}">${l}</option>`).join('')}
-        </select>
-        <input id="q-dat" type="date" placeholder="Datum bestanden" style="width:100%">
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.5rem">
-          <input id="q-tage" type="number" min="1" max="30" placeholder="Tage (z.B. 5)" style="width:100%">
-          <input id="q-stunden" type="number" min="1" max="24" step="0.5" placeholder="Stunden/Tag" style="width:100%">
-        </div>
-        <div style="display:flex;gap:0.5rem">
-          <input id="q-bem" placeholder="Bemerkung (optional)" style="flex:1">
-          <button class="btn btn-primary btn-sm" onclick="qualiHinzufuegen('${id}')">+ Hinzufügen</button>
-        </div>
-      </div>
     </div>
     ${renderAgtFelder(u, id, qualis)}
     <div class="card" style="display:flex;flex-direction:column;gap:0.5rem">
