@@ -1900,10 +1900,9 @@ registerPage('kameraden', async (el) => {
     <div class="card">
       ${users.map(u => `
         <div class="list-item" onclick="navigate('kamerad-detail',{id:'${u.id}'})">
-          <div class="list-item-icon">👤</div>
+          <div class="list-item-icon" style="${u.aktiv===false?'filter:grayscale(1);opacity:0.4':''}">🧑</div>
           <div class="list-item-body">
             <div class="list-item-title">${u.nachname||''}, ${u.vorname||''}</div>
-            <div class="list-item-sub">${u.dienstgrad||'–'} · ${u.aktiv===false?'<span style="color:var(--muted)">Inaktiv</span>':'Aktiv'}</div>
           </div>
           ${stundenBadge(u.id)}
           <div class="list-chevron">›</div>
