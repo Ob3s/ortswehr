@@ -421,7 +421,7 @@ body[data-theme="klassisch"] .form-row label {
 /* Statistik-Tabelle Zebra */
 .stat-tr-odd  { background: rgba(255,255,255,0.07); }
 .stat-td-sticky       { position: sticky; left: 0; z-index: 1; border-right: 1px solid var(--border); background: var(--panel); }
-.stat-td-sticky-odd   { position: sticky; left: 0; z-index: 1; border-right: 1px solid var(--border); background: #1e2535; }
+.stat-td-sticky-odd   { position: sticky; left: 0; z-index: 1; border-right: 1px solid var(--border); background: color-mix(in srgb, white 8%, var(--panel)); }
 
 body[data-theme="klassisch"] .stat-tr-odd  { background: rgba(0,0,0,0.08); }
 body[data-theme="klassisch"] .stat-td-sticky      { background: #d0d4d8; }
