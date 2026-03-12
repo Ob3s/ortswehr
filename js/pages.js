@@ -967,7 +967,7 @@ window.uebungSpeichern = async (id, forcTyp) => {
 
   if (!titel) { fw.toast('Stichwort erforderlich', true); return; }
 
-  const ort = document.getElementById('f-ort')?.value?.trim() || '';
+  const ort = document.getElementById('f-ort')?.value?.trim() || null;
   const data = { titel, datum: new Date(datumStr), typ, dauer_h, beschreibung: beschr, zeitBeginn, zeitEnde, ort };
   const isNeu = !id;
   try {
@@ -1530,6 +1530,14 @@ registerPage('kameraden', async (el) => {
     <details style="background:var(--card);border-radius:10px;padding:0.8rem;margin-top:0.8rem">
       <summary style="font-weight:600;cursor:pointer;list-style:none;display:flex;align-items:center;gap:0.5rem">🏘️ Ortswehren verwalten</summary>
       <div id="ortswehr-inline" style="margin-top:0.8rem">⏳ Lade...</div>
+    </details>
+    <details style="background:var(--card);border-radius:10px;padding:0.8rem;margin-top:0.8rem">
+      <summary style="font-weight:600;cursor:pointer;list-style:none;display:flex;align-items:center;gap:0.5rem">🛠️ Datenpflege</summary>
+      <div style="margin-top:0.8rem">
+        <p style="font-size:0.85rem;color:var(--muted);margin-bottom:0.6rem">Einsätze ohne echten Einsatzort (nur Ortsname wie "Oegeln") bereinigen:</p>
+        <button class="btn btn-secondary btn-sm" id="btn-ort-migration" onclick="ortMigration()">🧹 Einsatzorte bereinigen</button>
+        <div id="ort-migration-result" style="font-size:0.82rem;margin-top:0.5rem;color:var(--muted)"></div>
+      </div>
     </details>` : ''}
   `;
   if (fw.isWehrfuehrer()) ladeOrtswehrenInline();
@@ -1557,6 +1565,26 @@ window.ortswehrLoeschenInline = async (id) => {
   if (!confirm('Ortswehr wirklich löschen?')) return;
   await fw.deleteDoc('ortswehren/'+id);
   fw.toast('Gelöscht'); ladeOrtswehrenInline();
+};
+
+window.ortMigration = async () => {
+  const btn = document.getElementById('btn-ort-migration');
+  const res = document.getElementById('ort-migration-result');
+  btn.disabled = true;
+  res.textContent = '⏳ Prüfe Einsätze…';
+  try {
+    const snap = await fw.getDocs('einsaetze');
+    // Kein echter Einsatzort: kein Komma und keine Hausnummer (Muster: "Oegeln", "Beeskow" etc.)
+    const istKeinEchterOrt = (ort) => ort && !ort.includes(',') && !/\d/.test(ort);
+    const zuBereinigen = snap.docs.filter(d => istKeinEchterOrt(d.data().ort));
+    if (!zuBereinigen.length) { res.textContent = '✅ Nichts zu bereinigen.'; btn.disabled = false; return; }
+    for (const d of zuBereinigen) {
+      await fw.updateDoc('einsaetze/' + d.id, { ort: null });
+    }
+    res.textContent = `✅ ${zuBereinigen.length} Einsatz/Einsätze bereinigt.`;
+    fw.toast(`${zuBereinigen.length} Einsatzort(e) entfernt 🧹`);
+  } catch(e) { res.textContent = '❌ Fehler: ' + e.message; }
+  btn.disabled = false;
 };
 
 const QUALI_REIHENFOLGE = ['Truppmann','Sprechfunk','AGT','TH-Grund','Maschinist','Absturzsicherung','ABC-Grund','Truppführer','Gruppenführer','Zugführer','Wehrführer','Erste-Hilfe','Motorsäge A/B','Motorsäge C/D'];
