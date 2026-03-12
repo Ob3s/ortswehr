@@ -1,8 +1,9 @@
 {
-  "version": "2.5.1",
+  "version": "2.5.2",
   "datum": "12.03.2026",
   "punkte": [
-    "Lehrgang erfassen: Prüfungsdatum berücksichtigt Werktage (GF/ZF/WF/Motorsäge) vs. Wochenenden",
-    "Lehrgang erfassen: Duplikat-Schutz – vorhandener Eintrag wird ersetzt"
+    "Lehrgang erfassen: Vorlagen für alle Lehrgänge (Tage + Stunden auto-befüllt)",
+    "Lehrgang erfassen: Prüfungsdatum-Vorschau direkt im Formular",
+    "Motorsäge A/B + C/D: Wochenend-Lehrgang (nicht Werktag)"
   ]
 }
