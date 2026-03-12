@@ -1,9 +1,8 @@
 {
-  "version": "2.5.2",
+  "version": "2.5.3",
   "datum": "12.03.2026",
   "punkte": [
-    "Lehrgang erfassen: Vorlagen für alle Lehrgänge (Tage + Stunden auto-befüllt)",
-    "Lehrgang erfassen: Prüfungsdatum-Vorschau direkt im Formular",
-    "Motorsäge A/B + C/D: Wochenend-Lehrgang (nicht Werktag)"
+    "Erste-Hilfe: Lehrgang an beliebigen Wochentagen (nicht nur Wochenende)",
+    "Kamerad-Profil: Lehrgänge zeigen nur noch Datum + Bemerkung"
   ]
 }
