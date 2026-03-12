@@ -1260,6 +1260,7 @@ window.abmelden = async () => {
 // ── Statistik ─────────────────────────────────────────────
 registerPage('statistik', async (el) => {
   fw.setTitle('Statistik');
+  fw.showBack(() => navigate('kameraden'));
   el.innerHTML = '<div class="empty">⏳ Lade...</div>';
 
   const jetzt    = new Date();
@@ -1322,17 +1323,17 @@ registerPage('statistik', async (el) => {
       return typ==='einsatz' && jahrvon(datum, jahr);
     }).length;
   }
-  function lehrgangStunden(userId, jahr) {
+  function lehrgangTage(userId, jahr) {
     return (qualiPerUser[userId]||[])
       .filter(q => q.datum && jahrvon(q.datum, jahr))
-      .length; // Anzahl Lehrgänge (keine Stunden gespeichert)
+      .reduce((s, q) => s + (q.tage || 1), 0); // Fallback: 1 Tag pro Lehrgang
   }
 
   // Jahresvergleich gesamt
   const gesamt = (jahr) => ({
     einsaetze: einsaetze.filter(e => jahrvon(e.datum, jahr)).length,
     dienststunden: users.reduce((s,u) => s + stunden(u.id,'dienst',jahr), 0),
-    lehrgangsanzahl: users.reduce((s,u) => s + lehrgangStunden(u.id,jahr), 0),
+    lehrgangtage: users.reduce((s,u) => s + lehrgangTage(u.id,jahr), 0),
   });
   const gAkt = gesamt(jahrAkt);
   const gVor = gesamt(jahrVor);
@@ -1350,8 +1351,8 @@ registerPage('statistik', async (el) => {
     .map(u => {
       const dAkt = stunden(u.id,'dienst',jahrAkt);
       const dVor = stunden(u.id,'dienst',jahrVor);
-      const lAkt = lehrgangStunden(u.id,jahrAkt);
-      const lVor = lehrgangStunden(u.id,jahrVor);
+      const lAkt = lehrgangTage(u.id,jahrAkt);
+      const lVor = lehrgangTage(u.id,jahrVor);
       const eAkt = einsatzAnzahl(u.id,jahrAkt);
       const eVor = einsatzAnzahl(u.id,jahrVor);
       return {u, dAkt, dVor, lAkt, lVor, eAkt, eVor};
@@ -1387,10 +1388,10 @@ registerPage('statistik', async (el) => {
             <td style="text-align:right;padding:0.5rem 0.3rem">${diff(gAkt.dienststunden,gVor.dienststunden,'h')}</td>
           </tr>
           <tr style="border-top:1px solid var(--border)">
-            <td style="padding:0.5rem 0.3rem">Lehrgänge</td>
-            <td style="text-align:right;padding:0.5rem 0.3rem">${gVor.lehrgangsanzahl}</td>
-            <td style="text-align:right;padding:0.5rem 0.3rem;font-weight:600">${gAkt.lehrgangsanzahl}</td>
-            <td style="text-align:right;padding:0.5rem 0.3rem">${diff(gAkt.lehrgangsanzahl,gVor.lehrgangsanzahl)}</td>
+            <td style="padding:0.5rem 0.3rem">Lehrgangstage</td>
+            <td style="text-align:right;padding:0.5rem 0.3rem">${gVor.lehrgangtage}</td>
+            <td style="text-align:right;padding:0.5rem 0.3rem;font-weight:600">${gAkt.lehrgangtage}</td>
+            <td style="text-align:right;padding:0.5rem 0.3rem">${diff(gAkt.lehrgangtage,gVor.lehrgangtage)}</td>
           </tr>
         </tbody>
       </table>
@@ -1450,6 +1451,164 @@ registerPage('statistik', async (el) => {
   `;
 });
 
+
+// ── Lehrgangsverwaltung ───────────────────────────────────
+const ALLE_LEHRGAENGE = ['Truppmann','Truppführer','Gruppenführer','Zugführer','Wehrführer','AGT','Maschinist','Sprechfunk','TH-Grund','Absturzsicherung','ABC-Grund','Erste-Hilfe','Motorsäge A/B','Motorsäge C/D'];
+
+registerPage('lehrgaenge', async (el) => {
+  fw.setTitle('Lehrgänge');
+  fw.showBack(() => navigate('kameraden'));
+
+  const jahrAkt = new Date().getFullYear();
+  let aktivTab = 'uebersicht';
+  let planJahr = jahrAkt + 1;
+
+  const render = async () => {
+    el.innerHTML = `
+      <div style="display:flex;gap:0.4rem;margin-bottom:0.8rem">
+        <button class="btn btn-sm ${aktivTab==='uebersicht'?'btn-primary':'btn-secondary'}" onclick="lTab('uebersicht')">📋 Übersicht</button>
+        <button class="btn btn-sm ${aktivTab==='planung'?'btn-primary':'btn-secondary'}" onclick="lTab('planung')">📅 Planung</button>
+      </div>
+      <div id="l-inhalt"><div class="empty">⏳ Lade...</div></div>`;
+
+    window.lTab = (tab) => { aktivTab = tab; render(); };
+
+    if (aktivTab === 'uebersicht') await renderUebersicht();
+    else await renderPlanung();
+  };
+
+  const renderUebersicht = async () => {
+    const inh = document.getElementById('l-inhalt');
+    const [usersSnap, ...qualiSnaps] = await (async () => {
+      const us = await fw.getDocs('users');
+      const users = us.docs.map(d => ({id:d.id,...d.data()})).filter(u => u.aktiv !== false && u.vorname);
+      const qs = await Promise.all(users.map(u => fw.getDocs('users/'+u.id+'/qualifikationen')));
+      return [us, ...qs.map((q,i) => ({userId: users[i].id, qualis: q.docs.map(d => d.data())}))];
+    })();
+    const users = usersSnap.docs.map(d => ({id:d.id,...d.data()})).filter(u => u.aktiv !== false && u.vorname)
+      .sort((a,b) => (a.nachname||'').localeCompare(b.nachname||'', 'de'));
+    const qualiPerUser = {};
+    qualiSnaps.forEach(({userId, qualis}) => { qualiPerUser[userId] = qualis.map(q => (q.bezeichnung||'').trim().toLowerCase()); });
+
+    const cols = ALLE_LEHRGAENGE;
+    const rows = users.map(u => {
+      const hat = qualiPerUser[u.id] || [];
+      return { u, checks: cols.map(l => hat.includes(l.toLowerCase())) };
+    });
+
+    inh.innerHTML = `
+      <div class="card" style="padding:0;overflow:hidden">
+        <div style="overflow-x:auto;-webkit-overflow-scrolling:touch">
+          <table style="border-collapse:collapse;font-size:0.75rem;min-width:600px">
+            <thead>
+              <tr style="background:var(--panel)">
+                <th style="text-align:left;padding:0.5rem 0.6rem;position:sticky;left:0;background:var(--panel);z-index:2;min-width:90px;border-bottom:2px solid var(--border)">Kamerad</th>
+                ${cols.map(l => `<th style="padding:0.3rem 0.2rem;writing-mode:vertical-rl;transform:rotate(180deg);height:80px;font-weight:500;border-bottom:2px solid var(--border);min-width:28px">${l}</th>`).join('')}
+              </tr>
+            </thead>
+            <tbody>
+              ${rows.map((r, idx) => {
+                const odd = idx % 2 !== 0;
+                const bg = odd ? 'background:rgba(255,255,255,0.05)' : '';
+                return `<tr style="${bg}">
+                  <td style="padding:0.4rem 0.6rem;font-weight:500;position:sticky;left:0;${odd?'background:#1e2535':'background:var(--panel)'};z-index:1;border-right:1px solid var(--border)">
+                    ${kurzName(r.u.vorname, r.u.nachname)}
+                  </td>
+                  ${r.checks.map(hat => `<td style="text-align:center;padding:0.3rem 0.2rem">${hat ? '<span style="color:#22c55e">✓</span>' : '<span style="color:var(--border)">·</span>'}</td>`).join('')}
+                </tr>`;
+              }).join('')}
+            </tbody>
+          </table>
+        </div>
+      </div>`;
+  };
+
+  const renderPlanung = async () => {
+    const inh = document.getElementById('l-inhalt');
+    const [usersSnap, planSnap] = await Promise.all([
+      fw.getDocs('users'),
+      fw.getDocs('lehrgangsplanung', fw.where('jahr','==', planJahr)),
+    ]);
+    const users = usersSnap.docs.map(d => ({id:d.id,...d.data()})).filter(u => u.aktiv !== false && u.vorname)
+      .sort((a,b) => (a.nachname||'').localeCompare(b.nachname||'', 'de'));
+    const planung = planSnap.docs.map(d => ({id:d.id,...d.data()}));
+    const usersMap = new Map(users.map(u => [u.id, u]));
+
+    const jahreOptionen = [jahrAkt, jahrAkt+1, jahrAkt+2].map(j =>
+      `<option value="${j}" ${j===planJahr?'selected':''}>${j}</option>`).join('');
+
+    inh.innerHTML = `
+      <div style="display:flex;align-items:center;gap:0.6rem;margin-bottom:0.6rem">
+        <label style="font-size:0.85rem;color:var(--muted)">Jahr:</label>
+        <select id="plan-jahr" onchange="planJahrWechsel(this.value)" style="font-size:0.88rem">${jahreOptionen}</select>
+      </div>
+      ${planung.length ? `
+      <div class="card" style="padding:0">
+        ${planung.sort((a,b) => {
+          const na = usersMap.get(a.userId)?.nachname||''; const nb = usersMap.get(b.userId)?.nachname||'';
+          return na.localeCompare(nb,'de') || (a.lehrgang||'').localeCompare(b.lehrgang||'');
+        }).map(p => {
+          const u = usersMap.get(p.userId);
+          return `<div class="list-item">
+            <div class="list-item-body">
+              <div class="list-item-title">${u ? kurzName(u.vorname, u.nachname) : '–'} · ${p.lehrgang}</div>
+              <div class="list-item-sub">${p.tage ? p.tage+' Tage' : ''}${p.bemerkung ? (p.tage?' · ':'')+p.bemerkung : ''}${!p.tage&&!p.bemerkung?'Geplant':''}</div>
+            </div>
+            <button class="btn btn-sm btn-danger" onclick="planungLoeschen('${p.id}')">🗑</button>
+          </div>`;
+        }).join('')}
+      </div>` : `<p class="muted" style="font-size:0.85rem;text-align:center;padding:1rem">Noch keine Planung für ${planJahr}</p>`}
+
+      <div class="card" style="margin-top:0.4rem">
+        <div class="card-title" style="margin-bottom:0.7rem">+ Lehrgang planen</div>
+        <div class="form-row">
+          <label>Kamerad</label>
+          <select id="plan-user">
+            <option value="">– wählen –</option>
+            ${users.map(u => `<option value="${u.id}">${u.nachname||''}, ${u.vorname||''}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-row">
+          <label>Lehrgang</label>
+          <select id="plan-lehrgang">
+            <option value="">– wählen –</option>
+            ${ALLE_LEHRGAENGE.map(l => `<option value="${l}">${l}</option>`).join('')}
+          </select>
+        </div>
+        <div class="form-row">
+          <label>Geplante Tage (optional)</label>
+          <input id="plan-tage" type="number" min="1" max="30" placeholder="z.B. 5">
+        </div>
+        <div class="form-row">
+          <label>Bemerkung (optional)</label>
+          <input id="plan-bem" placeholder="z.B. LA Eisenhüttenstadt">
+        </div>
+        <button class="btn btn-primary btn-full" style="margin-top:0.4rem" onclick="planungSpeichern(${planJahr})">💾 Speichern</button>
+      </div>`;
+
+    window.planJahrWechsel = (j) => { planJahr = parseInt(j); renderPlanung(); };
+  };
+
+  window.planungSpeichern = async (jahr) => {
+    const userId = document.getElementById('plan-user').value;
+    const lehrgang = document.getElementById('plan-lehrgang').value;
+    if (!userId || !lehrgang) { fw.toast('Kamerad und Lehrgang wählen', true); return; }
+    const tage = parseInt(document.getElementById('plan-tage').value) || null;
+    const bemerkung = document.getElementById('plan-bem').value.trim();
+    await fw.addDoc('lehrgangsplanung', { userId, lehrgang, jahr, tage, bemerkung });
+    fw.toast('Gespeichert ✅');
+    renderPlanung();
+  };
+
+  window.planungLoeschen = async (id) => {
+    if (!confirm('Eintrag löschen?')) return;
+    await fw.deleteDoc('lehrgangsplanung/'+id);
+    fw.toast('Gelöscht');
+    renderPlanung();
+  };
+
+  await render();
+});
 
 // ── News erstellen ────────────────────────────────────────
 registerPage('news-form', async (el) => {
@@ -1515,6 +1674,14 @@ registerPage('kameraden', async (el) => {
   const users = snap.docs.map(d => ({id:d.id,...d.data()}))
     .sort((a,b) => (a.nachname||'').localeCompare(b.nachname||''));
   el.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.6rem;margin-bottom:0.2rem">
+      <button class="btn btn-secondary btn-full" onclick="navigate('lehrgaenge')" style="display:flex;align-items:center;justify-content:center;gap:0.4rem;padding:0.7rem">
+        <span style="font-size:1.2rem">📚</span><span style="font-weight:600">Lehrgänge</span>
+      </button>
+      <button class="btn btn-secondary btn-full" onclick="navigate('statistik')" style="display:flex;align-items:center;justify-content:center;gap:0.4rem;padding:0.7rem">
+        <span style="font-size:1.2rem">📊</span><span style="font-weight:600">Statistiken</span>
+      </button>
+    </div>
     <div class="card">
       ${users.map(u => `
         <div class="list-item" onclick="navigate('kamerad-detail',{id:'${u.id}'})">
@@ -1530,14 +1697,6 @@ registerPage('kameraden', async (el) => {
     <details style="background:var(--card);border-radius:10px;padding:0.8rem;margin-top:0.8rem">
       <summary style="font-weight:600;cursor:pointer;list-style:none;display:flex;align-items:center;gap:0.5rem">🏘️ Ortswehren verwalten</summary>
       <div id="ortswehr-inline" style="margin-top:0.8rem">⏳ Lade...</div>
-    </details>
-    <details style="background:var(--card);border-radius:10px;padding:0.8rem;margin-top:0.8rem">
-      <summary style="font-weight:600;cursor:pointer;list-style:none;display:flex;align-items:center;gap:0.5rem">🛠️ Datenpflege</summary>
-      <div style="margin-top:0.8rem">
-        <p style="font-size:0.85rem;color:var(--muted);margin-bottom:0.6rem">Einsätze ohne echten Einsatzort (nur Ortsname wie "Oegeln") bereinigen:</p>
-        <button class="btn btn-secondary btn-sm" id="btn-ort-migration" onclick="ortMigration()">🧹 Einsatzorte bereinigen</button>
-        <div id="ort-migration-result" style="font-size:0.82rem;margin-top:0.5rem;color:var(--muted)"></div>
-      </div>
     </details>` : ''}
   `;
   if (fw.isWehrfuehrer()) ladeOrtswehrenInline();
@@ -1626,7 +1785,7 @@ function renderQualis(qualis, userId, u) {
     html += `<div class="list-item" style="border-bottom:1px solid var(--border);${istErsterNachTrenner?'margin-top:0':''}">
       <div class="list-item-body">
         <div class="list-item-title">${q.bezeichnung}${agtWarnung}</div>
-        <div class="list-item-sub">${q.datum?datum(q.datum):'Kein Datum'}
+        <div class="list-item-sub">${q.datum?datum(q.datum):'Kein Datum'}${q.tage ? ' · '+q.tage+' Tage' : ''}
           ${q.bemerkung?' · '+q.bemerkung:''}
         </div>
       </div>
@@ -1697,6 +1856,7 @@ registerPage('kamerad-detail', async (el, {id}) => {
           ${['Erste-Hilfe','Motorsäge A/B','Motorsäge C/D'].map(l=>`<option value="${l}">${l}</option>`).join('')}
         </select>
         <input id="q-dat" type="date" placeholder="Datum bestanden" style="width:100%">
+        <input id="q-tage" type="number" min="1" max="30" placeholder="Lehrgangstage (z.B. 5)" style="width:100%">
         <div style="display:flex;gap:0.5rem">
           <input id="q-bem" placeholder="Bemerkung (optional)" style="flex:1">
           <button class="btn btn-primary btn-sm" onclick="qualiHinzufuegen('${id}')">+ Hinzufügen</button>
@@ -1750,9 +1910,11 @@ window.kameradLoeschen = async (id) => {
 window.qualiHinzufuegen = async (userId) => {
   const bez = document.getElementById('q-bez').value;
   if (!bez) { fw.toast('Bitte einen Lehrgang wählen', true); return; }
+  const tage = parseInt(document.getElementById('q-tage')?.value) || null;
   await fw.addDoc('users/'+userId+'/qualifikationen', {
     bezeichnung: bez,
     datum: document.getElementById('q-dat').value || null,
+    tage,
     bemerkung: document.getElementById('q-bem').value || '',
   });
   fw.toast('Hinzugefügt'); navigate('kamerad-detail',{id:userId});
