@@ -1,12 +1,8 @@
 {
-  "version": "2.5.0",
+  "version": "2.5.1",
   "datum": "12.03.2026",
   "punkte": [
-    "Einsatzzeit ohne 'ab' – nur 16:34 Uhr oder 16:13 – 17:30 Uhr",
-    "Statistik aus Navigation entfernt, erreichbar über Kameraden",
-    "Lehrgangsverwaltung: Übersicht + Planung + Erfassen",
-    "Lehrgangsstunden in Statistik (Tage × Stunden/Tag)",
-    "Lehrgang erfassen: Prüfungsdatum = letzter Tag",
-    "Autocomplete: ', Deutschland' wird nicht mehr angezeigt"
+    "Lehrgang erfassen: Prüfungsdatum berücksichtigt Werktage (GF/ZF/WF/Motorsäge) vs. Wochenenden",
+    "Lehrgang erfassen: Duplikat-Schutz – vorhandener Eintrag wird ersetzt"
   ]
 }
