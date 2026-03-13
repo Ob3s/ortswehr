@@ -1,8 +1,13 @@
 {
-  "version": "2.6.7",
+  "version": "2.6.8",
   "datum": "13.03.2026",
   "punkte": [
-    "Bugfix: App-Version wurde im Meta-Tag nicht korrekt aktualisiert (Update-Banner erschien fälschlicherweise)",
-    "Update-Banner: Alte Version nicht mehr angezeigt"
+    "Kameraden-Tab: Aufgaben zeigen jetzt auch fehlende Dienstgrade",
+    "Header: Uhrzeit besser sichtbar (heller)",
+    "Einsätze: Heutige Einsätze farblich hervorgehoben",
+    "Einsatz-Edit: Button zum erneuten Senden einer Benachrichtigung",
+    "Lehrgangstabelle: Summenzeile am Ende",
+    "Kameraden-Tab: Stunden basieren auf letzten 12 Monaten",
+    "Profil: Dienststunden jahresbasiert, 40h-Ziel prüft letzte 12 Monate"
   ]
 }
