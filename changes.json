@@ -1,7 +1,7 @@
 {
-  "version": "2.6.4",
+  "version": "2.6.6",
   "datum": "13.03.2026",
   "punkte": [
-    "Hotfix: SW-Registration mit updateViaCache:'none' – Updates kommen jetzt zuverlässig auf allen Geräten an"
+    "Update-Banner zeigt jetzt aktuelle und neue Version an (z.B. v2.6.0 → v2.6.6)"
   ]
 }
