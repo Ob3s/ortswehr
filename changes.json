@@ -1,7 +1,7 @@
 {
-  "version": "2.6.3",
+  "version": "2.6.4",
   "datum": "13.03.2026",
   "punkte": [
-    "Hotfix: SW Cache-Version angehoben (erzwingt sauberes Update auf allen Geräten)"
+    "Hotfix: SW-Registration mit updateViaCache:'none' – Updates kommen jetzt zuverlässig auf allen Geräten an"
   ]
 }
