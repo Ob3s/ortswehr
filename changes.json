@@ -1,13 +1,9 @@
 {
-  "version": "2.6.8",
+  "version": "2.6.9",
   "datum": "13.03.2026",
   "punkte": [
-    "Kameraden-Tab: Aufgaben zeigen jetzt auch fehlende Dienstgrade",
-    "Header: Uhrzeit besser sichtbar (heller)",
-    "Einsätze: Heutige Einsätze farblich hervorgehoben",
-    "Einsatz-Edit: Button zum erneuten Senden einer Benachrichtigung",
-    "Lehrgangstabelle: Summenzeile am Ende",
-    "Kameraden-Tab: Stunden basieren auf letzten 12 Monaten",
-    "Profil: Dienststunden jahresbasiert, 40h-Ziel prüft letzte 12 Monate"
+    "Status-Lampe: Tippen zeigt Detail-Liste aller Prüfungen",
+    "Status-Lampe: FCM-Token wird automatisch erneuert wenn veraltet",
+    "Doppel-Benachrichtigung behoben: SW zeigt keine Notification wenn App offen"
   ]
 }
