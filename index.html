@@ -303,7 +303,7 @@
   };
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/ortswehr/sw.js').then(reg => {
+    navigator.serviceWorker.register('/ortswehr/sw.js', { updateViaCache: 'none' }).then(reg => {
       // Sofort auf Update prüfen
       reg.update();
       // Wenn neuer SW aktiviert → Seite automatisch neu laden
