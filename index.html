@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="theme-color" content="#cc2200">
-  <meta name="app-version" content="2.6.8">
+  <meta name="app-version" content="2.6.9">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ortswehr">
@@ -99,7 +99,7 @@
   try { messaging = getMessaging(firebaseApp); } catch(e) {}
 
   window.fw = {
-    auth, db, messaging, storage, app: firebaseApp, user: null, profil: null,
+    auth, db, messaging, storage, app: firebaseApp, user: null, profil: null, _vapid: VAPID,
     uploadPdf: async (file, path) => {
       const storageRef = ref(storage, path);
       await uploadBytes(storageRef, file);
@@ -157,7 +157,13 @@
         });
         const token = await getToken(messaging, { vapidKey: VAPID, serviceWorkerRegistration: swReg });
         if (token) {
-          await this.setDoc('users/' + this.user.uid, { fcmToken: token });
+          // Immer mit gespeichertem Token vergleichen und bei Abweichung updaten
+          const gespeichert = fw.profil?.fcmToken;
+          if (token !== gespeichert) {
+            console.log('FCM Token erneuert');
+            await this.setDoc('users/' + this.user.uid, { fcmToken: token });
+            if (fw.profil) fw.profil.fcmToken = token;
+          }
         } else {
           console.warn('Push: Kein Token erhalten');
         }
