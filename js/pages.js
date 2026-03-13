@@ -53,9 +53,10 @@ function anwesenheitBadge(s) {
 function getStats(anwesenheiten, dienstMap, einsatzMap) {
   const jetzt   = new Date();
   const jahrAkt = jetzt.getFullYear();
-  const jahresStart = new Date(jahrAkt, 0, 1);
+  const vor12m  = new Date(); vor12m.setFullYear(jetzt.getFullYear()-1); vor12m.setHours(0,0,0,0);
 
-  let gesamtEinsatz=0, gesamtDienst=0, einsaetze=0, dienste=0, dienstStundenJahr=0;
+  let gesamtEinsatz=0, gesamtDienst=0, einsaetze=0, dienste=0;
+  let dienstStundenJahr=0, dienstStunden12m=0;
   for (const a of anwesenheiten) {
     if (a.status !== 'bestaetigt' && a.status !== 'kommt') continue;
     const dienstEintrag  = dienstMap?.get(a.uebungId)  || null;
@@ -70,14 +71,16 @@ function getStats(anwesenheiten, dienstMap, einsatzMap) {
       if (d.getFullYear() === jahrAkt) { gesamtEinsatz += h; einsaetze++; }
     } else {
       if (d.getFullYear() === jahrAkt) { gesamtDienst += h; dienste++; dienstStundenJahr += h; }
+      if (d >= vor12m) { dienstStunden12m += h; }
     }
   }
   return {
     gesamtEinsatz:  Math.round(gesamtEinsatz*10)/10,
     gesamtDienst:   Math.round(gesamtDienst*10)/10,
     einsaetze, dienste,
-    stunden12m: Math.round(dienstStundenJahr*10)/10,
-    ziel: dienstStundenJahr >= 40,
+    stunden12m: Math.round(dienstStundenJahr*10)/10,  // Anzeige: aktuelles Jahr
+    ziel: dienstStunden12m >= 40,                      // 40h-Ziel: letzte 12 Monate
+    stunden12mZiel: Math.round(dienstStunden12m*10)/10,
   };
 }
 
@@ -437,9 +440,14 @@ function startStatusPruefung() {
 // ── Hilfsfunktion: Liste rendern ─────────────────────────
 function renderEintrag(u, meineMap) {
   const badge = anwesenheitBadge(meineMap.get(u.id));
-  return `<div class="list-item" onclick="navigate('uebung-detail',{id:'${u.id}',typ:'${u.typ}'})">
+  const d = u.datum?.toDate ? u.datum.toDate() : new Date(u.datum);
+  const heute = new Date(); heute.setHours(0,0,0,0);
+  const morgen = new Date(heute); morgen.setDate(heute.getDate()+1);
+  const istHeute = u.typ === 'einsatz' && d >= heute && d < morgen;
+  const highlightStyle = istHeute ? 'border-left:3px solid var(--red);padding-left:0.5rem;background:rgba(220,38,38,0.08);' : '';
+  return `<div class="list-item" onclick="navigate('uebung-detail',{id:'${u.id}',typ:'${u.typ}'})" style="${highlightStyle}">
     <div class="list-item-body">
-      <div class="list-item-title">${u.titel}</div>
+      <div class="list-item-title">${istHeute ? '🚨 ' : ''}${u.titel}</div>
       ${u.ort ? `<div class="list-item-sub" style="margin-top:0.05rem">📍 ${u.ort}</div>` : ''}
       <div class="list-item-sub">${datum(u.datum)}${zeitZeile(u) ? ' · '+zeitZeile(u) : ''}</div>
     </div>
@@ -972,6 +980,7 @@ registerPage('uebung-form', async (el, {id, typ: vorTyp, alarm: mitAlarm}) => {
           <button class="btn btn-primary btn-full" onclick="uebungSpeichern('${id||''}','einsatz')">${u ? '💾 Speichern' : mitAlarm ? '🚨 Einsatz melden & Alarm senden' : '💾 Einsatz speichern'}</button>
           ${u ? `<button class="btn btn-danger" onclick="uebungLoeschen('${id}','einsatz')">🗑 Löschen</button>` : ''}
         </div>
+        ${u ? `<button class="btn btn-secondary btn-full" style="margin-top:0.5rem" onclick="einsatzNachbenachrichtigen('${id}')">🔔 Benachrichtigung erneut senden</button>` : ''}
       </div>`;
     requestAnimationFrame(() => setTimeout(() => initOrtAutocomplete('f-ort'), 50));
   } else {
@@ -1137,6 +1146,14 @@ async function sendPush(tokens, title, body, alarm = false, uebungId = null) {
   }
 }
 
+window.einsatzNachbenachrichtigen = async (id) => {
+  if (!confirm('Benachrichtigung erneut an alle senden?')) return;
+  const snap = await fw.getDoc('einsaetze/'+id);
+  if (!snap.exists()) { fw.toast('Einsatz nicht gefunden', true); return; }
+  const u = snap.data();
+  await benachrichtigeOrtswehr('einsatz', u.titel, u.datum, u.dauer_h, id);
+};
+
 // ── Deep Link ─────────────────────────────────────────────
 function checkDeepLink() {
   const params = new URLSearchParams(window.location.search);
@@ -1170,7 +1187,7 @@ registerPage('profil', async (el) => {
       <div style="font-size:1.4rem">${stats.ziel?'✅':'⚠️'}</div>
       <div>
         <div style="font-weight:600;font-size:0.95rem">${stats.ziel?'40-Stunden-Ziel erreicht':'40-Stunden-Ziel nicht erreicht'}</div>
-        <div style="font-size:0.8rem;color:var(--muted);margin-top:0.1rem">${dauerFormat(stats.stunden12m)}h von 40:00h im Jahr ${new Date().getFullYear()}</div>
+        <div style="font-size:0.8rem;color:var(--muted);margin-top:0.1rem">${dauerFormat(stats.stunden12m)}h dieses Jahr · ${dauerFormat(stats.stunden12mZiel)}h / 40:00h (12 Mon.)</div>
       </div>
     </div>
     <div class="stats-grid">
@@ -1645,6 +1662,15 @@ registerPage('lehrgaenge', async (el) => {
                 </tr>`;
               }).join('')}
             </tbody>
+            <tfoot>
+              <tr style="border-top:2px solid var(--border);background:var(--panel)">
+                <td class="stat-td-sticky" style="padding:0.4rem 0.6rem;font-weight:700;font-size:0.75rem;color:var(--muted)">Σ</td>
+                ${cols.map((_,ci) => {
+                  const sum = rows.filter(r => r.checks[ci]).length;
+                  return `<td style="text-align:center;padding:0.3rem 0.2rem;font-weight:700;font-size:0.8rem;color:${sum>0?'#22c55e':'var(--muted)'}">${sum||'·'}</td>`;
+                }).join('')}
+              </tr>
+            </tfoot>
           </table>
         </div>
       </div>`;
@@ -1957,15 +1983,15 @@ registerPage('kameraden', async (el) => {
     });
   const aktiveUsers = users.filter(u => u.aktiv !== false);
 
-  // Anwesenheiten aktuelles Jahr laden
-  const jahrStart = new Date(new Date().getFullYear(), 0, 1);
+  // Anwesenheiten letzte 12 Monate laden
+  const vor12m = new Date(); vor12m.setFullYear(vor12m.getFullYear()-1);
   const anwSnap = await fw.getDocs('anwesenheiten');
   const stundenJahr = {};
   for (const d of anwSnap.docs) {
     const a = d.data();
     if (a.status !== 'kommt') continue;
     const dat = a.datum?.toDate ? a.datum.toDate() : new Date(a.datum);
-    if (dat < jahrStart) continue;
+    if (dat < vor12m) continue;
     stundenJahr[a.userId] = (stundenJahr[a.userId] || 0) + (a.dauer_h || 0);
   }
 
@@ -2007,6 +2033,10 @@ registerPage('kameraden', async (el) => {
           aufgaben.push({ typ: 'kein-datum', text: `${name}: „${q.bezeichnung}" hat kein Datum`, userId: user.id });
         }
       }
+      // Fehlender Dienstgrad
+      if (!user.dienstgrad) {
+        aufgaben.push({ typ: 'dienstgrad', text: `${name}: Kein Dienstgrad eingetragen`, userId: user.id });
+      }
       // AGT: Gültigkeit prüfen
       const hatAgt = qualis.some(q => (q.bezeichnung||'').trim().toLowerCase() === 'agt');
       if (hatAgt) {
@@ -2033,7 +2063,7 @@ registerPage('kameraden', async (el) => {
     }
 
     if (aufgaben.length) {
-      const icons = { 'kein-datum': '📅', 'agt': '🔴', 'eh': '⚠️' };
+      const icons = { 'kein-datum': '📅', 'agt': '🔴', 'eh': '⚠️', 'dienstgrad': '🪖' };
       aufgabenHtml = `
         <div class="card" style="margin-bottom:0.6rem">
           <div class="card-title" style="color:#f59e0b">⚠️ Offene Aufgaben (${aufgaben.length})</div>
@@ -2059,7 +2089,7 @@ registerPage('kameraden', async (el) => {
       </button>
     </div>
     ${aufgabenHtml}
-    <div style="font-size:0.72rem;color:var(--muted);text-align:right;padding:0 0.2rem 0.3rem">Dienststunden ${new Date().getFullYear()} · Ziel: ${ZIEL}h</div>
+    <div style="font-size:0.72rem;color:var(--muted);text-align:right;padding:0 0.2rem 0.3rem">Dienststunden (12 Mon.) · Ziel: ${ZIEL}h</div>
     <div class="card">
       ${users.map(u => `
         <div class="list-item" onclick="navigate('kamerad-detail',{id:'${u.id}'})">
@@ -2240,7 +2270,7 @@ registerPage('kamerad-detail', async (el, {id}) => {
       <div style="font-size:1.4rem">${stats.ziel?'✅':'⚠️'}</div>
       <div>
         <div style="font-weight:600;font-size:0.95rem">${stats.ziel?'40-Stunden-Ziel erreicht':'40-Stunden-Ziel nicht erreicht'}</div>
-        <div style="font-size:0.8rem;color:var(--muted);margin-top:0.1rem">${dauerFormat(stats.stunden12m)}h von 40:00h im Jahr ${new Date().getFullYear()}</div>
+        <div style="font-size:0.8rem;color:var(--muted);margin-top:0.1rem">${dauerFormat(stats.stunden12m)}h dieses Jahr · ${dauerFormat(stats.stunden12mZiel)}h / 40:00h (12 Mon.)</div>
       </div>
     </div>
     <div class="stats-grid">
