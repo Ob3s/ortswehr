@@ -1,11 +1,7 @@
 {
-  "version": "2.6.2",
-  "datum": "12.03.2026",
+  "version": "2.6.3",
+  "datum": "13.03.2026",
   "punkte": [
-    "News-Kommentare: Uhrzeit hinter dem Datum",
-    "Erste-Hilfe: 2 Jahre Gültigkeit (abgelaufen/bald ablaufend/gültig)",
-    "Dienststunden: Berechnung auf aktuelles Jahr umgestellt",
-    "Header: Uhrzeit wird auf allen Seiten angezeigt",
-    "Kameraden-Tab: Aufgaben-Übersicht für Wehrführer (fehlende Daten, AGT, Erste-Hilfe)"
+    "Hotfix: SW Cache-Version angehoben (erzwingt sauberes Update auf allen Geräten)"
   ]
 }
