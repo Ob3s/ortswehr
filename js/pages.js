@@ -222,7 +222,7 @@ registerPage('dashboard', async (el) => {
       <div style="font-family:'DM Serif Display',serif;font-size:1.3rem">
         Hallo, ${fw.profil.vorname || fw.profil.email}
       </div>
-      <span id="status-lampe" style="width:12px;height:12px;border-radius:50%;background:#ccc;display:inline-block;flex-shrink:0;cursor:default" title="Status wird geprüft..."></span>
+      <span id="status-lampe" style="width:12px;height:12px;border-radius:50%;background:#ccc;display:inline-block;flex-shrink:0;cursor:pointer" title="Status wird geprüft..." onclick="zeigeStatusDetail()"></span>
     </div>
 
     <button class="alarm-btn" onclick="navigate('uebung-form',{typ:'einsatz',alarm:true})">🚨 Einsatz</button>
@@ -394,7 +394,31 @@ window.newsLoeschen = async (id) => {
 
 let _letzterStatus = null;
 let _statusInterval = null;
-let _statusWarnungGesendet = false; // Nur einmal warnen bis Status wieder grün
+let _statusWarnungGesendet = false;
+let _statusDetails = [];
+
+window.zeigeStatusDetail = () => {
+  const existing = document.getElementById('status-modal');
+  if (existing) { existing.remove(); return; }
+  const modal = document.createElement('div');
+  modal.id = 'status-modal';
+  modal.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;z-index:9999;background:rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center;padding:1rem';
+  modal.onclick = e => { if (e.target === modal) modal.remove(); };
+  modal.innerHTML = `
+    <div style="background:var(--panel);border-radius:14px;padding:1.2rem;width:100%;max-width:340px;box-shadow:0 8px 32px rgba(0,0,0,0.4)">
+      <div style="font-weight:700;font-size:1rem;margin-bottom:1rem">🔍 System-Status</div>
+      ${_statusDetails.map(s => `
+        <div style="display:flex;align-items:center;gap:0.7rem;padding:0.5rem 0;border-bottom:1px solid var(--border)">
+          <span style="width:10px;height:10px;border-radius:50%;background:${s.ok?'#22c55e':'#ef4444'};flex-shrink:0;box-shadow:0 0 5px ${s.ok?'#22c55e':'#ef4444'}"></span>
+          <div style="flex:1">
+            <div style="font-size:0.88rem;font-weight:600">${s.label}</div>
+            <div style="font-size:0.75rem;color:var(--muted)">${s.info}</div>
+          </div>
+        </div>`).join('')}
+      <button onclick="document.getElementById('status-modal').remove()" style="margin-top:1rem;width:100%;padding:0.6rem;background:var(--panel2);border:none;border-radius:8px;color:var(--text);cursor:pointer;font-size:0.9rem">Schließen</button>
+    </div>`;
+  document.body.appendChild(modal);
+};
 
 async function pruefeStatus() {
   const lampe = document.getElementById('status-lampe');
@@ -403,25 +427,52 @@ async function pruefeStatus() {
   const notifOk  = Notification.permission === 'granted';
   const snap     = await fw.getDoc('users/'+fw.user.uid);
   const tokenOk  = !!(snap.data()?.fcmToken);
-  const allesOk  = online && notifOk && tokenOk;
-  const grund    = !online ? 'Kein Internet' : !notifOk ? 'Benachrichtigungen nicht erlaubt' : 'Kein Push-Token';
+
+  // FCM-Token validieren und ggf. erneuern
+  let tokenFrisch = tokenOk;
+  let tokenInfo = tokenOk ? 'Token vorhanden' : 'Kein Token gespeichert';
+  if (online && notifOk && tokenOk && fw.messaging) {
+    try {
+      const swReg = await navigator.serviceWorker.getRegistration('/firebase-messaging-sw.js');
+      if (swReg) {
+        const { getToken } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging.js');
+        const aktuellerToken = await getToken(fw.messaging, { vapidKey: fw._vapid, serviceWorkerRegistration: swReg });
+        if (aktuellerToken && aktuellerToken !== snap.data()?.fcmToken) {
+          await fw.setDoc('users/'+fw.user.uid, { fcmToken: aktuellerToken });
+          if (fw.profil) fw.profil.fcmToken = aktuellerToken;
+          tokenInfo = 'Token erneuert ✓';
+          console.log('Status-Check: FCM Token erneuert');
+        } else if (aktuellerToken) {
+          tokenInfo = 'Token gültig ✓';
+        }
+        tokenFrisch = !!aktuellerToken;
+      }
+    } catch(e) { tokenInfo = 'Token-Prüfung fehlgeschlagen'; }
+  }
+
+  const allesOk = online && notifOk && tokenFrisch;
+  const grund   = !online ? 'Kein Internet' : !notifOk ? 'Benachrichtigungen nicht erlaubt' : 'Kein Push-Token';
+
+  // Detail-Status für Modal
+  _statusDetails = [
+    { label: 'Internetverbindung', ok: online, info: online ? 'Verbunden' : 'Nicht verbunden' },
+    { label: 'Benachrichtigungen', ok: notifOk, info: notifOk ? 'Erlaubt' : 'Berechtigung verweigert' },
+    { label: 'Push-Token', ok: tokenFrisch, info: tokenInfo },
+  ];
 
   lampe.style.background = allesOk ? '#22c55e' : '#ef4444';
   lampe.style.boxShadow  = `0 0 6px ${allesOk ? '#22c55e' : '#ef4444'}`;
-  lampe.title = allesOk ? 'Alles bereit ✓' : grund;
+  lampe.title = allesOk ? 'Alles bereit – tippen für Details' : grund;
 
   if (allesOk) {
-    // Status wieder OK → Warnung zurücksetzen damit sie beim nächsten Problem erneut kommt
     _statusWarnungGesendet = false;
   } else if (!_statusWarnungGesendet && fw.profil?.notif_status !== false) {
-    // Nur einmal warnen bis Status wieder grün wird
     _statusWarnungGesendet = true;
-    // Echte Browser-Benachrichtigung senden (funktioniert auch wenn App im Hintergrund)
     if (Notification.permission === 'granted') {
       new Notification('⚠️ Ortswehr – Problem erkannt', {
         body: grund + ' – Einsatzalarme können möglicherweise nicht empfangen werden!',
         icon: '/ortswehr/icons/icon-192.png',
-        tag: 'status-warnung', // verhindert mehrfache Anzeige
+        tag: 'status-warnung',
         requireInteraction: true,
       });
     }
