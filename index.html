@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="theme-color" content="#cc2200">
-  <meta name="app-version" content="2.6.9">
+  <meta name="app-version" content="2.7.0">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ortswehr">
@@ -140,10 +140,42 @@
 
     async registerPush() {
       if (!messaging) { console.warn('Push: messaging nicht verfügbar'); return null; }
+
+      // Capacitor native App erkennen
+      const isNative = window.Capacitor?.isNativePlatform?.();
+      if (isNative) {
+        try {
+          const { PushNotifications } = window.Capacitor.Plugins;
+          if (!PushNotifications) { console.warn('Push: PushNotifications Plugin nicht verfügbar'); return null; }
+          const perm = await PushNotifications.requestPermissions();
+          if (perm.receive !== 'granted') { this.toast('Push: Berechtigung verweigert', true); return null; }
+          await PushNotifications.register();
+          PushNotifications.addListener('registration', async (token) => {
+            console.log('Capacitor FCM Token:', token.value);
+            const gespeichert = fw.profil?.fcmToken;
+            if (token.value !== gespeichert) {
+              await fw.setDoc('users/' + fw.user.uid, { fcmToken: token.value });
+              if (fw.profil) fw.profil.fcmToken = token.value;
+              console.log('Capacitor Token gespeichert');
+            }
+          });
+          PushNotifications.addListener('registrationError', (err) => {
+            console.error('Capacitor Push Fehler:', err);
+          });
+          PushNotifications.addListener('pushNotificationReceived', (notification) => {
+            const alarm = notification.data?.alarm === 'true';
+            fw.toast((alarm ? '🚨 ' : '🔔 ') + notification.title + ': ' + notification.body);
+          });
+        } catch(e) {
+          console.error('Capacitor Push Fehler:', e);
+        }
+        return null;
+      }
+
+      // Web PWA Weg
       try {
         const perm = await Notification.requestPermission();
         if (perm !== 'granted') { this.toast('Push: Berechtigung verweigert', true); return null; }
-        // Firebase SW registrieren und warten bis er aktiv ist
         const swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
         await new Promise(resolve => {
           if (swReg.active) { resolve(); return; }
@@ -152,12 +184,10 @@
           else { swReg.addEventListener('updatefound', () => {
             swReg.installing.addEventListener('statechange', e => { if (e.target.state === 'activated') resolve(); });
           }); }
-          // Fallback nach 3s
           setTimeout(resolve, 3000);
         });
         const token = await getToken(messaging, { vapidKey: VAPID, serviceWorkerRegistration: swReg });
         if (token) {
-          // Immer mit gespeichertem Token vergleichen und bei Abweichung updaten
           const gespeichert = fw.profil?.fcmToken;
           if (token !== gespeichert) {
             console.log('FCM Token erneuert');
