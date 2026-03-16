@@ -1337,10 +1337,11 @@ function initNotifCheckboxes() {
 
 window.notifSpeichern = async () => {
   const selbstEl = document.getElementById('n-selbst');
+  const bestEl   = document.getElementById('n-best');
   const data = {
-    notif_einsatz:      document.getElementById('n-einsatz').checked,
-    notif_uebung:       document.getElementById('n-uebung').checked,
-    notif_bestaetigung: document.getElementById('n-best').checked,
+    notif_einsatz:      document.getElementById('n-einsatz')?.checked ?? true,
+    notif_uebung:       document.getElementById('n-uebung')?.checked ?? true,
+    notif_bestaetigung: bestEl ? bestEl.checked : (fw.profil.notif_bestaetigung ?? true),
     notif_selbst:       selbstEl ? selbstEl.checked : false,
     notif_status:       document.getElementById('n-status')?.checked ?? true,
   };
@@ -1375,6 +1376,10 @@ window.passwortAendern = async () => {
 };
 
 window.abmelden = async () => {
+  // Alle aktiven Firestore-Listener stoppen bevor signOut aufgerufen wird,
+  // sonst wirft Firestore permission-denied auf bereits laufende Snapshots
+  if (window._einsatzListener)  { window._einsatzListener();  window._einsatzListener  = null; }
+  if (_newsFeedListener)        { _newsFeedListener();         _newsFeedListener        = null; }
   const { signOut } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js');
   await signOut(fw.auth);
 };
