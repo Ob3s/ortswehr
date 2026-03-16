@@ -248,7 +248,13 @@
     const pass = document.getElementById('login-pass').value;
     document.getElementById('login-error').textContent = '';
     const email = name.includes('@') ? name : name + '@ffw-oegeln.de';
-    try { await signInWithEmailAndPassword(auth, email, pass); }
+    try {
+      await signInWithEmailAndPassword(auth, email, pass);
+      // Credentials im nativen Store speichern (überlebt Cache-Leerung)
+      if (typeof window.CredentialStore !== 'undefined') {
+        window.CredentialStore.save(email, pass);
+      }
+    }
     catch(e) { document.getElementById('login-error').textContent = 'Benutzername oder Passwort falsch'; }
   });
   ['login-email','login-pass'].forEach(id => {
@@ -303,8 +309,22 @@
     } else {
       fw.user = null; fw.profil = null;
       document.getElementById('nav-kameraden').classList.add('hidden');
-      document.getElementById('login-page').classList.remove('hidden');
       document.getElementById('app').classList.add('hidden');
+      // Auto-Login: gespeicherte Credentials aus nativem Store versuchen
+      if (typeof window.CredentialStore !== 'undefined') {
+        const savedEmail = window.CredentialStore.getEmail();
+        const savedPass  = window.CredentialStore.getPassword();
+        if (savedEmail && savedPass) {
+          try {
+            await signInWithEmailAndPassword(auth, savedEmail, savedPass);
+            return; // onAuthStateChanged feuert erneut mit User
+          } catch(e) {
+            // Credentials ungültig (z.B. Passwort geändert) → löschen und Login zeigen
+            window.CredentialStore.clear();
+          }
+        }
+      }
+      document.getElementById('login-page').classList.remove('hidden');
       document.getElementById('app-loading')?.remove();
     }
   });
