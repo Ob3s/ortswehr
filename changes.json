@@ -1,9 +1,1 @@
-{
-  "version": "2.8.0",
-  "datum": "16.03.2026",
-  "punkte": [
-    "Einstellungen-Seite: Alarm-Lautstärke-Profil (Laut / Leise / Stumm)",
-    "Native App: JS-Bridge für Lautstärke-Einstellung (AlarmSettings)",
-    "Native App: AlarmService liest Lautstärke-Profil aus SharedPreferences"
-  ]
-}
+{"version": "2.8.2", "datum": "16.03.2026", "punkte": ["Profil: Stunden-Übersicht und Dienstlich zuerst, Vorname/Nachname/Führerschein-Input entfernt", "Profil: Führerschein lesend unter Dienstlich", "Profil: Einstellungen und Updates nebeneinander, Abmelden auf voller Breite", "Header: Uhrzeit fetter und heller"]}
