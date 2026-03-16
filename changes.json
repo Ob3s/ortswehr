@@ -1,1 +1,1 @@
-{"version": "2.8.2", "datum": "16.03.2026", "punkte": ["Profil: Stunden-Übersicht und Dienstlich zuerst, Vorname/Nachname/Führerschein-Input entfernt", "Profil: Führerschein lesend unter Dienstlich", "Profil: Einstellungen und Updates nebeneinander, Abmelden auf voller Breite", "Header: Uhrzeit fetter und heller"]}
+{"version": "2.8.3", "datum": "16.03.2026", "punkte": ["Login-Seite flackert nicht mehr beim App-Start", "Benachrichtigungen speichern: kein Crash mehr wenn n-best nicht im DOM", "Abmelden: Firestore-Listener werden vor signOut gestoppt"]}
