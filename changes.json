@@ -1,9 +1,9 @@
 {
-  "version": "2.6.9",
-  "datum": "13.03.2026",
+  "version": "2.7.0",
+  "datum": "16.03.2026",
   "punkte": [
-    "Status-Lampe: Tippen zeigt Detail-Liste aller Prüfungen",
-    "Status-Lampe: FCM-Token wird automatisch erneuert wenn veraltet",
-    "Doppel-Benachrichtigung behoben: SW zeigt keine Notification wenn App offen"
+    "Native App: Push-Token Registrierung über Capacitor Plugin",
+    "PWA: Push-Token Registrierung unverändert über Firebase Web SDK",
+    "Header: Uhrzeit auffälliger (fett)"
   ]
 }
