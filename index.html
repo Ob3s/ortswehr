@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="theme-color" content="#cc2200">
-  <meta name="app-version" content="2.8.2">
+  <meta name="app-version" content="2.8.3">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ortswehr">
@@ -15,8 +15,11 @@
 </head>
 <body>
 
+<!-- Lade-Overlay: sichtbar bis Firebase onAuthStateChanged antwortet -->
+<div id="app-loading" style="position:fixed;inset:0;background:var(--bg,#f1f5f9);display:flex;align-items:center;justify-content:center;z-index:9999;font-size:2rem">🚒</div>
+
 <!-- Login -->
-<div id="login-page">
+<div id="login-page" class="hidden">
   <div class="login-box">
     <div class="login-logo">🚒</div>
     <h1>Freiwillige Feuerwehr Beeskow</h1>
@@ -295,12 +298,14 @@
       }
       document.getElementById('login-page').classList.add('hidden');
       document.getElementById('app').classList.remove('hidden');
+      document.getElementById('app-loading')?.remove();
       navigate('dashboard');
     } else {
       fw.user = null; fw.profil = null;
       document.getElementById('nav-kameraden').classList.add('hidden');
       document.getElementById('login-page').classList.remove('hidden');
       document.getElementById('app').classList.add('hidden');
+      document.getElementById('app-loading')?.remove();
     }
   });
 
