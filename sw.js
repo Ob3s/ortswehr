@@ -1,5 +1,5 @@
-// sw.js – Service Worker v8
-const CACHE = 'ortswehr-2.8.2';
+// sw.js – Service Worker v7
+const CACHE = 'ortswehr-2.8.1';
 const CACHE_ONLY_ASSETS = [
   '/ortswehr/icons/icon-192.png',
   '/ortswehr/icons/icon-512.png',
