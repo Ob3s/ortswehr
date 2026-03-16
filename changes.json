@@ -1,1 +1,1 @@
-{"version": "2.8.3", "datum": "16.03.2026", "punkte": ["Login-Seite flackert nicht mehr beim App-Start", "Benachrichtigungen speichern: kein Crash mehr wenn n-best nicht im DOM", "Abmelden: Firestore-Listener werden vor signOut gestoppt"]}
+{"version": "2.8.4", "datum": "16.03.2026", "punkte": ["Auto-Login: App meldet sich nach Cache-Leerung automatisch wieder an", "Passwort ändern: gespeicherte Credentials werden automatisch aktualisiert", "Abmelden: gespeicherte Credentials werden gelöscht"]}
