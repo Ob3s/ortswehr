@@ -1369,6 +1369,10 @@ window.passwortAendern = async () => {
     const cred = EmailAuthProvider.credential(fw.user.email, alt);
     await reauthenticateWithCredential(fw.user, cred);
     await updatePassword(fw.user, neu);
+    // Gespeicherte Credentials aktualisieren
+    if (typeof window.CredentialStore !== 'undefined') {
+      window.CredentialStore.save(fw.user.email, neu);
+    }
     fw.toast('Passwort geändert ✅');
     document.getElementById('pw-alt').value = '';
     document.getElementById('pw-neu').value = '';
@@ -1376,10 +1380,11 @@ window.passwortAendern = async () => {
 };
 
 window.abmelden = async () => {
-  // Alle aktiven Firestore-Listener stoppen bevor signOut aufgerufen wird,
-  // sonst wirft Firestore permission-denied auf bereits laufende Snapshots
+  // Alle aktiven Firestore-Listener stoppen
   if (window._einsatzListener)  { window._einsatzListener();  window._einsatzListener  = null; }
   if (_newsFeedListener)        { _newsFeedListener();         _newsFeedListener        = null; }
+  // Gespeicherte Credentials löschen damit Auto-Login nicht greift
+  if (typeof window.CredentialStore !== 'undefined') window.CredentialStore.clear();
   const { signOut } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js');
   await signOut(fw.auth);
 };
