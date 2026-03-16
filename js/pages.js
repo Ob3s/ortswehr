@@ -1260,28 +1260,6 @@ registerPage('profil', async (el) => {
       ${renderQualisProfil(qualis, me)}
     </div>
 
-    <div class="section-header">🔔 Benachrichtigungen</div>
-    <div class="card">
-      <div class="notif-row" style="display:flex;align-items:center;gap:0.8rem;padding:0.6rem 0;border-bottom:1px solid var(--border)">
-        <div style="flex:1"><div style="font-weight:600">🚨 Einsatzalarm</div><div class="muted" style="font-size:0.78rem">Bei neuen Einsätzen</div></div>
-        <input type="checkbox" id="n-einsatz" style="width:24px;height:24px;accent-color:var(--red);cursor:pointer;flex-shrink:0">
-      </div>
-      <div class="notif-row" style="display:flex;align-items:center;gap:0.8rem;padding:0.6rem 0;border-bottom:1px solid var(--border)">
-        <div style="flex:1"><div style="font-weight:600">📅 Neuer Dienst</div><div class="muted" style="font-size:0.78rem">Bei neuen Diensten</div></div>
-        <input type="checkbox" id="n-uebung" style="width:24px;height:24px;accent-color:var(--red);cursor:pointer;flex-shrink:0">
-      </div>
-      <div class="notif-row" style="display:flex;align-items:center;gap:0.8rem;padding:0.6rem 0;border-bottom:1px solid var(--border)">
-        <div style="flex:1"><div style="font-weight:600">⚠️ Status-Warnung</div><div class="muted" style="font-size:0.78rem">Wenn App offline oder Push nicht bereit</div></div>
-        <input type="checkbox" id="n-status" style="width:24px;height:24px;accent-color:var(--red);cursor:pointer;flex-shrink:0">
-      </div>
-      ${fw.isWehrfuehrer() ? `
-      <div class="notif-row" style="display:flex;align-items:center;gap:0.8rem;padding:0.6rem 0;border-bottom:1px solid var(--border)">
-        <div style="flex:1"><div style="font-weight:600">🧪 Selbst benachrichtigen</div><div class="muted" style="font-size:0.78rem">Nur für Tests – Wehrführer erhält eigene Alarme</div></div>
-        <input type="checkbox" id="n-selbst" style="width:24px;height:24px;accent-color:var(--red);cursor:pointer;flex-shrink:0">
-      </div>` : ''}
-      <button class="btn btn-primary btn-full" style="margin-top:0.8rem" id="notif-save-btn" onclick="notifSpeichern()">💾 Speichern</button>
-    </div>
-
     <div class="section-header">Passwort ändern</div>
     <div class="card">
       <div class="form-row"><label>Aktuelles Passwort</label><input id="pw-alt" type="password"></div>
@@ -1296,17 +1274,6 @@ registerPage('profil', async (el) => {
       <button class="btn btn-danger btn-full" onclick="abmelden()">Abmelden</button>
     </div>
   `;
-  // Checkboxen setzen
-  const cbEinsatz = document.getElementById('n-einsatz');
-  const cbUebung  = document.getElementById('n-uebung');
-  const cbBest    = document.getElementById('n-best');
-  const cbStatus  = document.getElementById('n-status');
-  const cbSelbst  = document.getElementById('n-selbst');
-  if (cbEinsatz) cbEinsatz.checked = me.notif_einsatz !== false;
-  if (cbUebung)  cbUebung.checked  = me.notif_uebung  !== false;
-  if (cbBest)    cbBest.checked    = me.notif_bestaetigung !== false;
-  if (cbStatus)  cbStatus.checked  = me.notif_status  !== false;
-  if (cbSelbst)  cbSelbst.checked  = me.notif_selbst  === true;
 });
 
 window.themeWaehlen = async (theme) => {
@@ -1337,17 +1304,15 @@ function initNotifCheckboxes() {
 
 window.notifSpeichern = async () => {
   const selbstEl = document.getElementById('n-selbst');
-  const bestEl   = document.getElementById('n-best');
   const data = {
-    notif_einsatz:      document.getElementById('n-einsatz')?.checked ?? true,
-    notif_uebung:       document.getElementById('n-uebung')?.checked ?? true,
-    notif_bestaetigung: bestEl ? bestEl.checked : (fw.profil.notif_bestaetigung ?? true),
-    notif_selbst:       selbstEl ? selbstEl.checked : false,
-    notif_status:       document.getElementById('n-status')?.checked ?? true,
+    notif_einsatz:         document.getElementById('n-einsatz')?.checked ?? true,
+    notif_dienst_reminder: document.getElementById('n-dienst-reminder')?.checked ?? false,
+    notif_selbst:          selbstEl ? selbstEl.checked : false,
+    notif_status:          document.getElementById('n-status')?.checked ?? true,
   };
   await fw.setDoc('users/'+fw.user.uid, data);
   Object.assign(fw.profil, data);
-  if (data.notif_einsatz || data.notif_uebung || data.notif_bestaetigung) {
+  if (data.notif_einsatz || data.notif_dienst_reminder) {
     const token = await fw.registerPush();
     if (token) fw.toast('Gespeichert ✅ Push aktiv');
     else fw.toast('Gespeichert – Push nicht verfügbar', true);
@@ -1355,7 +1320,6 @@ window.notifSpeichern = async () => {
     await fw.setDoc('users/'+fw.user.uid, { fcmToken: null });
     fw.toast('Gespeichert ✅');
   }
-  fw.toast('Einstellungen gespeichert ✅');
 };
 
 window.passwortAendern = async () => {
@@ -1390,14 +1354,23 @@ window.abmelden = async () => {
 };
 
 // ── Einstellungen ─────────────────────────────────────────
-registerPage('einstellungen', (el) => {
+registerPage('einstellungen', async (el) => {
   fw.setTitle('Einstellungen');
   fw.showBack(() => navigate('profil'));
 
   const isNative = typeof window.AlarmSettings !== 'undefined';
   const aktivProfil = isNative ? window.AlarmSettings.getProfil() : 'laut';
-
   const profilLabel = { laut: '🔊 Laut', leise: '🔉 Leise', stumm: '🔇 Stumm' };
+
+  // Aktuelles Profil laden für Notif-Checkboxen
+  const meSnap = await fw.getDoc('users/' + fw.user.uid);
+  const me = meSnap.data() || fw.profil;
+
+  const notifRow = (id, icon, titel, sub) => `
+    <div style="display:flex;align-items:center;gap:0.8rem;padding:0.6rem 0;border-bottom:1px solid var(--border)">
+      <div style="flex:1"><div style="font-weight:600">${icon} ${titel}</div><div class="muted" style="font-size:0.78rem">${sub}</div></div>
+      <input type="checkbox" id="${id}" style="width:24px;height:24px;accent-color:var(--red);cursor:pointer;flex-shrink:0">
+    </div>`;
 
   const renderButtons = (aktiv) => ['laut', 'leise', 'stumm'].map(p => `
     <button
@@ -1409,9 +1382,17 @@ registerPage('einstellungen', (el) => {
   `).join('');
 
   el.innerHTML = `
-    <div class="section-header">🚨 Alarm</div>
+    <div class="section-header">🔔 Benachrichtigungen</div>
     <div class="card">
-      <div style="font-weight:600;font-size:0.95rem;margin-bottom:0.4rem">Lautstärke</div>
+      ${notifRow('n-einsatz', '🚨', 'Einsatzalarm', 'Bei neuen Einsätzen')}
+      ${notifRow('n-dienst-reminder', '📅', 'Diensterinnerung', 'Am Morgen des Dienstes um 08:00 Uhr')}
+      ${notifRow('n-status', '⚠️', 'Status-Warnung', 'Wenn App offline oder Push nicht bereit')}
+      ${fw.isWehrfuehrer() ? notifRow('n-selbst', '🧪', 'Selbst benachrichtigen', 'Nur für Tests – Wehrführer erhält eigene Alarme') : ''}
+      <button class="btn btn-primary btn-full" style="margin-top:0.8rem" onclick="notifSpeichern()">💾 Speichern</button>
+    </div>
+
+    <div class="section-header">🚨 Alarm-Lautstärke</div>
+    <div class="card">
       <div style="color:var(--muted);font-size:0.82rem;margin-bottom:0.9rem">
         Laut = 80 % &nbsp;·&nbsp; Leise = 30 % &nbsp;·&nbsp; Stumm = kein Ton (Vibration bleibt aktiv)
       </div>
@@ -1423,6 +1404,13 @@ registerPage('einstellungen', (el) => {
       </div>` : ''}
     </div>
   `;
+
+  // Checkboxen setzen
+  const cb = id => document.getElementById(id);
+  if (cb('n-einsatz'))        cb('n-einsatz').checked        = me.notif_einsatz !== false;
+  if (cb('n-dienst-reminder'))cb('n-dienst-reminder').checked = me.notif_dienst_reminder === true;
+  if (cb('n-status'))         cb('n-status').checked         = me.notif_status !== false;
+  if (cb('n-selbst'))         cb('n-selbst').checked         = me.notif_selbst === true;
 
   window.alarmProfilSetzen = (profil) => {
     if (!isNative) return;
