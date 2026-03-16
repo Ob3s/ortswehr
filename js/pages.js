@@ -1247,25 +1247,17 @@ registerPage('profil', async (el) => {
       <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.gesamtDienst)}h</div><div class="stat-label">Dienststunden ${new Date().getFullYear()}</div></div>
       <div class="stat-card"><div class="stat-zahl">${stats.dienste}</div><div class="stat-label">${stats.dienste===1?'Dienst':'Dienste'} ${new Date().getFullYear()}</div></div>
     </div>
-    <div class="section-header">Persönliche Daten</div>
+
+    <div class="section-header">Dienstlich</div>
     <div class="card">
-      <div class="form-row"><label>Vorname</label><input id="p-vn" value="${me.vorname||''}"></div>
-      <div class="form-row"><label>Nachname</label><input id="p-nn" value="${me.nachname||''}"></div>
-
-      <div class="form-row"><label>Führerscheinklassen (z.B. B, C, CE)</label><input id="p-fs" value="${me.fuehrerschein||''}"></div>
-
-      <div class="form-row" style="margin-top:0.5rem">
-        <label>Design</label>
-        <div style="display:flex;gap:0.6rem;margin-top:0.3rem">
-          <button id="theme-standard" onclick="themeWaehlen('standard')"
-            class="btn btn-sm ${(me.theme||'standard')==='standard'?'btn-primary':'btn-secondary'}"
-            style="flex:1">🎨 Modern</button>
-          <button id="theme-klassisch" onclick="themeWaehlen('klassisch')"
-            class="btn btn-sm ${(me.theme||'standard')==='klassisch'?'btn-primary':'btn-secondary'}"
-            style="flex:1">🖥️ Klassisch</button>
-        </div>
+      <div style="display:flex;gap:1.2rem;flex-wrap:wrap">
+        <div><div class="muted" style="font-size:0.72rem">Dienstgrad</div><div class="bold">${me.dienstgrad||'–'}</div></div>
+        <div><div class="muted" style="font-size:0.72rem">Eingetreten</div><div class="bold">${datum(me.eintrittsdatum)||'–'}</div></div>
+        ${me.fuehrerschein ? `<div><div class="muted" style="font-size:0.72rem">Führerschein</div><div class="bold">${me.fuehrerschein}</div></div>` : ''}
       </div>
-      <button class="btn btn-primary btn-full" onclick="profilSpeichern()">💾 Speichern</button>
+      <hr>
+      <div class="card-title" style="margin-bottom:0.5rem">Lehrgänge</div>
+      ${renderQualisProfil(qualis, me)}
     </div>
 
     <div class="section-header">🔔 Benachrichtigungen</div>
@@ -1290,17 +1282,6 @@ registerPage('profil', async (el) => {
       <button class="btn btn-primary btn-full" style="margin-top:0.8rem" id="notif-save-btn" onclick="notifSpeichern()">💾 Speichern</button>
     </div>
 
-    <div class="section-header">Dienstlich</div>
-    <div class="card">
-      <div style="display:flex;gap:1.2rem;flex-wrap:wrap">
-        <div><div class="muted" style="font-size:0.72rem">Dienstgrad</div><div class="bold">${me.dienstgrad||'–'}</div></div>
-        <div><div class="muted" style="font-size:0.72rem">Eingetreten</div><div class="bold">${datum(me.eintrittsdatum)||'–'}</div></div>
-      </div>
-      <hr>
-      <div class="card-title" style="margin-bottom:0.5rem">Lehrgänge</div>
-      ${renderQualisProfil(qualis, me)}
-    </div>
-
     <div class="section-header">Passwort ändern</div>
     <div class="card">
       <div class="form-row"><label>Aktuelles Passwort</label><input id="pw-alt" type="password"></div>
@@ -1308,12 +1289,14 @@ registerPage('profil', async (el) => {
       <button class="btn btn-primary btn-full" onclick="passwortAendern()">🔒 Passwort ändern</button>
     </div>
     <div class="card">
-      <button class="btn btn-secondary btn-full" onclick="navigate('einstellungen')">⚙️ Einstellungen</button>
-      <button class="btn btn-danger btn-full" style="margin-top:0.5rem" onclick="abmelden()">Abmelden</button>
-      <button class="btn btn-secondary btn-full" style="margin-top:0.5rem" onclick="pruefeAufUpdate(true)">🔄 Auf Updates prüfen</button>
+      <div style="display:flex;gap:0.5rem;margin-bottom:0.5rem">
+        <button class="btn btn-secondary btn-full" onclick="navigate('einstellungen')">⚙️ Einstellungen</button>
+        <button class="btn btn-secondary btn-full" onclick="pruefeAufUpdate(true)">🔄 Updates</button>
+      </div>
+      <button class="btn btn-danger btn-full" onclick="abmelden()">Abmelden</button>
     </div>
   `;
-  // DOM-Elemente direkt nach innerHTML setzen
+  // Checkboxen setzen
   const cbEinsatz = document.getElementById('n-einsatz');
   const cbUebung  = document.getElementById('n-uebung');
   const cbBest    = document.getElementById('n-best');
@@ -1336,18 +1319,6 @@ window.themeWaehlen = async (theme) => {
   document.getElementById('theme-klassisch')?.classList.toggle('btn-primary',  theme === 'klassisch');
   document.getElementById('theme-klassisch')?.classList.toggle('btn-secondary', theme !== 'klassisch');
   fw.toast(theme === 'klassisch' ? '🖥️ Design: Klassisch' : '🎨 Design: Modern');
-};
-
-window.profilSpeichern = async () => {
-  const data = {
-    vorname: document.getElementById('p-vn').value,
-    nachname: document.getElementById('p-nn').value,
-    fuehrerschein: document.getElementById('p-fs').value,
-    ortswehrId: fw.profil.ortswehrId || null,
-  };
-  await fw.setDoc('users/'+fw.user.uid, data);
-  Object.assign(fw.profil, data);
-  fw.toast('Gespeichert ✅');
 };
 
 function initNotifCheckboxes() {
@@ -1421,7 +1392,7 @@ registerPage('einstellungen', (el) => {
   const renderButtons = (aktiv) => ['laut', 'leise', 'stumm'].map(p => `
     <button
       class="btn ${aktiv === p ? 'btn-primary' : 'btn-secondary'}"
-      style="flex:1;padding:0.8rem;font-size:1rem"
+      style="flex:1;min-width:0;padding:0.6rem 0.3rem;font-size:0.9rem"
       onclick="alarmProfilSetzen('${p}')">
       ${profilLabel[p]}
     </button>
@@ -1434,7 +1405,7 @@ registerPage('einstellungen', (el) => {
       <div style="color:var(--muted);font-size:0.82rem;margin-bottom:0.9rem">
         Laut = 80 % &nbsp;·&nbsp; Leise = 30 % &nbsp;·&nbsp; Stumm = kein Ton (Vibration bleibt aktiv)
       </div>
-      <div id="alarm-profil-buttons" style="display:flex;gap:0.5rem">
+      <div id="alarm-profil-buttons" style="display:flex;gap:0.5rem;width:100%;box-sizing:border-box">
         ${renderButtons(aktivProfil)}
       </div>
       ${!isNative ? `<div style="color:var(--muted);font-size:0.8rem;margin-top:0.8rem">
@@ -2160,15 +2131,20 @@ registerPage('kameraden', async (el) => {
     if (aufgaben.length) {
       const icons = { 'kein-datum': '📅', 'agt': '🔴', 'eh': '⚠️', 'dienstgrad': '🪖' };
       aufgabenHtml = `
-        <div class="card" style="margin-bottom:0.6rem">
-          <div class="card-title" style="color:#f59e0b">⚠️ Offene Aufgaben (${aufgaben.length})</div>
-          ${aufgaben.map(a => `
-            <div class="list-item" onclick="navigate('kamerad-detail',{id:'${a.userId}'})" style="border-bottom:1px solid var(--border);cursor:pointer">
-              <div style="font-size:1rem;margin-right:0.5rem">${icons[a.typ]||'•'}</div>
-              <div class="list-item-body"><div style="font-size:0.83rem">${a.text}</div></div>
-              <div class="list-chevron">›</div>
-            </div>`).join('')}
-        </div>`;
+        <details class="card" style="margin-bottom:0.6rem;padding:0" open>
+          <summary style="list-style:none;padding:0.8rem;cursor:pointer;display:flex;align-items:center;justify-content:space-between">
+            <span style="font-weight:600;color:#f59e0b">⚠️ Offene Aufgaben (${aufgaben.length})</span>
+            <span style="color:var(--muted);font-size:1.1rem">▾</span>
+          </summary>
+          <div style="padding:0 0.8rem 0.8rem">
+            ${aufgaben.map(a => `
+              <div class="list-item" onclick="navigate('kamerad-detail',{id:'${a.userId}'})" style="border-bottom:1px solid var(--border);cursor:pointer">
+                <div style="font-size:1rem;margin-right:0.5rem">${icons[a.typ]||'•'}</div>
+                <div class="list-item-body"><div style="font-size:0.83rem">${a.text}</div></div>
+                <div class="list-chevron">›</div>
+              </div>`).join('')}
+          </div>
+        </details>`;
     } else {
       aufgabenHtml = `<div class="card" style="margin-bottom:0.6rem;color:#22c55e;font-size:0.88rem">✅ Keine offenen Aufgaben</div>`;
     }
