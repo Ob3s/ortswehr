@@ -1175,7 +1175,7 @@ async function benachrichtigeOrtswehr(typ, titel, datumStr, dauer_h, uebungId) {
     if (d.id === fw.user.uid && !fw.profil.notif_selbst) { console.log('Push: Selbst übersprungen'); continue; }
     if (!u.fcmToken) { console.log('Push: Kein Token für', d.id); continue; }
     if (isEinsatz && u.notif_einsatz !== false) tokens.push(u.fcmToken);
-    if (!isEinsatz && u.notif_uebung !== false) tokens.push(u.fcmToken);
+    // Dienst-Push bei Anlage wurde entfernt – Erinnerung erfolgt nur noch über dienstErinnerung (08:00 Uhr)
   }
   if (tokens.length === 0) { fw.toast('⚠️ Keine Push-Empfänger gefunden', true); return; }
   const title = isEinsatz ? '🚨 EINSATZ ALARM' : '🔔 Neuer Dienst';
@@ -2129,7 +2129,7 @@ registerPage('kameraden', async (el) => {
     if (aufgaben.length) {
       const icons = { 'kein-datum': '📅', 'agt': '🔴', 'eh': '⚠️', 'dienstgrad': '🪖' };
       aufgabenHtml = `
-        <details class="card" style="margin-bottom:0.6rem;padding:0" open>
+        <details class="card" style="margin-bottom:0.6rem;padding:0">
           <summary style="list-style:none;padding:0.8rem;cursor:pointer;display:flex;align-items:center;justify-content:space-between">
             <span style="font-weight:600;color:#f59e0b">⚠️ Offene Aufgaben (${aufgaben.length})</span>
             <span style="color:var(--muted);font-size:1.1rem">▾</span>
