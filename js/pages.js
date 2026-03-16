@@ -1308,7 +1308,8 @@ registerPage('profil', async (el) => {
       <button class="btn btn-primary btn-full" onclick="passwortAendern()">🔒 Passwort ändern</button>
     </div>
     <div class="card">
-      <button class="btn btn-danger btn-full" onclick="abmelden()">Abmelden</button>
+      <button class="btn btn-secondary btn-full" onclick="navigate('einstellungen')">⚙️ Einstellungen</button>
+      <button class="btn btn-danger btn-full" style="margin-top:0.5rem" onclick="abmelden()">Abmelden</button>
       <button class="btn btn-secondary btn-full" style="margin-top:0.5rem" onclick="pruefeAufUpdate(true)">🔄 Auf Updates prüfen</button>
     </div>
   `;
@@ -1406,6 +1407,49 @@ window.abmelden = async () => {
   const { signOut } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js');
   await signOut(fw.auth);
 };
+
+// ── Einstellungen ─────────────────────────────────────────
+registerPage('einstellungen', (el) => {
+  fw.setTitle('Einstellungen');
+  fw.showBack(() => navigate('profil'));
+
+  const isNative = typeof window.AlarmSettings !== 'undefined';
+  const aktivProfil = isNative ? window.AlarmSettings.getProfil() : 'laut';
+
+  const profilLabel = { laut: '🔊 Laut', leise: '🔉 Leise', stumm: '🔇 Stumm' };
+
+  const renderButtons = (aktiv) => ['laut', 'leise', 'stumm'].map(p => `
+    <button
+      class="btn ${aktiv === p ? 'btn-primary' : 'btn-secondary'}"
+      style="flex:1;padding:0.8rem;font-size:1rem"
+      onclick="alarmProfilSetzen('${p}')">
+      ${profilLabel[p]}
+    </button>
+  `).join('');
+
+  el.innerHTML = `
+    <div class="section-header">🚨 Alarm</div>
+    <div class="card">
+      <div style="font-weight:600;font-size:0.95rem;margin-bottom:0.4rem">Lautstärke</div>
+      <div style="color:var(--muted);font-size:0.82rem;margin-bottom:0.9rem">
+        Laut = 80 % &nbsp;·&nbsp; Leise = 30 % &nbsp;·&nbsp; Stumm = kein Ton (Vibration bleibt aktiv)
+      </div>
+      <div id="alarm-profil-buttons" style="display:flex;gap:0.5rem">
+        ${renderButtons(aktivProfil)}
+      </div>
+      ${!isNative ? `<div style="color:var(--muted);font-size:0.8rem;margin-top:0.8rem">
+        ⚠️ Nur in der nativen App verfügbar
+      </div>` : ''}
+    </div>
+  `;
+
+  window.alarmProfilSetzen = (profil) => {
+    if (!isNative) return;
+    window.AlarmSettings.setProfil(profil);
+    document.getElementById('alarm-profil-buttons').innerHTML = renderButtons(profil);
+    fw.toast(profil === 'laut' ? '🔊 Laut' : profil === 'leise' ? '🔉 Leise' : '🔇 Stumm');
+  };
+});
 
 
 // ── Statistik ─────────────────────────────────────────────
