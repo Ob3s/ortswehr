@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="theme-color" content="#cc2200">
-  <meta name="app-version" content="2.8.8">
+  <meta name="app-version" content="2.8.11">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ortswehr">
@@ -377,7 +377,7 @@
   // Update-Prüfung: version.json vom Server holen (nie gecacht)
   window.pruefeAufUpdate = async (manuell = false) => {
     try {
-      const res = await fetch('/ortswehr/version.json?t=' + Date.now(), { cache: 'no-store' });
+      const res = await fetch('./version.json?t=' + Date.now(), { cache: 'no-store' });
       const { version } = await res.json();
       const lokal = document.querySelector('meta[name="app-version"]')?.content;
       if (lokal && version && version !== lokal) {
