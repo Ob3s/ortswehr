@@ -1,1 +1,1 @@
-{"version": "2.8.8", "datum": "16.03.2026", "punkte": ["Aufgaben-Tab: standardmäßig eingeklappt", "Dienst-Push bei Anlage entfernt – Erinnerung nur noch via Diensterinnerung (08:00 Uhr)"]}
+{"version": "2.8.11", "datum": "17.03.2026", "punkte": ["Update-Prüfung: version.json wird jetzt relativ geladen (DEV und PROD korrekt)"]}
