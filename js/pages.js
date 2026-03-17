@@ -231,8 +231,16 @@ ${renderNaechsteDienste(naechster, zweiter)}
 
     <div id="news-feed" style="margin-top:0.5rem"></div>
 
-    <div style="text-align:center;color:#374151;font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">${document.querySelector('meta[name="app-version"]')?.content||''}</div>
+    <div style="text-align:center;color:#374151;font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem" id="version-display"></div>
   `;
+  // Versions-Anzeige: "App-Version · PWA-Version"
+  const pwaVersion = document.querySelector('meta[name="app-version"]')?.content || '';
+  const appVersion = typeof window.AppInfo !== 'undefined' ? window.AppInfo.getVersion() : null;
+  const versionEl = document.getElementById('version-display');
+  if (versionEl) {
+    versionEl.textContent = appVersion ? `${appVersion} · ${pwaVersion}` : pwaVersion;
+  }
+
   checkDeepLink();
   startStatusPruefung();
   ladeNewsFeed();
@@ -1389,6 +1397,18 @@ registerPage('einstellungen', async (el) => {
       ${notifRow('n-status', '⚠️', 'Status-Warnung', 'Wenn App offline oder Push nicht bereit')}
       ${fw.isWehrfuehrer() ? notifRow('n-selbst', '🧪', 'Selbst benachrichtigen', 'Nur für Tests – Wehrführer erhält eigene Alarme') : ''}
       <button class="btn btn-primary btn-full" style="margin-top:0.8rem" onclick="notifSpeichern()">💾 Speichern</button>
+    </div>
+
+    <div class="section-header">🎨 Design</div>
+    <div class="card">
+      <div style="display:flex;gap:0.6rem">
+        <button id="theme-standard" onclick="themeWaehlen('standard')"
+          class="btn btn-sm ${(me.theme||'standard')==='standard'?'btn-primary':'btn-secondary'}"
+          style="flex:1">🎨 Modern</button>
+        <button id="theme-klassisch" onclick="themeWaehlen('klassisch')"
+          class="btn btn-sm ${(me.theme||'standard')==='klassisch'?'btn-primary':'btn-secondary'}"
+          style="flex:1">🖥️ Klassisch</button>
+      </div>
     </div>
 
     <div class="section-header">🚨 Alarm-Lautstärke</div>
