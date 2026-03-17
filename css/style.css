@@ -202,7 +202,6 @@ textarea { resize: vertical; min-height: 80px; }
 .btn-ghost     { background: none; color: var(--red); padding-left: 0; }
 .btn-full      { width: 100%; margin-top: 0.8rem; padding: 0.8rem; font-size: 1rem; }
 .btn-sm        { padding: 0.4rem 0.8rem; font-size: 0.8rem; border-radius: 8px; }
-
 .btn-row { display: flex; gap: 0.6rem; flex-wrap: wrap; margin-top: 1rem; }
 
 /* ── Badges ── */
@@ -217,9 +216,7 @@ textarea { resize: vertical; min-height: 80px; }
 .badge-blue   { background: #dbeafe; color: #1d4ed8; }
 
 /* ── Übungstyp-Indikator ── */
-.typ-dot {
-  width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0;
-}
+.typ-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; }
 .typ-uebung  { background: #2563eb; }
 .typ-einsatz { background: var(--red); }
 
@@ -238,8 +235,7 @@ textarea { resize: vertical; min-height: 80px; }
   font-size: 1.6rem; cursor: pointer;
   box-shadow: 0 4px 16px rgba(204,34,0,0.4);
   display: flex; align-items: center; justify-content: center;
-  z-index: 9;
-  transition: transform 0.15s;
+  z-index: 9; transition: transform 0.15s;
 }
 .fab:active { transform: scale(0.92); }
 
@@ -277,13 +273,10 @@ hr       { border: none; border-top: 1px solid var(--border); margin: 1rem 0; }
 /* ── Alarm Button ── */
 .alarm-btn {
   display: block; width: 100%;
-  background: var(--red);
-  color: #fff; border: none;
-  border-radius: 16px;
-  padding: 1.1rem;
+  background: var(--red); color: #fff; border: none;
+  border-radius: 16px; padding: 1.1rem;
   font-family: 'DM Sans', sans-serif;
-  font-size: 1.1rem; font-weight: 700;
-  letter-spacing: 0.04em;
+  font-size: 1.1rem; font-weight: 700; letter-spacing: 0.04em;
   cursor: pointer; margin-bottom: 1rem;
   box-shadow: 0 4px 20px rgba(204,34,0,0.4);
   animation: pulse 2s infinite;
@@ -295,165 +288,50 @@ hr       { border: none; border-top: 1px solid var(--border); margin: 1rem 0; }
   50%       { box-shadow: 0 4px 32px rgba(204,34,0,0.7); }
 }
 
-/* ══════════════════════════════════════════════════════════
-   THEME: KLASSISCH  (inspiriert von MP-FEUER)
-   Das Standard-Theme (oben) bleibt völlig unverändert.
-   ══════════════════════════════════════════════════════════ */
+/* ── Theme: Klassisch ── */
 body[data-theme="klassisch"] {
-  --red:      #8b0000;
-  --red-dark: #6b0000;
-  --bg:       #d0d4d8;
-  --panel:    #e8eaec;
-  --border:   #b0b8c0;
-  --text:     #1a1a1a;
-  --muted:    #5a6470;
-  --success:  #1a5c2a;
-  --warning:  #8b5000;
+  --red: #8b0000; --red-dark: #6b0000; --bg: #d0d4d8;
+  --panel: #e8eaec; --border: #b0b8c0; --text: #1a1a1a;
+  --muted: #5a6470; --success: #1a5c2a; --warning: #8b5000;
   font-family: 'Segoe UI', Arial, sans-serif;
 }
-
-/* Header: tiefes Dunkelrot, flacher Look */
 body[data-theme="klassisch"] header {
   background: linear-gradient(180deg, #a00000 0%, #7a0000 100%);
   border-bottom: 2px solid #5a0000;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.4);
-  height: 52px;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.4); height: 52px;
 }
-body[data-theme="klassisch"] header h1 {
-  font-family: 'Segoe UI', Arial, sans-serif;
-  font-size: 1rem;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-}
-
-/* Karten: weniger rund, mehr "Formular"-Look */
-body[data-theme="klassisch"] .card {
-  border-radius: 4px;
-  border: 1px solid var(--border);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.6), 0 1px 3px rgba(0,0,0,0.15);
-  padding: 0.85rem;
-  margin-bottom: 0.6rem;
-  background: var(--panel);
-}
-
-/* Listeneinträge kompakter */
-body[data-theme="klassisch"] .list-item {
-  padding: 0.6rem 0;
-  border-bottom: 1px solid var(--border);
-}
-body[data-theme="klassisch"] .list-item-title {
-  font-size: 0.88rem;
-}
-
-/* Buttons: flacher, eckiger */
-body[data-theme="klassisch"] .btn {
-  border-radius: 3px;
-  font-family: 'Segoe UI', Arial, sans-serif;
-  font-size: 0.85rem;
-  padding: 0.5rem 1rem;
-  border: 1px solid rgba(0,0,0,0.2);
-}
-body[data-theme="klassisch"] .btn-primary {
-  background: linear-gradient(180deg, #a00000 0%, #7a0000 100%);
-  border-color: #5a0000;
-}
-body[data-theme="klassisch"] .btn-secondary {
-  background: linear-gradient(180deg, #e8eaec 0%, #d0d4d8 100%);
-  border-color: #9aa0a8;
-  color: #1a1a1a;
-}
-
-/* Inputs */
-body[data-theme="klassisch"] input:not([type="checkbox"]),
-body[data-theme="klassisch"] select,
-body[data-theme="klassisch"] textarea {
-  border-radius: 3px;
-  border: 1px solid #9aa0a8;
-  background: #fff;
-  font-family: 'Segoe UI', Arial, sans-serif;
-}
-
-/* Bottom Nav */
-body[data-theme="klassisch"] .bottom-nav {
-  background: #c0c8d0;
-  border-top: 2px solid #8b0000;
-  box-shadow: 0 -2px 6px rgba(0,0,0,0.2);
-}
-body[data-theme="klassisch"] .nav-btn {
-  font-family: 'Segoe UI', Arial, sans-serif;
-  font-size: 0.65rem;
-}
-
-/* Section Headers */
-body[data-theme="klassisch"] .section-header {
-  font-family: 'Segoe UI', Arial, sans-serif;
-  color: #8b0000;
-  border-bottom: 1px solid #8b0000;
-  padding-bottom: 0.2rem;
-  font-size: 0.75rem;
-}
-
-/* Stat-Kacheln */
-body[data-theme="klassisch"] .stat-card {
-  border-radius: 4px;
-  border: 1px solid var(--border);
-  box-shadow: inset 0 1px 0 rgba(255,255,255,0.5), 0 1px 2px rgba(0,0,0,0.1);
-}
-
-/* Alarm-Button */
-body[data-theme="klassisch"] .alarm-btn {
-  border-radius: 4px;
-  letter-spacing: 0.06em;
-  font-family: 'Segoe UI', Arial, sans-serif;
-  background: linear-gradient(180deg, #c00000 0%, #8b0000 100%);
-  border: 2px solid #5a0000;
-}
-
-/* Badges eckiger */
+body[data-theme="klassisch"] header h1 { font-family: 'Segoe UI', Arial, sans-serif; font-size: 1rem; font-weight: 700; letter-spacing: 0.02em; }
+body[data-theme="klassisch"] .card { border-radius: 4px; border: 1px solid var(--border); box-shadow: inset 0 1px 0 rgba(255,255,255,0.6), 0 1px 3px rgba(0,0,0,0.15); padding: 0.85rem; margin-bottom: 0.6rem; background: var(--panel); }
+body[data-theme="klassisch"] .list-item { padding: 0.6rem 0; border-bottom: 1px solid var(--border); }
+body[data-theme="klassisch"] .list-item-title { font-size: 0.88rem; }
+body[data-theme="klassisch"] .btn { border-radius: 3px; font-family: 'Segoe UI', Arial, sans-serif; font-size: 0.85rem; padding: 0.5rem 1rem; border: 1px solid rgba(0,0,0,0.2); }
+body[data-theme="klassisch"] .btn-primary { background: linear-gradient(180deg, #a00000 0%, #7a0000 100%); border-color: #5a0000; }
+body[data-theme="klassisch"] .btn-secondary { background: linear-gradient(180deg, #e8eaec 0%, #d0d4d8 100%); border-color: #9aa0a8; color: #1a1a1a; }
+body[data-theme="klassisch"] input:not([type="checkbox"]), body[data-theme="klassisch"] select, body[data-theme="klassisch"] textarea { border-radius: 3px; border: 1px solid #9aa0a8; background: #fff; font-family: 'Segoe UI', Arial, sans-serif; }
+body[data-theme="klassisch"] .bottom-nav { background: #c0c8d0; border-top: 2px solid #8b0000; box-shadow: 0 -2px 6px rgba(0,0,0,0.2); }
+body[data-theme="klassisch"] .nav-btn { font-family: 'Segoe UI', Arial, sans-serif; font-size: 0.65rem; }
+body[data-theme="klassisch"] .section-header { font-family: 'Segoe UI', Arial, sans-serif; color: #8b0000; border-bottom: 1px solid #8b0000; padding-bottom: 0.2rem; font-size: 0.75rem; }
+body[data-theme="klassisch"] .stat-card { border-radius: 4px; border: 1px solid var(--border); box-shadow: inset 0 1px 0 rgba(255,255,255,0.5), 0 1px 2px rgba(0,0,0,0.1); }
+body[data-theme="klassisch"] .alarm-btn { border-radius: 4px; letter-spacing: 0.06em; font-family: 'Segoe UI', Arial, sans-serif; background: linear-gradient(180deg, #c00000 0%, #8b0000 100%); border: 2px solid #5a0000; }
 body[data-theme="klassisch"] .badge { border-radius: 3px; }
+body[data-theme="klassisch"] .form-row label { font-family: 'Segoe UI', Arial, sans-serif; color: #3a4048; }
 
-/* Formularlabels */
-body[data-theme="klassisch"] .form-row label {
-  font-family: 'Segoe UI', Arial, sans-serif;
-  color: #3a4048;
-}
-
-/* Statistik-Tabelle Zebra */
+/* ── Statistik Zebra ── */
 .stat-tr-odd  { background: rgba(255,255,255,0.07); }
 .stat-td-sticky       { position: sticky; left: 0; z-index: 1; border-right: 1px solid var(--border); background: var(--panel); }
 .stat-td-sticky-odd   { position: sticky; left: 0; z-index: 1; border-right: 1px solid var(--border); background: color-mix(in srgb, white 8%, var(--panel)); }
-
 body[data-theme="klassisch"] .stat-tr-odd  { background: rgba(0,0,0,0.08); }
 body[data-theme="klassisch"] .stat-td-sticky      { background: #d0d4d8; }
 body[data-theme="klassisch"] .stat-td-sticky-odd  { background: #c4c8cc; }
 
-/* ── Autocomplete Dropdown ── */
+/* ── Autocomplete ── */
 .ac-wrapper { position: relative; }
-.ac-dropdown {
-  position: absolute;
-  z-index: 9999;
-  left: 0; right: 0;
-  top: calc(100% + 4px);
-  background: var(--panel);
-  border: 1.5px solid var(--border);
-  border-radius: 10px;
-  box-shadow: 0 8px 28px rgba(0,0,0,0.18);
-  overflow: hidden;
-}
-.ac-row {
-  display: flex;
-  align-items: center;
-  gap: 0.55rem;
-  padding: 0.55rem 0.8rem;
-  cursor: pointer;
-  border-bottom: 1px solid var(--border);
-  transition: background 0.1s;
-}
+.ac-dropdown { position: absolute; z-index: 9999; left: 0; right: 0; top: calc(100% + 4px); background: var(--panel); border: 1.5px solid var(--border); border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,0.18); overflow: hidden; }
+.ac-row { display: flex; align-items: center; gap: 0.55rem; padding: 0.55rem 0.8rem; cursor: pointer; border-bottom: 1px solid var(--border); transition: background 0.1s; }
 .ac-row:last-child { border-bottom: none; }
 .ac-row:hover, .ac-row.aktiv { background: rgba(0,0,0,0.06); }
 .ac-row-icon { font-size: 0.85rem; flex-shrink: 0; color: var(--muted); }
 .ac-row-main { font-size: 0.88rem; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .ac-row-sub  { font-size: 0.74rem; color: var(--muted); margin-top: 0.05rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-
 body[data-theme="klassisch"] .ac-dropdown { box-shadow: 0 8px 28px rgba(0,0,0,0.12); }
 body[data-theme="klassisch"] .ac-row:hover, body[data-theme="klassisch"] .ac-row.aktiv { background: rgba(0,0,0,0.07); }
