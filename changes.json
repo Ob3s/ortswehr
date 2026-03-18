@@ -1,1 +1,1 @@
-[{"version": "20260318152929", "datum": "18.03.2026", "punkte": ["Fix: Service Worker cached keine Firestore/Firebase Requests mehr"]}]
+[{"version": "20260318171555", "datum": "18.03.2026", "punkte": ["Fix: piperCleanup Referenzfehler behoben"]}]
