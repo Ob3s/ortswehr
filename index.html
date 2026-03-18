@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="theme-color" content="#cc2200">
-  <meta name="app-version" content="2.8.11">
+  <meta name="app-version" content="20260318131220">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ortswehr">
@@ -338,18 +338,35 @@
     }
   });
 
+  window._navHistory = [];
   window.navigate = function(page, params = {}) {
     // Aktiven Live-Listener aufräumen beim Seitenwechsel
     if (window._einsatzListener) { window._einsatzListener(); window._einsatzListener = null; }
     if (window._newsFeedListener) { window._newsFeedListener(); window._newsFeedListener = null; }
+    if (window.piperCleanup) window.piperCleanup();
+    // Aktuelle Seite auf History-Stack pushen
+    if (window._currentPage) {
+      window._navHistory.push({ page: window._currentPage, params: window._currentParams || {} });
+      if (window._navHistory.length > 20) window._navHistory.shift();
+    }
+    window._currentPage = page;
+    window._currentParams = params;
     document.querySelectorAll('.nav-btn').forEach(b => b.classList.toggle('aktiv', b.dataset.page === page));
     fw.hideBack(); fw.hideHeaderAction();
     document.getElementById('main-content').innerHTML = '<div class="loading">⏳</div>';
     window._pages[page]?.(document.getElementById('main-content'), params);
   };
+  window.navigateBack = function() {
+    const prev = window._navHistory.pop();
+    if (prev) navigate(prev.page, prev.params);
+  };
   window._pages = {};
   window.registerPage = (name, fn) => { window._pages[name] = fn; };
-  document.querySelectorAll('.nav-btn').forEach(b => b.addEventListener('click', () => navigate(b.dataset.page)));
+  // Nav-Bar-Klicks setzen History zurück (Top-Level-Navigation)
+  document.querySelectorAll('.nav-btn').forEach(b => b.addEventListener('click', () => {
+    window._navHistory = [];
+    navigate(b.dataset.page);
+  }));
 
   // Neuen Kamerad anlegen ohne Wehrführer auszuloggen
   window.createKamerad = async (email, pw, data) => {
