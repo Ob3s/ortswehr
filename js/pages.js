@@ -1085,7 +1085,6 @@ window.berechneDauer = () => {
 };
 
 window.uebungSpeichern = async (id, forcTyp) => {
-  piperCleanup();
   const titel   = document.getElementById('f-titel').value.trim();
   let dauer_h = parseFloat(document.getElementById('f-dauer')?.value) || 0;
   const typ     = forcTyp === 'einsatz' ? 'einsatz' : 'dienst';
