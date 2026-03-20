@@ -1,1 +1,1 @@
-[{"version": "20260318171555", "datum": "18.03.2026", "punkte": ["Fix: piperCleanup Referenzfehler behoben"]}]
+[{"version": "20260320165924", "datum": "20.03.2026", "punkte": ["Fix: Bestanden-Markierung l\u00f6scht Handlungsbedarf + Kommentar", "Fix: System-Status zeigt alle 4 Punkte immer an", "Fix: Benachrichtigungs-Status korrekt f\u00fcr native App und PWA"]}]
