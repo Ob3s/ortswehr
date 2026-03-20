@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="theme-color" content="#cc2200">
-  <meta name="app-version" content="20260318171555">
+  <meta name="app-version" content="20260320165924">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ortswehr">
@@ -25,8 +25,8 @@
     <h1>Freiwillige Feuerwehr Beeskow</h1>
     <p class="sub">Löschzug Oegeln</p>
     <div class="form-row">
-      <label>Benutzername</label>
-      <input id="login-email" type="text" placeholder="vorname.nachname" autocomplete="username" autocapitalize="none">
+      <label>Anmeldename</label>
+      <input id="login-email" type="text" placeholder="Anmeldename" autocomplete="username" autocapitalize="none">
     </div>
     <div class="form-row">
       <label>Passwort</label>
@@ -38,8 +38,8 @@
       <a href="#" id="pw-reset-link" style="color:var(--red);font-size:0.82rem;text-decoration:none">Passwort vergessen?</a>
     </p>
     <div id="pw-reset-box" style="display:none;margin-top:0.8rem">
-      <input id="reset-email" type="text" placeholder="Dein Benutzername" autocapitalize="none">
-      <button type="button" class="btn btn-primary btn-full" id="reset-btn" style="margin-top:0.5rem">Reset-Mail senden</button>
+      <input id="reset-email" type="text" placeholder="Anmeldename" autocapitalize="none" autocomplete="off">
+      <button type="button" class="btn btn-primary btn-full" id="reset-btn" style="margin-top:0.5rem">Wehrführer informieren</button>
       <p id="reset-msg" style="font-size:0.82rem;margin-top:0.5rem;text-align:center"></p>
     </div>
     <p id="login-version" style="text-align:center;font-size:0.7rem;color:#374151;margin-top:1rem 0 0"></p>
@@ -270,13 +270,25 @@
     box.style.display = box.style.display === 'none' ? 'block' : 'none';
   });
   document.getElementById('reset-btn').addEventListener('click', async () => {
-    const email = document.getElementById('reset-email').value.trim();
-    const msg   = document.getElementById('reset-msg');
-    if (!email) { msg.textContent='Bitte E-Mail eingeben'; msg.style.color='var(--red)'; return; }
+    const loginName = document.getElementById('reset-email').value.trim().toLowerCase();
+    const msg = document.getElementById('reset-msg');
+    if (!loginName) { msg.textContent = 'Bitte Anmeldename eingeben'; msg.style.color = 'var(--red)'; return; }
     try {
-      await sendPasswordResetEmail(auth, email);
-      msg.textContent = '✅ Reset-Mail gesendet!'; msg.style.color = 'var(--success)';
-    } catch(e) { msg.textContent = 'E-Mail nicht gefunden'; msg.style.color = 'var(--red)'; }
+      document.getElementById('reset-btn').disabled = true;
+      const res = await fetch('https://europe-west3-ffw-oegeln-791ca.cloudfunctions.net/requestPasswordReset', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ loginName }),
+      });
+      if (res.status === 404) { msg.textContent = 'Anmeldename nicht gefunden'; msg.style.color = 'var(--red)'; document.getElementById('reset-btn').disabled = false; return; }
+      if (!res.ok) throw new Error(await res.text());
+      msg.textContent = '✅ Wehrführer wurde informiert.';
+      msg.style.color = 'var(--success)';
+    } catch(e) {
+      msg.textContent = 'Fehler: ' + e.message;
+      msg.style.color = 'var(--red)';
+      document.getElementById('reset-btn').disabled = false;
+    }
   });
 
   // Auth State
@@ -286,14 +298,36 @@
       const snap = await getDoc(doc(db, 'users', user.uid));
       if (snap.exists()) {
         fw.profil = { id: user.uid, ...snap.data() };
+        // ortswehrIds Kompatibilität
+        if (!fw.profil.ortswehrIds) {
+          fw.profil.ortswehrIds = fw.profil.ortswehrId ? [fw.profil.ortswehrId] : [];
+        }
+        if (!fw.profil.ortswehrId && fw.profil.ortswehrIds.length) {
+          fw.profil.ortswehrId = fw.profil.ortswehrIds[0];
+        }
+        // Standardwerte für fehlende Einstellungen setzen
+        const defaults = {};
+        if (fw.profil.notif_einsatz         === undefined) defaults.notif_einsatz         = true;
+        if (fw.profil.notif_uebung          === undefined) defaults.notif_uebung          = true;
+        if (fw.profil.notif_bestaetigung    === undefined) defaults.notif_bestaetigung    = true;
+        if (fw.profil.notif_dienst_reminder === undefined) defaults.notif_dienst_reminder = true;
+        if (fw.profil.notif_status          === undefined) defaults.notif_status          = true;
+        if (fw.profil.theme                 === undefined) defaults.theme                 = 'klassisch';
+        if (Object.keys(defaults).length > 0) {
+          Object.assign(fw.profil, defaults);
+          await updateDoc(doc(db, 'users', user.uid), defaults);
+        }
         // Theme sofort anwenden
-        if (fw.profil.theme === 'klassisch') document.body.setAttribute('data-theme', 'klassisch');
+        const t = fw.profil.theme;
+        if (t === 'klassisch') document.body.setAttribute('data-theme', 'klassisch');
         else document.body.removeAttribute('data-theme');
       } else {
         fw.profil = { id: user.uid, email: user.email, rolle: 'kamerad',
           vorname: '', nachname: '', dienstgrad: '',
-          notif_einsatz: true, notif_uebung: true, notif_bestaetigung: true };
+          notif_einsatz: true, notif_uebung: true, notif_bestaetigung: true,
+          notif_dienst_reminder: true, notif_status: true, theme: 'klassisch' };
         await setDoc(doc(db, 'users', user.uid), fw.profil);
+        document.body.setAttribute('data-theme', 'klassisch');
       }
       if (fw.isWehrfuehrer()) {
         document.getElementById('nav-kameraden').classList.remove('hidden');
@@ -409,6 +443,8 @@
             await Promise.all(regs.map(r => r.unregister()));
             const keys = await caches.keys();
             await Promise.all(keys.map(k => caches.delete(k)));
+            // Native App: WebView-Cache über Bridge leeren
+            if (typeof CacheControl !== 'undefined') CacheControl.clearCache();
           } catch(e) {}
           window.location.reload(true);
         };
