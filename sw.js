@@ -1,4 +1,4 @@
-const CACHE = 'ortswehr-v6';
+const CACHE = 'ortswehr-v7';
 const STATIC = ['./manifest.json', './icons/icon-192.png', './icons/icon-512.png'];
 
 self.addEventListener('install', e => {
@@ -16,14 +16,14 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   const url = e.request.url;
 
-  // Niemals cachen: Firestore, Firebase, externe APIs
-  if (url.includes('firestore.googleapis.com') ||
+  // Externe/dynamische Requests komplett ignorieren – kein respondWith
+  if (url.includes('googleapis.com') ||
       url.includes('firebase') ||
-      url.includes('googleapis.com') ||
       url.includes('cloudfunctions.net') ||
-      url.includes('google.com/calendar')) {
-    e.respondWith(fetch(e.request));
-    return;
+      url.includes('google.com') ||
+      url.includes('anthropic.com') ||
+      !url.startsWith('https://ob3s.github.io')) {
+    return; // SW tut gar nichts, Browser handled es normal
   }
 
   // Statische Assets aus Cache
@@ -32,7 +32,7 @@ self.addEventListener('fetch', e => {
     return;
   }
 
-  // Alles andere: Netzwerk first, Cache als Fallback
+  // PWA-Dateien: Netzwerk first, Cache als Fallback
   e.respondWith(
     fetch(e.request).then(res => {
       const clone = res.clone();
