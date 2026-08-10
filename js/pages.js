@@ -824,6 +824,7 @@ registerPage('einsaetze', async (el) => {
 registerPage('dienste', async (el) => {
   fw.setTitle('Dienste');
   await ladeDienstFilter();
+  await ladeDienstarten();
   if (fw.isWehrfuehrer()) fw.showHeaderAction('+ Dienst', () => navigate('uebung-form', {typ:'dienst'}));
   const [uSnap, aSnap, dQualiSnap] = await Promise.all([
     fw.getDocs('dienste', fw.orderBy('datum','desc')),
@@ -975,6 +976,7 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
   const u = {id,...snap.data()};
   const owMap = new Map(owSnap.docs.map(d => [d.id, d.data().name]));
   const isEinsatz = u.typ === 'einsatz';
+  if (!isEinsatz) await ladeDienstarten();
   fw.setTitle(isEinsatz ? 'Einsatz' : 'Dienst');
   fw.showBack(() => navigate(isEinsatz ? 'einsaetze' : 'dienste'));
   if (fw.isWehrfuehrer()) fw.showHeaderAction('✏️ Edit', () => navigate('uebung-form',{id, typ: u.typ}));
@@ -1196,18 +1198,36 @@ window.direktEintragen = async (uebungId, userId, name, dauer_h, typ, datumStr) 
   navigate('uebung-eintragen', {id: uebungId, titel: '', dauer: dauer_h, typ, datumStr});
 };
 
-// ── Dienst-Arten ──────────────────────────────────────────
-const DIENST_ARTEN = [
-  { wert: 'dienstabend',          label: 'Dienstabend',          relevant: true  },
-  { wert: 'fortbildung',          label: 'Fortbildung',          relevant: true  },
-  { wert: 'kameradschaftspflege', label: 'Kameradschaftspflege', relevant: false },
-  { wert: 'training',             label: 'Training',             relevant: false },
-];
+// ── Dienst-Arten (dynamisch aus Firestore, Collection "dienstarten") ──
+let _dienstarten = [];
+let _dienstartenGeladen = false;
+async function ladeDienstarten() {
+  if (_dienstartenGeladen) return _dienstarten;
+  let snap = await fw.getDocs('dienstarten');
+  if (snap.empty) {
+    // Einmalige Migration: bisherige fest codierte Dienst-Arten anlegen
+    const defaults = [
+      { id: 'dienstabend',          bezeichnung: 'Dienstabend',          relevant: true,  sortierung: 1 },
+      { id: 'fortbildung',          bezeichnung: 'Fortbildung',          relevant: true,  sortierung: 2 },
+      { id: 'kameradschaftspflege', bezeichnung: 'Kameradschaftspflege', relevant: false, sortierung: 3 },
+      { id: 'training',             bezeichnung: 'Training',             relevant: false, sortierung: 4 },
+    ];
+    await Promise.all(defaults.map(d =>
+      fw.setDoc('dienstarten/'+d.id, { bezeichnung: d.bezeichnung, relevant: d.relevant, sortierung: d.sortierung })
+    ));
+    snap = await fw.getDocs('dienstarten');
+  }
+  _dienstarten = snap.docs
+    .map(d => ({id: d.id, ...d.data()}))
+    .sort((a,b) => (a.sortierung||99) - (b.sortierung||99));
+  _dienstartenGeladen = true;
+  return _dienstarten;
+}
 function dienstArtLabel(wert) {
-  return DIENST_ARTEN.find(a => a.wert === wert)?.label || '';
+  return _dienstarten.find(a => a.id === wert)?.bezeichnung || '';
 }
 function dienstArtRelevant(wert) {
-  return DIENST_ARTEN.find(a => a.wert === wert)?.relevant ?? true;
+  return _dienstarten.find(a => a.id === wert)?.relevant ?? true;
 }
 // Pflichtfelder für einen vollständigen Dienst (nicht Einsatz)
 function dienstUnvollstaendig(u) {
@@ -1230,6 +1250,8 @@ registerPage('uebung-form', async (el, {id, typ: vorTyp, alarm: mitAlarm}) => {
 
   const datumVal = u?.datum?.toDate ? u.datum.toDate().toISOString().slice(0,10)
     : new Date().toISOString().slice(0,10);
+
+  if (!isEinsatz) await ladeDienstarten();
 
   if (isEinsatz) {
     const jetztH  = new Date().getHours().toString().padStart(2,'0');
@@ -1280,7 +1302,7 @@ registerPage('uebung-form', async (el, {id, typ: vorTyp, alarm: mitAlarm}) => {
         <div class="form-row"><label>Art</label>
           <select id="f-art" onchange="dienstArtGeaendert()">
             <option value="" ${!u?.art?'selected':''} disabled>– Bitte wählen –</option>
-            ${DIENST_ARTEN.map(a => `<option value="${a.wert}" ${u?.art===a.wert?'selected':''}>${a.label}${a.relevant?' (zählt zu den 40h)':''}</option>`).join('')}
+            ${_dienstarten.map(a => `<option value="${a.id}" ${u?.art===a.id?'selected':''}>${a.bezeichnung}${a.relevant?' (zählt zu den 40h)':''}</option>`).join('')}
           </select>
         </div>
         <div class="form-row"><label>Datum</label><input id="f-datum" type="date" value="${datumVal}"></div>
@@ -2231,6 +2253,112 @@ registerPage('lehrgangsart-form', async (el, {id}) => {
   };
 });
 
+// ── Dienst-Arten verwalten ────────────────────────────────
+registerPage('dienstarten-verwalten', async (el) => {
+  if (!fw.isWehrfuehrer()) { navigate('dashboard'); return; }
+  fw.setTitle('Dienst-Arten');
+  fw.showBack(() => navigateBack());
+  fw.showHeaderAction('+ Neu', () => navigate('dienstart-form', {}));
+
+  _dienstartenGeladen = false;
+  const arten = await ladeDienstarten();
+
+  const renderListe = () => {
+    el.innerHTML = `
+      <div class="card" style="padding:0">
+        ${arten.length === 0 ? '<div class="empty" style="padding:1rem">Noch keine Dienst-Arten</div>' :
+          arten.map((a, i) => `
+            <div class="list-item">
+              <div class="list-item-body" onclick="navigate('dienstart-form',{id:'${a.id}'})" style="cursor:pointer">
+                <div class="list-item-title">${a.bezeichnung}</div>
+                <div class="list-item-sub">${a.relevant ? '<span style="color:#22c55e">Zählt zu den 40h</span>' : 'Zählt nicht zu den 40h'}</div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:0.2rem">
+                <button onclick="dienstartHoch('${a.id}')" ${i===0?'disabled':''} style="background:none;border:none;color:${i===0?'#ccc':'var(--text)'};cursor:pointer;padding:0.1rem 0.4rem;font-size:1rem">▲</button>
+                <button onclick="dienstartRunter('${a.id}')" ${i===arten.length-1?'disabled':''} style="background:none;border:none;color:${i===arten.length-1?'#ccc':'var(--text)'};cursor:pointer;padding:0.1rem 0.4rem;font-size:1rem">▼</button>
+              </div>
+            </div>`).join('')}
+      </div>`;
+  };
+
+  renderListe();
+
+  window.dienstartHoch = async (id) => {
+    const idx = arten.findIndex(a => a.id === id);
+    if (idx <= 0) return;
+    [arten[idx-1], arten[idx]] = [arten[idx], arten[idx-1]];
+    await speicherDienstartSortierung(arten);
+    renderListe();
+  };
+
+  window.dienstartRunter = async (id) => {
+    const idx = arten.findIndex(a => a.id === id);
+    if (idx >= arten.length-1) return;
+    [arten[idx], arten[idx+1]] = [arten[idx+1], arten[idx]];
+    await speicherDienstartSortierung(arten);
+    renderListe();
+  };
+
+  async function speicherDienstartSortierung(liste) {
+    await Promise.all(liste.map((a, i) =>
+      fw.updateDoc('dienstarten/'+a.id, { sortierung: i+1 })
+    ));
+    _dienstartenGeladen = false;
+    await ladeDienstarten();
+  }
+});
+
+registerPage('dienstart-form', async (el, {id}) => {
+  if (!fw.isWehrfuehrer()) { navigate('dashboard'); return; }
+  await ladeDienstarten();
+  let art = id ? _dienstarten.find(a => a.id === id) : null;
+  fw.setTitle(art ? 'Dienst-Art bearbeiten' : 'Neue Dienst-Art');
+  fw.showBack(() => navigateBack());
+
+  el.innerHTML = `
+    <div class="card">
+      <div class="form-row"><label>Bezeichnung</label>
+        <input id="da-bez" value="${art?.bezeichnung||''}" placeholder="z.B. Sportabend" ${art?'disabled':''}>
+        ${art ? `<p class="muted" style="font-size:0.75rem;margin-top:0.2rem">Bezeichnung kann nach dem Anlegen nicht mehr geändert werden</p>` : ''}
+      </div>
+      <div style="display:flex;align-items:center;gap:0.6rem;padding:0.4rem 0;border-top:1px solid var(--border);margin-top:0.2rem">
+        <input type="checkbox" id="da-relevant" style="width:1.2rem;height:1.2rem;accent-color:var(--red)" ${art?.relevant===false?'':'checked'}>
+        <label for="da-relevant" style="font-size:0.88rem;cursor:pointer">Zählt für 40-Stunden-Ziel</label>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary btn-full" onclick="dienstartSpeichern('${id||''}')">💾 Speichern</button>
+        ${art ? `<button class="btn btn-danger" onclick="dienstartLoeschen('${id}')">🗑 Löschen</button>` : ''}
+      </div>
+    </div>`;
+
+  window.dienstartSpeichern = async (artId) => {
+    const bez = document.getElementById('da-bez').value.trim();
+    if (!bez) { fw.toast('Bezeichnung erforderlich', true); return; }
+    const relevant = document.getElementById('da-relevant').checked;
+    if (artId) {
+      await fw.updateDoc('dienstarten/'+artId, { relevant });
+    } else {
+      const docId = bez.toLowerCase().replace(/[^a-z0-9]/g, '-');
+      const bestehend = await fw.getDoc('dienstarten/'+docId);
+      if (bestehend.exists()) { fw.toast('Diese Dienst-Art gibt es bereits', true); return; }
+      await fw.setDoc('dienstarten/'+docId, { bezeichnung: bez, relevant, sortierung: _dienstarten.length + 1 });
+    }
+    _dienstartenGeladen = false;
+    await ladeDienstarten();
+    fw.toast('Gespeichert ✅');
+    navigate('dienstarten-verwalten');
+  };
+
+  window.dienstartLoeschen = async (artId) => {
+    if (!confirm('Dienst-Art wirklich löschen? Bereits damit angelegte Dienste behalten die alte Zuordnung, zeigen sie aber nicht mehr an.')) return;
+    await fw.deleteDoc('dienstarten/'+artId);
+    _dienstartenGeladen = false;
+    await ladeDienstarten();
+    fw.toast('Gelöscht');
+    navigate('dienstarten-verwalten');
+  };
+});
+
 registerPage('lehrgaenge', async (el) => {
   await ladeLehrgangsarten();
   fw.setTitle('Lehrgänge');
@@ -2893,6 +3021,7 @@ window.aufgabeEinblenden = async (key) => {
         <button class="btn btn-secondary btn-sm btn-full" onclick="navigate('statistik')">Statistiken</button>
       </div>
       ${fw.isWehrfuehrer() ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('einstellungen-admin')">Dienstgrade & Filter</button>` : ''}
+      ${fw.isWehrfuehrer() ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('dienstarten-verwalten')">Dienst-Arten</button>` : ''}
     </div>
   `;
   if (fw.isWehrfuehrer()) ladeOrtswehrenInline();
