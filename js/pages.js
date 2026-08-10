@@ -1500,7 +1500,10 @@ window.ortSpeichern = async (einsatzId) => {
 };
 
 window.uebungLoeschen = async (id, typ) => {
-  if (!confirm('Wirklich löschen?')) return;
+  if (!confirm('Wirklich löschen? Zugehörige Anwesenheiten werden mitgelöscht.')) return;
+  // Verwaiste Anwesenheiten vermeiden: zuerst alle zugehörigen Einträge mitlöschen
+  const anwSnap = await fw.getDocs('anwesenheiten', fw.where('uebungId','==',id));
+  await Promise.all(anwSnap.docs.map(d => fw.deleteDoc('anwesenheiten/'+d.id)));
   await fw.deleteDoc(col(typ)+'/'+id);
   fw.toast('Gelöscht'); navigate(typ === 'einsatz' ? 'einsaetze' : 'dienste');
 };

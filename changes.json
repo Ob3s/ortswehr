@@ -1,1 +1,1 @@
-[{"version": "20260810142926", "datum": "10.08.2026", "punkte": ["Fix: Profil-\u00dcbersicht (Dienste/Eins\u00e4tze) zeigte weniger Eintr\u00e4ge als die Stats-Kacheln, wenn ein referenzierter Dienst/Einsatz gel\u00f6scht wurde \u2013 jetzt konsistent mit Fallback wie bei den Statistiken"]}]
+[{"version": "20260810143114", "datum": "10.08.2026", "punkte": ["Fix (Ursache): L\u00f6schen eines Dienstes/Einsatzes entfernt jetzt auch alle zugeh\u00f6rigen Anwesenheiten \u2013 verhindert verwaiste Eintr\u00e4ge"]}]
