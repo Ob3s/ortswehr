@@ -2190,6 +2190,7 @@ registerPage('lehrgangsarten-verwalten', async (el) => {
 
 registerPage('lehrgangsart-form', async (el, {id}) => {
   if (!fw.isWehrfuehrer()) { navigate('dashboard'); return; }
+  await ladeLehrgangsarten();
   let art = null;
   if (id) {
     const snap = await fw.getDoc('lehrgangsarten/'+id);
@@ -2225,6 +2226,8 @@ registerPage('lehrgangsart-form', async (el, {id}) => {
   window.lehrgangsartSpeichern = async (artId) => {
     const bez = document.getElementById('la-bez').value.trim();
     if (!bez) { fw.toast('Bezeichnung erforderlich', true); return; }
+    const doppelt = _lehrgangsarten.some(a => a.id !== artId && a.bezeichnung.toLowerCase() === bez.toLowerCase());
+    if (doppelt) { fw.toast('Diese Bezeichnung gibt es bereits', true); return; }
     const data = {
       bezeichnung: bez,
       tage:        parseFloat(document.getElementById('la-tage').value)    || null,
@@ -2234,10 +2237,11 @@ registerPage('lehrgangsart-form', async (el, {id}) => {
     if (artId) {
       await fw.updateDoc('lehrgangsarten/'+artId, data);
     } else {
-      const snap = await fw.getDocs('lehrgangsarten');
-      data.sortierung = snap.size + 1;
-      const docId = bez.toLowerCase().replace(/[^a-z0-9]/g, '-');
-      await fw.setDoc('lehrgangsarten/'+docId, data);
+      // Fortlaufende numerische ID vergeben, unabhängig von der Bezeichnung
+      const maxId = _lehrgangsarten.reduce((max, a) => Math.max(max, parseInt(a.id) || 0), 0);
+      const neueId = String(maxId + 1);
+      data.sortierung = _lehrgangsarten.length + 1;
+      await fw.setDoc('lehrgangsarten/'+neueId, data);
     }
     _lehrgangsartenGeladen = false;
     await ladeLehrgangsarten();
@@ -3651,134 +3655,6 @@ window.pruefAusblenden = async (id) => {
   await fw.setDoc('pruefaufgaben/'+id, { ausgeblendet: true });
   fw.toast('Ausgeblendet');
   ladePruefaufgabenInline();
-};
-
-// ── Fahrzeug Form ─────────────────────────────────────────
-registerPage('fahrzeug-form', async (el, {id}) => {
-  if (!fw.isWehrfuehrer()) { el.innerHTML = '<div class="empty">Keine Berechtigung</div>'; return; }
-  fw.setTitle(id ? 'Fahrzeug bearbeiten' : 'Neues Fahrzeug');
-  fw.showBack(() => navigateBack());
-
-  let fahrzeug = null;
-  if (id) {
-    const snap = await fw.getDoc('fahrzeuge/'+id);
-    if (snap.exists()) fahrzeug = {id, ...snap.data()};
-  }
-
-  // Ortswehren für Dropdown laden
-  const wehrSnap = await fw.getDocs('ortswehren', fw.orderBy('name','asc'));
-  const wehren = wehrSnap.docs.map(d => ({id:d.id,...d.data()}));
-
-  el.innerHTML = `
-    <div class="card">
-      <div class="form-row">
-        <label>Fahrzeugkennung (z.B. 1/48/6)</label>
-        <input id="fz-name" value="${fahrzeug?.name||''}">
-      </div>
-      <div class="form-row">
-        <label>Bezeichnung (z.B. ZF-16)</label>
-        <input id="fz-bez" value="${fahrzeug?.bezeichnung||''}">
-      </div>
-      <div class="form-row">
-        <label>Ortswehr</label>
-        <select id="fz-wehr">
-          <option value="">– Bitte wählen –</option>
-          ${wehren.map(w => `<option value="${w.id}" ${fahrzeug?.ortswehrId===w.id?'selected':''}>${w.name}</option>`).join('')}
-        </select>
-      </div>
-      <div class="btn-row" style="margin-top:0.5rem">
-        <button class="btn btn-primary" onclick="fahrzeugSpeichern('${id||''}')">💾 Speichern</button>
-        ${id ? `<button class="btn btn-danger" onclick="fahrzeugLoeschen('${id}')">🗑 Löschen</button>` : ''}
-      </div>
-    </div>
-  `;
-});
-
-window.fahrzeugSpeichern = async (id) => {
-  const name = document.getElementById('fz-name').value.trim();
-  const bez  = document.getElementById('fz-bez').value.trim();
-  const wehr = document.getElementById('fz-wehr').value;
-  if (!name) { fw.toast('Fahrzeugkennung fehlt', true); return; }
-  const data = { name, bezeichnung: bez, ortswehrId: wehr || null };
-  if (id) { await fw.setDoc('fahrzeuge/'+id, data); }
-  else    { await fw.addDoc('fahrzeuge', data); }
-  fw.toast('Gespeichert ✅');
-  navigate('dienste');
-};
-
-window.fahrzeugLoeschen = async (id) => {
-  if (!confirm('Fahrzeug wirklich löschen? Zugehörige Aufgaben bleiben erhalten.')) return;
-  await fw.deleteDoc('fahrzeuge/'+id);
-  fw.toast('Gelöscht');
-  navigate('dienste');
-};
-
-// ── Prüfaufgabe Form ──────────────────────────────────────
-registerPage('pruefaufgabe-form', async (el, {id, fahrzeugId: vorFahrzeugId}) => {
-  if (!fw.isWehrfuehrer()) { el.innerHTML = '<div class="empty">Keine Berechtigung</div>'; return; }
-  fw.setTitle(id ? 'Aufgabe bearbeiten' : 'Neue Aufgabe');
-  fw.showBack(() => navigateBack());
-
-  let aufgabe = null;
-  if (id) {
-    const snap = await fw.getDoc('pruefaufgaben/'+id);
-    if (snap.exists()) aufgabe = {id, ...snap.data()};
-  }
-
-  const letztesDatum = aufgabe?.letztesPruefDatum
-    ? (aufgabe.letztesPruefDatum.toDate ? aufgabe.letztesPruefDatum.toDate() : new Date(aufgabe.letztesPruefDatum)).toISOString().split('T')[0]
-    : '';
-
-  const fzSnap = await fw.getDocs('fahrzeuge', fw.orderBy('name','asc'));
-  const fahrzeuge = fzSnap.docs.map(d => ({id:d.id,...d.data()}));
-  const aktivFahrzeugId = aufgabe?.fahrzeugId || vorFahrzeugId || '';
-
-  el.innerHTML = `
-    <div class="card">
-      <div class="form-row">
-        <label>Fahrzeug</label>
-        <select id="pa-fz">
-          <option value="">– Bitte wählen –</option>
-          ${fahrzeuge.map(f => `<option value="${f.id}" ${aktivFahrzeugId===f.id?'selected':''}>${f.name}${f.bezeichnung?' ('+f.bezeichnung+')':''}</option>`).join('')}
-        </select>
-      </div>
-      <div class="form-row"><label>Bezeichnung</label><input id="pa-bez" value="${aufgabe?.bezeichnung||''}"></div>
-      <div class="form-row"><label>Intervall (Monate)</label><input id="pa-int" type="number" min="1" value="${aufgabe?.intervall||''}"></div>
-      <div class="form-row"><label>Letztes Prüfdatum</label><input id="pa-dat" type="date" value="${letztesDatum}"></div>
-      ${aufgabe?.ausgeblendet ? `<div style="margin-bottom:0.5rem"><button class="btn btn-secondary btn-full" onclick="pruefEinblenden('${id}')">👁 Wieder einblenden</button></div>` : ''}
-      <div class="btn-row" style="margin-top:0.5rem">
-        <button class="btn btn-primary" onclick="pruefaufgabeSpeichern('${id||''}')">💾 Speichern</button>
-        ${id ? `<button class="btn btn-danger" onclick="pruefaufgabeLoeschen('${id}')">🗑 Löschen</button>` : ''}
-      </div>
-    </div>
-  `;
-});
-
-window.pruefEinblenden = async (id) => {
-  await fw.setDoc('pruefaufgaben/'+id, { ausgeblendet: false });
-  fw.toast('Wieder eingeblendet ✅');
-  navigateBack();
-};
-
-window.pruefaufgabeSpeichern = async (id) => {
-  const fzId = document.getElementById('pa-fz').value;
-  const bez  = document.getElementById('pa-bez').value.trim();
-  const int  = parseInt(document.getElementById('pa-int').value) || null;
-  const datStr = document.getElementById('pa-dat').value;
-  if (!bez) { fw.toast('Bezeichnung fehlt', true); return; }
-  if (!fzId) { fw.toast('Fahrzeug fehlt', true); return; }
-  const data = { bezeichnung: bez, intervall: int, fahrzeugId: fzId, letztesPruefDatum: datStr ? new Date(datStr) : null };
-  if (id) { await fw.setDoc('pruefaufgaben/'+id, data); }
-  else    { await fw.addDoc('pruefaufgaben', data); }
-  fw.toast('Gespeichert ✅');
-  navigate('dienste');
-};
-
-window.pruefaufgabeLoeschen = async (id) => {
-  if (!confirm('Aufgabe wirklich löschen?')) return;
-  await fw.deleteDoc('pruefaufgaben/'+id);
-  fw.toast('Gelöscht');
-  navigate('dienste');
 };
 
 // ── Fahrzeug Form ─────────────────────────────────────────
