@@ -1607,7 +1607,7 @@ registerPage('profil', async (el) => {
       <div class="stat-card"><div class="stat-zahl">${stats.einsaetze}</div><div class="stat-label">${stats.einsaetze===1?'Einsatz':'Einsätze'} ${new Date().getFullYear()}</div></div>
     </div>
 
-    <details class="card" style="padding:0" open>
+    <details class="card" style="padding:0">
       <summary class="section-header" style="margin:1.2rem 0 0;padding:0.6rem 1rem;cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between">
         <span>Meine Dienste (letzte 12 Monate)</span>
         <span style="color:var(--muted);font-size:0.9rem">▾</span>
@@ -1624,7 +1624,7 @@ registerPage('profil', async (el) => {
       </div>
     </details>
 
-    <details class="card" style="padding:0" open>
+    <details class="card" style="padding:0">
       <summary class="section-header" style="margin:1.2rem 0 0;padding:0.6rem 1rem;cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between">
         <span>Meine Einsätze ${new Date().getFullYear()}</span>
         <span style="color:var(--muted);font-size:0.9rem">▾</span>
@@ -1641,7 +1641,7 @@ registerPage('profil', async (el) => {
       </div>
     </details>
 
-    <details class="card" style="padding:0" open>
+    <details class="card" style="padding:0">
       <summary class="section-header" style="margin:1.2rem 0 0;padding:0.6rem 1rem;cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between">
         <span>Dienstlich</span>
         <span style="color:var(--muted);font-size:0.9rem">▾</span>
