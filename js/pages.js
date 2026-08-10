@@ -3,6 +3,22 @@ function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50)
 
 waitFw(() => {
 
+// Global: von überall aufrufbar (Kamerad-Aufgaben, Fahrzeuge-Übersicht), nicht an eine Seite gebunden
+window.navigiereZuFahrzeug = (fahrzeugId) => {
+  // Falls wir bereits auf der Dienste-Seite sind, nicht neu laden – nur aufklappen/scrollen
+  const bereitsDa = !!document.getElementById('fz-pruef-details');
+  if (!bereitsDa) navigate('dienste');
+  // Nach dem (Neu-)Rendern das äußere und das richtige Fahrzeug-Accordion öffnen
+  if (fahrzeugId) {
+    setTimeout(() => {
+      const aussen = document.getElementById('fz-pruef-details');
+      if (aussen) aussen.open = true;
+      const el = document.querySelector(`details[data-fz-id="${fahrzeugId}"]`);
+      if (el) { el.open = true; el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    }, bereitsDa ? 0 : 600);
+  }
+};
+
 // ── Helpers ───────────────────────────────────────────────
 function datum(d) {
   if (!d) return '–';
@@ -91,6 +107,42 @@ function getStats(anwesenheiten, dienstMap, einsatzMap) {
     ziel:             dienstStunden12m >= 40,
     stunden12mZiel:   Math.round(dienstStunden12m*10)/10,
   };
+}
+
+// Für die Profil-Übersicht: Einzeleinträge statt nur Summen –
+// Dienste der letzten 12 Monate, Einsätze des laufenden Jahres.
+function meineEintraegeListen(anwesenheiten, dienstMap, einsatzMap) {
+  const jetzt   = new Date();
+  const jahrAkt = jetzt.getFullYear();
+  const vor12m  = new Date(); vor12m.setFullYear(jetzt.getFullYear()-1); vor12m.setHours(0,0,0,0);
+
+  const diensteListe = [], einsaetzeListe = [];
+  for (const a of anwesenheiten) {
+    if (a.status !== 'bestaetigt' && a.status !== 'kommt') continue;
+    const dienstEintrag  = dienstMap?.get(a.uebungId)  || null;
+    const einsatzEintrag = einsatzMap?.get(a.uebungId) || null;
+    const eintrag = dienstEintrag || einsatzEintrag || null;
+    // Auch zählen, wenn der referenzierte Dienst/Einsatz inzwischen gelöscht wurde –
+    // dann auf die in der Anwesenheit gespeicherten Werte zurückfallen (wie getStats() es tut),
+    // damit Stats-Kachel und Liste nicht auseinanderlaufen.
+    const typNorm    = a.typ === 'einsaetze' ? 'einsatz' : a.typ === 'dienste' ? 'dienst' : a.typ;
+    const istEinsatz  = typNorm === 'einsatz' || (!a.typ && !!einsatzEintrag && !dienstEintrag);
+    const d = a.datum?.toDate ? a.datum.toDate() : (eintrag?.datum?.toDate?.() || new Date(a.datum));
+    const h = eintrag?.dauer_h ?? a.dauer_h ?? 0;
+    const titel = eintrag?.titel || a.uebungTitel || '(Details nicht mehr verfügbar)';
+    const eintragObj = {
+      id: a.uebungId, titel, datum: d, dauer_h: h,
+      art: eintrag?.art || null, relevant: eintrag ? eintrag.relevant !== false : true,
+    };
+    if (istEinsatz) {
+      if (d.getFullYear() === jahrAkt) einsaetzeListe.push(eintragObj);
+    } else {
+      if (d >= vor12m) diensteListe.push(eintragObj);
+    }
+  }
+  diensteListe.sort((x,y) => y.datum - x.datum);
+  einsaetzeListe.sort((x,y) => y.datum - x.datum);
+  return { diensteListe, einsaetzeListe };
 }
 
 
@@ -639,13 +691,19 @@ function renderEintrag(u, meineMap) {
   const heute = new Date(); heute.setHours(0,0,0,0);
   const morgen = new Date(heute); morgen.setDate(heute.getDate()+1);
   const istHeute = u.typ === 'einsatz' && d >= heute && d < morgen;
-  const highlightStyle = istHeute ? 'border-left:3px solid var(--red);padding-left:0.5rem;background:rgba(220,38,38,0.08);' : '';
+  // Unvollständige Dienste nur für Wehrführer hervorheben
+  const istUnvollstaendig = !istHeute && fw.isWehrfuehrer() && dienstUnvollstaendig(u);
+  let highlightStyle = '';
+  if (istHeute) highlightStyle = 'border-left:3px solid var(--red);padding-left:0.5rem;background:rgba(220,38,38,0.08);';
+  else if (istUnvollstaendig) highlightStyle = 'border-left:3px solid #f59e0b;padding-left:0.5rem;background:rgba(245,158,11,0.08);';
   const nichtRelevantBadge = ''; // nicht relevant wird nicht in der Liste angezeigt
+  const artLabel = u.art ? dienstArtLabel(u.art) : '';
   return `<div class="list-item" onclick="navigate('uebung-detail',{id:'${u.id}',typ:'${u.typ}'})" style="${highlightStyle}">
     <div class="list-item-body">
-      <div class="list-item-title">${istHeute ? '🚨 ' : ''}${u.titel}${nichtRelevantBadge}</div>
+      <div class="list-item-title">${istHeute ? '🚨 ' : ''}${istUnvollstaendig ? '⚠️ ' : ''}${u.titel}${nichtRelevantBadge}</div>
       ${u.ort ? `<div class="list-item-sub" style="margin-top:0.05rem">📍 ${u.ort}</div>` : ''}
-      <div class="list-item-sub">${datum(u.datum)}${zeitZeile(u) ? ' · '+zeitZeile(u) : ''}</div>
+      <div class="list-item-sub">${datum(u.datum)}${zeitZeile(u) ? ' · '+zeitZeile(u) : ''}${artLabel ? ' · '+artLabel : ''}${u.typ !== 'einsatz' && u.relevant !== false ? ' · <span style="color:#22c55e;font-weight:600">40h</span>' : ''}</div>
+      ${istUnvollstaendig ? `<div class="list-item-sub" style="color:#f59e0b;margin-top:0.1rem">⚠️ Unvollständig (Daten prüfen)</div>` : ''}
     </div>
     <div class="list-item-right">${badge}</div>
     <div class="list-chevron">›</div>
@@ -802,6 +860,7 @@ registerPage('einsaetze', async (el) => {
 registerPage('dienste', async (el) => {
   fw.setTitle('Dienste');
   await ladeDienstFilter();
+  await ladeDienstarten();
   if (fw.isWehrfuehrer()) fw.showHeaderAction('+ Dienst', () => navigate('uebung-form', {typ:'dienst'}));
   const [uSnap, aSnap, dQualiSnap] = await Promise.all([
     fw.getDocs('dienste', fw.orderBy('datum','desc')),
@@ -815,7 +874,7 @@ registerPage('dienste', async (el) => {
   el.innerHTML = `
     <div class="card">${renderEintragListe(liste, meineMap)}</div>
     ${(fw.isWehrfuehrer() || istMaschinist) ? `
-    <details class="card" style="margin-top:0.8rem;padding:0">
+    <details id="fz-pruef-details" class="card" style="margin-top:0.8rem;padding:0">
       <summary style="font-weight:600;cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;padding:0.4rem 0.8rem;font-size:13px;border-radius:8px">
         <span>🔧 Fahrzeug- und Geräteprüfungen</span>
         <span style="color:var(--muted)">▾</span>
@@ -953,6 +1012,7 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
   const u = {id,...snap.data()};
   const owMap = new Map(owSnap.docs.map(d => [d.id, d.data().name]));
   const isEinsatz = u.typ === 'einsatz';
+  if (!isEinsatz) await ladeDienstarten();
   fw.setTitle(isEinsatz ? 'Einsatz' : 'Dienst');
   fw.showBack(() => navigate(isEinsatz ? 'einsaetze' : 'dienste'));
   if (fw.isWehrfuehrer()) fw.showHeaderAction('✏️ Edit', () => navigate('uebung-form',{id, typ: u.typ}));
@@ -969,7 +1029,8 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
   el.innerHTML = `
     <div class="card">
       <div style="font-weight:600;font-size:1.1rem">${u.titel}</div>
-      <div style="margin-top:0.3rem;color:var(--muted);font-size:0.85rem">${datum(u.datum)}${zeitZeile(u) ? ' · '+zeitZeile(u) : ''}${!isEinsatz && u.relevant !== false ? ' · <span style="color:#22c55e;font-weight:600">40h</span>' : ''}</div>
+      <div style="margin-top:0.3rem;color:var(--muted);font-size:0.85rem">${datum(u.datum)}${zeitZeile(u) ? ' · '+zeitZeile(u) : ''}${!isEinsatz && u.art ? ' · '+dienstArtLabel(u.art) : ''}${!isEinsatz && u.relevant !== false ? ' · <span style="color:#22c55e;font-weight:600">40h</span>' : ''}</div>
+      ${!isEinsatz && fw.isWehrfuehrer() && dienstUnvollstaendig(u) ? `<div style="margin-top:0.4rem;padding:0.4rem 0.6rem;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.4);border-radius:8px;color:#f59e0b;font-size:0.8rem;font-weight:600">⚠️ Unvollständig – bitte fehlende Angaben (z. B. Dienst-Art) nachtragen</div>` : ''}
       ${u.beschreibung ? `<p class="muted" style="margin-top:0.4rem;font-size:0.85rem">${u.beschreibung}</p>` : ''}
       ${u.ortswehrIds?.length > 1 ? `<div style="margin-top:0.4rem;font-size:0.78rem;color:var(--muted)">Beteiligte Wehren: ${u.ortswehrIds.map(id => owMap.get(id)||id).join(', ')}</div>` : ''}
       <div id="ort-anzeige">${u.ort ? `<div style="margin-top:0.5rem;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
@@ -1173,6 +1234,58 @@ window.direktEintragen = async (uebungId, userId, name, dauer_h, typ, datumStr) 
   navigate('uebung-eintragen', {id: uebungId, titel: '', dauer: dauer_h, typ, datumStr});
 };
 
+// ── Dienst-Arten (dynamisch aus Firestore, Collection "dienstarten") ──
+let _dienstarten = [];
+let _dienstartenGeladen = false;
+async function ladeDienstarten() {
+  if (_dienstartenGeladen) return _dienstarten;
+  try {
+    let snap = await fw.getDocs('dienstarten');
+    // Einmalige Migration: bisherige fest codierte Dienst-Arten anlegen.
+    // Nur Wehrführer dürfen laut Firestore-Regeln in "dienstarten" schreiben – bei Kameraden
+    // schlägt der Schreibversuch fehl, darum hier vorher prüfen statt die Seite abstürzen zu lassen.
+    if (snap.empty && fw.isWehrfuehrer()) {
+      // IDs sind fortlaufende Zahlen (als String), unabhängig von der Bezeichnung –
+      // so bleibt die Bezeichnung jederzeit umbenennbar, ohne bestehende Dienst-Zuordnungen zu verlieren.
+      const defaults = [
+        { id: '1', bezeichnung: 'Dienstabend',          relevant: true,  sortierung: 1 },
+        { id: '2', bezeichnung: 'Fortbildung',          relevant: true,  sortierung: 2 },
+        { id: '3', bezeichnung: 'Kameradschaftspflege', relevant: false, sortierung: 3 },
+        { id: '4', bezeichnung: 'Training',             relevant: false, sortierung: 4 },
+      ];
+      try {
+        await Promise.all(defaults.map(d =>
+          fw.setDoc('dienstarten/'+d.id, { bezeichnung: d.bezeichnung, relevant: d.relevant, sortierung: d.sortierung })
+        ));
+        snap = await fw.getDocs('dienstarten');
+      } catch(e) { /* Migration fehlgeschlagen (z.B. Regeln noch nicht deployed) – ohne Absturz weitermachen */ }
+    }
+    _dienstarten = snap.docs
+      .map(d => ({id: d.id, ...d.data()}))
+      .sort((a,b) => (a.sortierung||99) - (b.sortierung||99));
+  } catch(e) {
+    // Lesen fehlgeschlagen (z.B. Firestore-Regeln noch nicht deployed) – App darf trotzdem weiterlaufen
+    _dienstarten = [];
+  }
+  _dienstartenGeladen = true;
+  return _dienstarten;
+}
+function dienstArtLabel(wert) {
+  return _dienstarten.find(a => a.id === wert)?.bezeichnung || '';
+}
+function dienstArtRelevant(wert) {
+  return _dienstarten.find(a => a.id === wert)?.relevant ?? true;
+}
+// Pflichtfelder für einen vollständigen Dienst (nicht Einsatz)
+function dienstUnvollstaendig(u) {
+  if (u.typ !== 'dienst') return false;
+  if (!u.titel) return true;
+  if (!u.datum) return true;
+  if (!u.dauer_h || u.dauer_h <= 0) return true;
+  if (!u.art) return true;
+  return false;
+}
+
 // ── Einsatz / Dienst Form ─────────────────────────────────
 registerPage('uebung-form', async (el, {id, typ: vorTyp, alarm: mitAlarm}) => {
   let u = null;
@@ -1184,6 +1297,8 @@ registerPage('uebung-form', async (el, {id, typ: vorTyp, alarm: mitAlarm}) => {
 
   const datumVal = u?.datum?.toDate ? u.datum.toDate().toISOString().slice(0,10)
     : new Date().toISOString().slice(0,10);
+
+  if (!isEinsatz) await ladeDienstarten();
 
   if (isEinsatz) {
     const jetztH  = new Date().getHours().toString().padStart(2,'0');
@@ -1231,6 +1346,12 @@ registerPage('uebung-form', async (el, {id, typ: vorTyp, alarm: mitAlarm}) => {
         <div class="form-row"><label>Titel</label>
           <input id="f-titel" value="${u?.titel||''}" placeholder="Monatsübung April…">
         </div>
+        <div class="form-row"><label>Art</label>
+          <select id="f-art">
+            <option value="" ${!u?.art?'selected':''} disabled>– Bitte wählen –</option>
+            ${_dienstarten.map(a => `<option value="${a.id}" ${u?.art===a.id?'selected':''}>${a.bezeichnung}${a.relevant?' (zählt zu den 40h)':''}</option>`).join('')}
+          </select>
+        </div>
         <div class="form-row"><label>Datum</label><input id="f-datum" type="date" value="${datumVal}"></div>
         <div class="form-row"><label>Beginn</label><input id="f-beginn" type="time" value="${u?.zeitBeginn||''}" oninput="berechneDauer()"></div>
         <div class="form-row"><label>Ende</label><input id="f-ende" type="time" value="${u?.zeitEnde||''}" oninput="berechneDauer()"></div>
@@ -1257,11 +1378,6 @@ registerPage('uebung-form', async (el, {id, typ: vorTyp, alarm: mitAlarm}) => {
             </div>
           </div>`;
         })()}
-        ${fw.isWehrfuehrer() ? `
-        <div style="display:flex;align-items:center;gap:0.6rem;padding:0.4rem 0;border-top:1px solid var(--border);margin-top:0.2rem">
-          <input type="checkbox" id="f-relevant" style="width:1.2rem;height:1.2rem;accent-color:var(--red)" ${u?.relevant===false?'':'checked'}>
-          <label for="f-relevant" style="font-size:0.88rem;cursor:pointer">Zählt für 40-Stunden-Ziel</label>
-        </div>` : ''}
         <div class="btn-row">
           <button class="btn btn-primary" onclick="uebungSpeichern('${id||''}','dienst')">${u ? '💾 Speichern' : '💾 Speichern & Benachrichtigen'}</button>
           ${u ? `<button class="btn btn-danger" onclick="uebungLoeschen('${id}','dienst')">🗑 Löschen</button>` : ''}
@@ -1301,14 +1417,18 @@ window.uebungSpeichern = async (id, forcTyp) => {
 
   if (!titel) { fw.toast('Stichwort erforderlich', true); return; }
 
+  const art = document.getElementById('f-art')?.value || null;
+  if (!isEinsatz && !art) { fw.toast('Bitte Dienst-Art auswählen', true); return; }
+
   const ort = document.getElementById('f-ort')?.value?.trim() || null;
-  const relevantEl = document.getElementById('f-relevant');
-  const relevant = isEinsatz ? true : (relevantEl ? relevantEl.checked : true);
+  // 40h-Relevanz kommt jetzt ausschließlich aus der gewählten Dienst-Art, keine manuelle Checkbox mehr
+  const relevant = isEinsatz ? true : dienstArtRelevant(art);
   // Ortswehren: aus Checkboxen oder primäre Wehr des Nutzers
   const wehrCheckboxen = [...document.querySelectorAll('.f-wehr-cb:checked')].map(cb => cb.value);
   const ortswehrIds = wehrCheckboxen.length > 0 ? wehrCheckboxen
     : (fw.profil.ortswehrIds?.length ? fw.profil.ortswehrIds : (fw.profil.ortswehrId ? [fw.profil.ortswehrId] : []));
   const data = { titel, datum: new Date(datumStr), typ, dauer_h, beschreibung: beschr, zeitBeginn, zeitEnde, ort, relevant, ortswehrIds };
+  if (!isEinsatz) data.art = art;
   const isNeu = !id;
   try {
     let uebungId = id;
@@ -1380,7 +1500,10 @@ window.ortSpeichern = async (einsatzId) => {
 };
 
 window.uebungLoeschen = async (id, typ) => {
-  if (!confirm('Wirklich löschen?')) return;
+  if (!confirm('Wirklich löschen? Zugehörige Anwesenheiten werden mitgelöscht.')) return;
+  // Verwaiste Anwesenheiten vermeiden: zuerst alle zugehörigen Einträge mitlöschen
+  const anwSnap = await fw.getDocs('anwesenheiten', fw.where('uebungId','==',id));
+  await Promise.all(anwSnap.docs.map(d => fw.deleteDoc('anwesenheiten/'+d.id)));
   await fw.deleteDoc(col(typ)+'/'+id);
   fw.toast('Gelöscht'); navigate(typ === 'einsatz' ? 'einsaetze' : 'dienste');
 };
@@ -1446,6 +1569,7 @@ function checkDeepLink() {
 registerPage('profil', async (el) => {
   fw.setTitle('Mein Profil');
   await ladeLehrgangsarten();
+  await ladeDienstarten();
   // Immer frisch laden damit notif-Felder aktuell sind
   const [meSnap, qSnap, aSnap, pDiensteSnap, pEinsaetzeSnap, planSnap, owSnap] = await Promise.all([
     fw.getDoc('users/'+fw.user.uid),
@@ -1466,6 +1590,7 @@ registerPage('profil', async (el) => {
   const pDienstMap  = new Map(pDiensteSnap.docs.map(d => [d.id, d.data()]));
   const pEinsatzMap = new Map(pEinsaetzeSnap.docs.map(d => [d.id, d.data()]));
   const stats  = getStats(aSnap.docs.map(d => d.data()), pDienstMap, pEinsatzMap);
+  const { diensteListe, einsaetzeListe } = meineEintraegeListen(aSnap.docs.map(d => d.data()), pDienstMap, pEinsatzMap);
 
   el.innerHTML = `
     <div class="card" style="display:flex;align-items:center;gap:0.8rem;padding:0.9rem 1rem">
@@ -1502,6 +1627,34 @@ registerPage('profil', async (el) => {
               <button onclick="planungLoeschenDirekt('${p.id}')" class="btn btn-sm btn-danger">🗑</button>
             </div>`).join('')}
         </div>` : ''}
+    </div>
+
+    <div class="section-header">Meine Dienste (letzte 12 Monate)</div>
+    <div class="card" style="padding:0">
+      ${diensteListe.length === 0 ? '<div class="empty" style="padding:1rem">Keine Dienste in den letzten 12 Monaten</div>' :
+        diensteListe.map(e => `
+          <div class="list-item" onclick="navigate('uebung-detail',{id:'${e.id}',typ:'dienst'})">
+            <div class="list-item-body">
+              <div class="list-item-title">${e.titel}</div>
+              <div class="list-item-sub">${datum(e.datum)}${e.art ? ' · '+dienstArtLabel(e.art) : ''}${e.relevant ? ' · <span style="color:#22c55e">40h</span>' : ''}</div>
+            </div>
+            <div class="list-item-right" style="font-size:0.82rem;color:var(--muted)">${dauerFormat(e.dauer_h)}h</div>
+            <div class="list-chevron">›</div>
+          </div>`).join('')}
+    </div>
+
+    <div class="section-header">Meine Einsätze ${new Date().getFullYear()}</div>
+    <div class="card" style="padding:0">
+      ${einsaetzeListe.length === 0 ? `<div class="empty" style="padding:1rem">Keine Einsätze ${new Date().getFullYear()}</div>` :
+        einsaetzeListe.map(e => `
+          <div class="list-item" onclick="navigate('uebung-detail',{id:'${e.id}',typ:'einsatz'})">
+            <div class="list-item-body">
+              <div class="list-item-title">${e.titel}</div>
+              <div class="list-item-sub">${datum(e.datum)}</div>
+            </div>
+            <div class="list-item-right" style="font-size:0.82rem;color:var(--muted)">${dauerFormat(e.dauer_h)}h</div>
+            <div class="list-chevron">›</div>
+          </div>`).join('')}
     </div>
 
     <div class="section-header">Passwort ändern</div>
@@ -1552,6 +1705,7 @@ window.notifSpeichern = async () => {
   const data = {
     notif_einsatz:         document.getElementById('n-einsatz')?.checked ?? true,
     notif_dienst_reminder: document.getElementById('n-dienst-reminder')?.checked ?? false,
+    notif_pruef_reminder:  document.getElementById('n-pruef-reminder')?.checked ?? true,
     notif_news:            document.getElementById('n-news')?.checked ?? true,
     notif_selbst:          selbstEl ? selbstEl.checked : false,
     notif_status:          document.getElementById('n-status')?.checked ?? true,
@@ -1665,6 +1819,7 @@ registerPage('einstellungen', async (el) => {
     <div class="card">
       ${notifRow('n-einsatz', '🚨', 'Einsatzalarm', 'Bei neuen Einsätzen')}
       ${notifRow('n-dienst-reminder', '📅', 'Diensterinnerung', 'Am Morgen des Dienstes um 08:00 Uhr')}
+      ${notifRow('n-pruef-reminder', '🔧', 'Prüfintervalle', 'Am Morgen des Dienstes um 09:00 Uhr (nur Maschinisten)')}
       ${notifRow('n-news', '📰', 'Neuigkeiten', 'Bei neuen Beiträgen für meine Ortswehr')}
       ${notifRow('n-status', '⚠️', 'Status-Warnung', 'Wenn App offline oder Push nicht bereit')}
       ${fw.isWehrfuehrer() ? notifRow('n-selbst', '🧪', 'Selbst benachrichtigen', 'Nur für Tests – Wehrführer erhält eigene Alarme') : ''}
@@ -1701,6 +1856,7 @@ registerPage('einstellungen', async (el) => {
   const cb = id => document.getElementById(id);
   if (cb('n-einsatz'))        cb('n-einsatz').checked        = me.notif_einsatz !== false;
   if (cb('n-dienst-reminder'))cb('n-dienst-reminder').checked = me.notif_dienst_reminder === true;
+  if (cb('n-pruef-reminder')) cb('n-pruef-reminder').checked  = me.notif_pruef_reminder !== false;
   if (cb('n-news'))           cb('n-news').checked            = me.notif_news !== false;
   if (cb('n-status'))         cb('n-status').checked         = me.notif_status !== false;
   if (cb('n-selbst'))         cb('n-selbst').checked         = me.notif_selbst === true;
@@ -2100,6 +2256,7 @@ registerPage('lehrgangsarten-verwalten', async (el) => {
 
 registerPage('lehrgangsart-form', async (el, {id}) => {
   if (!fw.isWehrfuehrer()) { navigate('dashboard'); return; }
+  await ladeLehrgangsarten();
   let art = null;
   if (id) {
     const snap = await fw.getDoc('lehrgangsarten/'+id);
@@ -2135,6 +2292,8 @@ registerPage('lehrgangsart-form', async (el, {id}) => {
   window.lehrgangsartSpeichern = async (artId) => {
     const bez = document.getElementById('la-bez').value.trim();
     if (!bez) { fw.toast('Bezeichnung erforderlich', true); return; }
+    const doppelt = _lehrgangsarten.some(a => a.id !== artId && a.bezeichnung.toLowerCase() === bez.toLowerCase());
+    if (doppelt) { fw.toast('Diese Bezeichnung gibt es bereits', true); return; }
     const data = {
       bezeichnung: bez,
       tage:        parseFloat(document.getElementById('la-tage').value)    || null,
@@ -2144,10 +2303,11 @@ registerPage('lehrgangsart-form', async (el, {id}) => {
     if (artId) {
       await fw.updateDoc('lehrgangsarten/'+artId, data);
     } else {
-      const snap = await fw.getDocs('lehrgangsarten');
-      data.sortierung = snap.size + 1;
-      const docId = bez.toLowerCase().replace(/[^a-z0-9]/g, '-');
-      await fw.setDoc('lehrgangsarten/'+docId, data);
+      // Fortlaufende numerische ID vergeben, unabhängig von der Bezeichnung
+      const maxId = _lehrgangsarten.reduce((max, a) => Math.max(max, parseInt(a.id) || 0), 0);
+      const neueId = String(maxId + 1);
+      data.sortierung = _lehrgangsarten.length + 1;
+      await fw.setDoc('lehrgangsarten/'+neueId, data);
     }
     _lehrgangsartenGeladen = false;
     await ladeLehrgangsarten();
@@ -2162,6 +2322,113 @@ registerPage('lehrgangsart-form', async (el, {id}) => {
     await ladeLehrgangsarten();
     fw.toast('Gelöscht');
     navigate('lehrgangsarten-verwalten');
+  };
+});
+
+// ── Dienst-Arten verwalten ────────────────────────────────
+registerPage('dienstarten-verwalten', async (el) => {
+  if (!fw.isWehrfuehrer()) { navigate('dashboard'); return; }
+  fw.setTitle('Dienst-Arten');
+  fw.showBack(() => navigateBack());
+  fw.showHeaderAction('+ Neu', () => navigate('dienstart-form', {}));
+
+  _dienstartenGeladen = false;
+  const arten = await ladeDienstarten();
+
+  const renderListe = () => {
+    el.innerHTML = `
+      <div class="card" style="padding:0">
+        ${arten.length === 0 ? '<div class="empty" style="padding:1rem">Noch keine Dienst-Arten</div>' :
+          arten.map((a, i) => `
+            <div class="list-item">
+              <div class="list-item-body" onclick="navigate('dienstart-form',{id:'${a.id}'})" style="cursor:pointer">
+                <div class="list-item-title">${a.bezeichnung}</div>
+                <div class="list-item-sub">${a.relevant ? '<span style="color:#22c55e">Zählt zu den 40h</span>' : 'Zählt nicht zu den 40h'}</div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:0.2rem">
+                <button onclick="dienstartHoch('${a.id}')" ${i===0?'disabled':''} style="background:none;border:none;color:${i===0?'#ccc':'var(--text)'};cursor:pointer;padding:0.1rem 0.4rem;font-size:1rem">▲</button>
+                <button onclick="dienstartRunter('${a.id}')" ${i===arten.length-1?'disabled':''} style="background:none;border:none;color:${i===arten.length-1?'#ccc':'var(--text)'};cursor:pointer;padding:0.1rem 0.4rem;font-size:1rem">▼</button>
+              </div>
+            </div>`).join('')}
+      </div>`;
+  };
+
+  renderListe();
+
+  window.dienstartHoch = async (id) => {
+    const idx = arten.findIndex(a => a.id === id);
+    if (idx <= 0) return;
+    [arten[idx-1], arten[idx]] = [arten[idx], arten[idx-1]];
+    await speicherDienstartSortierung(arten);
+    renderListe();
+  };
+
+  window.dienstartRunter = async (id) => {
+    const idx = arten.findIndex(a => a.id === id);
+    if (idx >= arten.length-1) return;
+    [arten[idx], arten[idx+1]] = [arten[idx+1], arten[idx]];
+    await speicherDienstartSortierung(arten);
+    renderListe();
+  };
+
+  async function speicherDienstartSortierung(liste) {
+    await Promise.all(liste.map((a, i) =>
+      fw.updateDoc('dienstarten/'+a.id, { sortierung: i+1 })
+    ));
+    _dienstartenGeladen = false;
+    await ladeDienstarten();
+  }
+});
+
+registerPage('dienstart-form', async (el, {id}) => {
+  if (!fw.isWehrfuehrer()) { navigate('dashboard'); return; }
+  await ladeDienstarten();
+  let art = id ? _dienstarten.find(a => a.id === id) : null;
+  fw.setTitle(art ? 'Dienst-Art bearbeiten' : 'Neue Dienst-Art');
+  fw.showBack(() => navigateBack());
+
+  el.innerHTML = `
+    <div class="card">
+      <div class="form-row"><label>Bezeichnung</label>
+        <input id="da-bez" value="${art?.bezeichnung||''}" placeholder="z.B. Sportabend">
+      </div>
+      <div style="display:flex;align-items:center;gap:0.6rem;padding:0.4rem 0;border-top:1px solid var(--border);margin-top:0.2rem">
+        <input type="checkbox" id="da-relevant" style="width:1.2rem;height:1.2rem;accent-color:var(--red)" ${art?.relevant===false?'':'checked'}>
+        <label for="da-relevant" style="font-size:0.88rem;cursor:pointer">Zählt für 40-Stunden-Ziel</label>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary btn-full" onclick="dienstartSpeichern('${id||''}')">💾 Speichern</button>
+        ${art ? `<button class="btn btn-danger" onclick="dienstartLoeschen('${id}')">🗑 Löschen</button>` : ''}
+      </div>
+    </div>`;
+
+  window.dienstartSpeichern = async (artId) => {
+    const bez = document.getElementById('da-bez').value.trim();
+    if (!bez) { fw.toast('Bezeichnung erforderlich', true); return; }
+    const doppelt = _dienstarten.some(a => a.id !== artId && a.bezeichnung.toLowerCase() === bez.toLowerCase());
+    if (doppelt) { fw.toast('Diese Bezeichnung gibt es bereits', true); return; }
+    const relevant = document.getElementById('da-relevant').checked;
+    if (artId) {
+      await fw.updateDoc('dienstarten/'+artId, { bezeichnung: bez, relevant });
+    } else {
+      // Fortlaufende numerische ID vergeben, unabhängig von der Bezeichnung
+      const maxId = _dienstarten.reduce((max, a) => Math.max(max, parseInt(a.id) || 0), 0);
+      const neueId = String(maxId + 1);
+      await fw.setDoc('dienstarten/'+neueId, { bezeichnung: bez, relevant, sortierung: _dienstarten.length + 1 });
+    }
+    _dienstartenGeladen = false;
+    await ladeDienstarten();
+    fw.toast('Gespeichert ✅');
+    navigate('dienstarten-verwalten');
+  };
+
+  window.dienstartLoeschen = async (artId) => {
+    if (!confirm('Dienst-Art wirklich löschen? Bereits damit angelegte Dienste behalten die alte Zuordnung, zeigen sie aber nicht mehr an.')) return;
+    await fw.deleteDoc('dienstarten/'+artId);
+    _dienstartenGeladen = false;
+    await ladeDienstarten();
+    fw.toast('Gelöscht');
+    navigate('dienstarten-verwalten');
   };
 });
 
@@ -2719,6 +2986,8 @@ registerPage('kameraden', async (el) => {
       const key = a.typ + (a.userId||'') + (a.pruefId||'');
       const ziel = a.typ === 'pw-reset'
         ? `pwResetDurchfuehren('${a.resetId}','${a.userId}')`
+        : (a.typ === 'pruef-fail' || a.typ === 'pruef-kommentar')
+        ? `navigiereZuFahrzeug('${a.fahrzeugId||''}')`
         : a.userId ? `navigate('kamerad-detail',{id:'${a.userId}'})`
         : `navigate('dienste')`;
       return `
@@ -2825,6 +3094,7 @@ window.aufgabeEinblenden = async (key) => {
         <button class="btn btn-secondary btn-sm btn-full" onclick="navigate('statistik')">Statistiken</button>
       </div>
       ${fw.isWehrfuehrer() ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('einstellungen-admin')">Dienstgrade & Filter</button>` : ''}
+      ${fw.isWehrfuehrer() ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('dienstarten-verwalten')">Dienst-Arten</button>` : ''}
     </div>
   `;
   if (fw.isWehrfuehrer()) ladeOrtswehrenInline();
@@ -3082,6 +3352,10 @@ window.qualiHinzufuegen = async (userId) => {
     stunden: (tage && stundenProTag) ? Math.round(tage * stundenProTag * 100) / 100 : null,
     bemerkung: document.getElementById('q-bem').value || '',
   });
+  // Maschinist-Flag auf User setzen wenn Lehrgang "Maschinist" hinzugefügt
+  if (bez.toLowerCase().includes('maschinist')) {
+    await fw.updateDoc('users/'+userId, { istMaschinist: true });
+  }
   fw.toast('Hinzugefügt'); navigate('kamerad-detail',{id:userId});
 };
 window.qualiLoeschen = async (userId, qualiId) => {
@@ -3299,8 +3573,10 @@ async function ladePruefaufgabenInline() {
     if (!a.letztesPruefDatum) return '#f59e0b';
     const letztes = a.letztesPruefDatum.toDate ? a.letztesPruefDatum.toDate() : new Date(a.letztesPruefDatum);
     if (!a.intervall) return '#94a3b8';
-    const faellig = new Date(letztes); faellig.setMonth(faellig.getMonth() + a.intervall);
-    const warnung = new Date(faellig); warnung.setDate(warnung.getDate() - 14);
+    const intervallMs = a.intervall * 30.44 * 24 * 60 * 60 * 1000; // Monate in ms
+    const faellig = new Date(letztes.getTime() + intervallMs);
+    const warnungMs = intervallMs * 0.1; // 10% des Intervalls
+    const warnung = new Date(faellig.getTime() - warnungMs);
     if (heute > faellig) return '#dc2626';
     if (heute >= warnung) return '#f59e0b';
     return '#22c55e';
@@ -3323,10 +3599,20 @@ async function ladePruefaufgabenInline() {
     return (istUeberfaellig ? '⚠️ Nächste: ' : 'Nächste: ') + naechstes.toLocaleDateString('de-DE');
   }
 
+  // Dringlichkeit: je kleiner, desto dringlicher (negativ = überfällig)
+  function dringlichkeit(a) {
+    if (!a.letztesPruefDatum || !a.intervall) return 0;
+    const letztes = a.letztesPruefDatum.toDate ? a.letztesPruefDatum.toDate() : new Date(a.letztesPruefDatum);
+    const intervallMs = a.intervall * 30.44 * 24 * 60 * 60 * 1000;
+    const faellig = new Date(letztes.getTime() + intervallMs);
+    return faellig.getTime() - heute.getTime(); // ms bis Fälligkeit (negativ = überfällig)
+  }
+
   function aufgabenHtml(fahrzeugId) {
     const aufgaben = alleAufgaben.filter(a => a.fahrzeugId === fahrzeugId);
     if (aufgaben.length === 0) return '<p class="muted" style="font-size:0.82rem;padding:0.3rem 0">Keine Aufgaben</p>';
-    return aufgaben.filter(a => !a.ausgeblendet).map(a => `
+    const sorted = [...aufgaben.filter(a => !a.ausgeblendet)].sort((a,b) => dringlichkeit(a) - dringlichkeit(b));
+    return sorted.map(a => `
       <div style="padding:0.5rem 0;border-bottom:1px solid var(--border)">
         <div style="display:flex;align-items:flex-start;gap:0.6rem">
           <div style="width:10px;height:10px;border-radius:50%;flex-shrink:0;margin-top:0.3rem;background:${statusFarbe(a)}"></div>
@@ -3360,7 +3646,7 @@ async function ladePruefaufgabenInline() {
   const dashHtml = (istWF || istMaschinist) && offene.length ? `
     <div class="card" style="border-left:3px solid #ef4444;margin-bottom:0.5rem">
       <div style="font-weight:600;font-size:0.88rem;color:#ef4444;margin-bottom:0.4rem">⚠️ ${offene.length} Aufgabe${offene.length!==1?'n':''} mit Handlungsbedarf</div>
-      ${offene.map(a => `<div style="font-size:0.82rem;padding:0.3rem 0;border-bottom:1px solid var(--border)"><div style="display:flex;align-items:center;gap:0.4rem"><span style="flex:1;font-weight:600">${a.bezeichnung}</span><button onclick="pruefKommentar('${a.id}')" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:0.8rem;padding:0;flex-shrink:0">💬</button></div>${a.kommentar?`<div style="font-size:0.75rem;color:var(--muted);margin-top:0.1rem">${a.kommentar}</div>`:''}</div>`).join('')}
+      ${offene.map(a => `<div style="font-size:0.82rem;padding:0.3rem 0;border-bottom:1px solid var(--border);cursor:pointer" onclick="navigiereZuFahrzeug('${a.fahrzeugId||''}')"><div style="display:flex;align-items:center;gap:0.4rem"><span style="flex:1;font-weight:600">${a.bezeichnung}</span><button onclick="event.stopPropagation();pruefKommentar('${a.id}')" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:0.8rem;padding:0;flex-shrink:0">💬</button></div>${a.kommentar?`<div style="font-size:0.75rem;color:var(--muted);margin-top:0.1rem">${a.kommentar}</div>`:''}</div>`).join('')}
     </div>` : '';
 
   // Freitext-Notiz laden
@@ -3407,11 +3693,11 @@ window.pruefBestanden = async (id, bestanden) => {
   const label = bestanden ? 'Bestanden' : 'Nicht bestanden';
   if (!confirm(`Aufgabe als "${label}" markieren?`)) return;
   const data = { letztesPruefDatum: new Date(), bestanden };
-  if (bestanden) {
-    // Bestanden: Handlungsbedarf + Kommentar löschen
-    data.kommentar = null;
-  }
   await fw.setDoc('pruefaufgaben/'+id, data);
+  if (bestanden) {
+    // Bestanden: Kommentar separat löschen (nur wenn vorhanden)
+    try { await fw.updateDoc('pruefaufgaben/'+id, { kommentar: null }); } catch(e) {}
+  }
   fw.toast(bestanden ? 'Als bestanden markiert ✅' : 'Als nicht bestanden markiert ❌');
   ladePruefaufgabenInline();
 };
@@ -3435,134 +3721,6 @@ window.pruefAusblenden = async (id) => {
   await fw.setDoc('pruefaufgaben/'+id, { ausgeblendet: true });
   fw.toast('Ausgeblendet');
   ladePruefaufgabenInline();
-};
-
-// ── Fahrzeug Form ─────────────────────────────────────────
-registerPage('fahrzeug-form', async (el, {id}) => {
-  if (!fw.isWehrfuehrer()) { el.innerHTML = '<div class="empty">Keine Berechtigung</div>'; return; }
-  fw.setTitle(id ? 'Fahrzeug bearbeiten' : 'Neues Fahrzeug');
-  fw.showBack(() => navigateBack());
-
-  let fahrzeug = null;
-  if (id) {
-    const snap = await fw.getDoc('fahrzeuge/'+id);
-    if (snap.exists()) fahrzeug = {id, ...snap.data()};
-  }
-
-  // Ortswehren für Dropdown laden
-  const wehrSnap = await fw.getDocs('ortswehren', fw.orderBy('name','asc'));
-  const wehren = wehrSnap.docs.map(d => ({id:d.id,...d.data()}));
-
-  el.innerHTML = `
-    <div class="card">
-      <div class="form-row">
-        <label>Fahrzeugkennung (z.B. 1/48/6)</label>
-        <input id="fz-name" value="${fahrzeug?.name||''}">
-      </div>
-      <div class="form-row">
-        <label>Bezeichnung (z.B. ZF-16)</label>
-        <input id="fz-bez" value="${fahrzeug?.bezeichnung||''}">
-      </div>
-      <div class="form-row">
-        <label>Ortswehr</label>
-        <select id="fz-wehr">
-          <option value="">– Bitte wählen –</option>
-          ${wehren.map(w => `<option value="${w.id}" ${fahrzeug?.ortswehrId===w.id?'selected':''}>${w.name}</option>`).join('')}
-        </select>
-      </div>
-      <div class="btn-row" style="margin-top:0.5rem">
-        <button class="btn btn-primary" onclick="fahrzeugSpeichern('${id||''}')">💾 Speichern</button>
-        ${id ? `<button class="btn btn-danger" onclick="fahrzeugLoeschen('${id}')">🗑 Löschen</button>` : ''}
-      </div>
-    </div>
-  `;
-});
-
-window.fahrzeugSpeichern = async (id) => {
-  const name = document.getElementById('fz-name').value.trim();
-  const bez  = document.getElementById('fz-bez').value.trim();
-  const wehr = document.getElementById('fz-wehr').value;
-  if (!name) { fw.toast('Fahrzeugkennung fehlt', true); return; }
-  const data = { name, bezeichnung: bez, ortswehrId: wehr || null };
-  if (id) { await fw.setDoc('fahrzeuge/'+id, data); }
-  else    { await fw.addDoc('fahrzeuge', data); }
-  fw.toast('Gespeichert ✅');
-  navigate('dienste');
-};
-
-window.fahrzeugLoeschen = async (id) => {
-  if (!confirm('Fahrzeug wirklich löschen? Zugehörige Aufgaben bleiben erhalten.')) return;
-  await fw.deleteDoc('fahrzeuge/'+id);
-  fw.toast('Gelöscht');
-  navigate('dienste');
-};
-
-// ── Prüfaufgabe Form ──────────────────────────────────────
-registerPage('pruefaufgabe-form', async (el, {id, fahrzeugId: vorFahrzeugId}) => {
-  if (!fw.isWehrfuehrer()) { el.innerHTML = '<div class="empty">Keine Berechtigung</div>'; return; }
-  fw.setTitle(id ? 'Aufgabe bearbeiten' : 'Neue Aufgabe');
-  fw.showBack(() => navigateBack());
-
-  let aufgabe = null;
-  if (id) {
-    const snap = await fw.getDoc('pruefaufgaben/'+id);
-    if (snap.exists()) aufgabe = {id, ...snap.data()};
-  }
-
-  const letztesDatum = aufgabe?.letztesPruefDatum
-    ? (aufgabe.letztesPruefDatum.toDate ? aufgabe.letztesPruefDatum.toDate() : new Date(aufgabe.letztesPruefDatum)).toISOString().split('T')[0]
-    : '';
-
-  const fzSnap = await fw.getDocs('fahrzeuge', fw.orderBy('name','asc'));
-  const fahrzeuge = fzSnap.docs.map(d => ({id:d.id,...d.data()}));
-  const aktivFahrzeugId = aufgabe?.fahrzeugId || vorFahrzeugId || '';
-
-  el.innerHTML = `
-    <div class="card">
-      <div class="form-row">
-        <label>Fahrzeug</label>
-        <select id="pa-fz">
-          <option value="">– Bitte wählen –</option>
-          ${fahrzeuge.map(f => `<option value="${f.id}" ${aktivFahrzeugId===f.id?'selected':''}>${f.name}${f.bezeichnung?' ('+f.bezeichnung+')':''}</option>`).join('')}
-        </select>
-      </div>
-      <div class="form-row"><label>Bezeichnung</label><input id="pa-bez" value="${aufgabe?.bezeichnung||''}"></div>
-      <div class="form-row"><label>Intervall (Monate)</label><input id="pa-int" type="number" min="1" value="${aufgabe?.intervall||''}"></div>
-      <div class="form-row"><label>Letztes Prüfdatum</label><input id="pa-dat" type="date" value="${letztesDatum}"></div>
-      ${aufgabe?.ausgeblendet ? `<div style="margin-bottom:0.5rem"><button class="btn btn-secondary btn-full" onclick="pruefEinblenden('${id}')">👁 Wieder einblenden</button></div>` : ''}
-      <div class="btn-row" style="margin-top:0.5rem">
-        <button class="btn btn-primary" onclick="pruefaufgabeSpeichern('${id||''}')">💾 Speichern</button>
-        ${id ? `<button class="btn btn-danger" onclick="pruefaufgabeLoeschen('${id}')">🗑 Löschen</button>` : ''}
-      </div>
-    </div>
-  `;
-});
-
-window.pruefEinblenden = async (id) => {
-  await fw.setDoc('pruefaufgaben/'+id, { ausgeblendet: false });
-  fw.toast('Wieder eingeblendet ✅');
-  navigateBack();
-};
-
-window.pruefaufgabeSpeichern = async (id) => {
-  const fzId = document.getElementById('pa-fz').value;
-  const bez  = document.getElementById('pa-bez').value.trim();
-  const int  = parseInt(document.getElementById('pa-int').value) || null;
-  const datStr = document.getElementById('pa-dat').value;
-  if (!bez) { fw.toast('Bezeichnung fehlt', true); return; }
-  if (!fzId) { fw.toast('Fahrzeug fehlt', true); return; }
-  const data = { bezeichnung: bez, intervall: int, fahrzeugId: fzId, letztesPruefDatum: datStr ? new Date(datStr) : null };
-  if (id) { await fw.setDoc('pruefaufgaben/'+id, data); }
-  else    { await fw.addDoc('pruefaufgaben', data); }
-  fw.toast('Gespeichert ✅');
-  navigate('dienste');
-};
-
-window.pruefaufgabeLoeschen = async (id) => {
-  if (!confirm('Aufgabe wirklich löschen?')) return;
-  await fw.deleteDoc('pruefaufgaben/'+id);
-  fw.toast('Gelöscht');
-  navigate('dienste');
 };
 
 // ── Fahrzeug Form ─────────────────────────────────────────
