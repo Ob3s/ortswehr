@@ -1607,55 +1607,66 @@ registerPage('profil', async (el) => {
       <div class="stat-card"><div class="stat-zahl">${stats.einsaetze}</div><div class="stat-label">${stats.einsaetze===1?'Einsatz':'Einsätze'} ${new Date().getFullYear()}</div></div>
     </div>
 
-    <div class="section-header">Dienstlich</div>
-    <div class="card">
-      <div style="display:flex;gap:1.2rem;flex-wrap:wrap">
-        <div><div class="muted" style="font-size:0.72rem">Dienstgrad</div><div class="bold">${me.dienstgrad||'–'}</div></div>
-        <div><div class="muted" style="font-size:0.72rem">Eingetreten</div><div class="bold">${datum(me.eintrittsdatum)||'–'}</div></div>
-        <div><div class="muted" style="font-size:0.72rem">Ortswehr</div><div class="bold">${meineWehrNamen}</div></div>
-        ${me.fuehrerschein ? `<div><div class="muted" style="font-size:0.72rem">Führerschein</div><div class="bold">${me.fuehrerschein}</div></div>` : ''}
-      </div>
-      <hr>
-      <div class="card-title" style="margin-bottom:0.5rem">Lehrgänge</div>
-      ${renderQualisProfil(qualis, me)}
-      ${planung.length ? `
-        <div style="margin-top:0.5rem;padding-top:0.5rem">
-          ${planung.sort((a,b) => (a.datum||'').localeCompare(b.datum||'')).map((p,i) => `
-            <div style="display:flex;align-items:center;gap:0.5rem;padding:0.35rem 0;${i > 0 ? 'border-top:1px solid var(--border)' : ''}">
-              <div style="flex:1;font-size:0.85rem;color:var(--muted)">${p.lehrgang}</div>
-              <div style="font-size:0.78rem;color:var(--muted)">${p.datum ? (([y,m,d]) => `${d}.${m}.${y}`)(p.datum.split('-')) : String(p.jahr||'')} · geplant</div>
-              <button onclick="planungLoeschenDirekt('${p.id}')" class="btn btn-sm btn-danger">🗑</button>
+    <details class="card" style="padding:0">
+      <summary class="section-header" style="margin:1.2rem 0 0;padding:0.6rem 1rem;cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between">
+        <span>Meine Dienste (letzte 12 Monate)</span>
+        <span style="color:var(--muted);font-size:0.9rem">▾</span>
+      </summary>
+      <div style="padding:0 1rem 0.4rem">
+        ${diensteListe.length === 0 ? '<div class="empty" style="padding:0.6rem 0">Keine Dienste in den letzten 12 Monaten</div>' :
+          diensteListe.map(e => `
+            <div class="list-item" style="cursor:pointer" onclick="navigate('uebung-detail',{id:'${e.id}',typ:'dienst'})">
+              <div class="list-item-body">
+                <div class="list-item-title">${e.titel}</div>
+                <div class="list-item-sub">${datum(e.datum)}${e.art ? ' · '+dienstArtLabel(e.art) : ''}${e.relevant ? ' · <span style="color:#22c55e">40h</span>' : ''} · ${dauerFormat(e.dauer_h)}h</div>
+              </div>
             </div>`).join('')}
-        </div>` : ''}
-    </div>
+      </div>
+    </details>
 
-    <div class="section-header">Meine Dienste (letzte 12 Monate)</div>
-    <div class="card" style="padding:0">
-      ${diensteListe.length === 0 ? '<div class="empty" style="padding:1rem">Keine Dienste in den letzten 12 Monaten</div>' :
-        diensteListe.map(e => `
-          <div class="list-item" onclick="navigate('uebung-detail',{id:'${e.id}',typ:'dienst'})">
-            <div class="list-item-body">
-              <div class="list-item-title">${e.titel}</div>
-              <div class="list-item-sub">${datum(e.datum)}${e.art ? ' · '+dienstArtLabel(e.art) : ''}${e.relevant ? ' · <span style="color:#22c55e">40h</span>' : ''}</div>
-            </div>
-            <div class="list-item-right" style="font-size:0.82rem;color:var(--muted)">${dauerFormat(e.dauer_h)}h</div>
-            <div class="list-chevron">›</div>
-          </div>`).join('')}
-    </div>
+    <details class="card" style="padding:0">
+      <summary class="section-header" style="margin:1.2rem 0 0;padding:0.6rem 1rem;cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between">
+        <span>Meine Einsätze ${new Date().getFullYear()}</span>
+        <span style="color:var(--muted);font-size:0.9rem">▾</span>
+      </summary>
+      <div style="padding:0 1rem 0.4rem">
+        ${einsaetzeListe.length === 0 ? `<div class="empty" style="padding:0.6rem 0">Keine Einsätze ${new Date().getFullYear()}</div>` :
+          einsaetzeListe.map(e => `
+            <div class="list-item" style="cursor:pointer" onclick="navigate('uebung-detail',{id:'${e.id}',typ:'einsatz'})">
+              <div class="list-item-body">
+                <div class="list-item-title">${e.titel}</div>
+                <div class="list-item-sub">${datum(e.datum)} · ${dauerFormat(e.dauer_h)}h</div>
+              </div>
+            </div>`).join('')}
+      </div>
+    </details>
 
-    <div class="section-header">Meine Einsätze ${new Date().getFullYear()}</div>
-    <div class="card" style="padding:0">
-      ${einsaetzeListe.length === 0 ? `<div class="empty" style="padding:1rem">Keine Einsätze ${new Date().getFullYear()}</div>` :
-        einsaetzeListe.map(e => `
-          <div class="list-item" onclick="navigate('uebung-detail',{id:'${e.id}',typ:'einsatz'})">
-            <div class="list-item-body">
-              <div class="list-item-title">${e.titel}</div>
-              <div class="list-item-sub">${datum(e.datum)}</div>
-            </div>
-            <div class="list-item-right" style="font-size:0.82rem;color:var(--muted)">${dauerFormat(e.dauer_h)}h</div>
-            <div class="list-chevron">›</div>
-          </div>`).join('')}
-    </div>
+    <details class="card" style="padding:0">
+      <summary class="section-header" style="margin:1.2rem 0 0;padding:0.6rem 1rem;cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between">
+        <span>Dienstlich</span>
+        <span style="color:var(--muted);font-size:0.9rem">▾</span>
+      </summary>
+      <div style="padding:0 1rem 1rem">
+        <div style="display:flex;gap:1.2rem;flex-wrap:wrap">
+          <div><div class="muted" style="font-size:0.72rem">Dienstgrad</div><div class="bold">${me.dienstgrad||'–'}</div></div>
+          <div><div class="muted" style="font-size:0.72rem">Eingetreten</div><div class="bold">${datum(me.eintrittsdatum)||'–'}</div></div>
+          <div><div class="muted" style="font-size:0.72rem">Ortswehr</div><div class="bold">${meineWehrNamen}</div></div>
+          ${me.fuehrerschein ? `<div><div class="muted" style="font-size:0.72rem">Führerschein</div><div class="bold">${me.fuehrerschein}</div></div>` : ''}
+        </div>
+        <hr>
+        <div class="card-title" style="margin-bottom:0.5rem">Lehrgänge</div>
+        ${renderQualisProfil(qualis, me)}
+        ${planung.length ? `
+          <div style="margin-top:0.5rem;padding-top:0.5rem">
+            ${planung.sort((a,b) => (a.datum||'').localeCompare(b.datum||'')).map((p,i) => `
+              <div style="display:flex;align-items:center;gap:0.5rem;padding:0.35rem 0;${i > 0 ? 'border-top:1px solid var(--border)' : ''}">
+                <div style="flex:1;font-size:0.85rem;color:var(--muted)">${p.lehrgang}</div>
+                <div style="font-size:0.78rem;color:var(--muted)">${p.datum ? (([y,m,d]) => `${d}.${m}.${y}`)(p.datum.split('-')) : String(p.jahr||'')} · geplant</div>
+                <button onclick="planungLoeschenDirekt('${p.id}')" class="btn btn-sm btn-danger">🗑</button>
+              </div>`).join('')}
+          </div>` : ''}
+      </div>
+    </details>
 
     <div class="section-header">Passwort ändern</div>
     <div class="card">
