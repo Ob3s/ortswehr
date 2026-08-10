@@ -1,1 +1,1 @@
-[{"version": "20260810095541", "datum": "10.08.2026", "punkte": ["Fix: Klick auf Kommentar-\u00dcbersicht (\u00fcber den Fahrzeugen) springt jetzt direkt zur passenden Pr\u00fcfaufgabe"]}]
+[{"version": "20260810100418", "datum": "10.08.2026", "punkte": ["Fix: navigiereZuFahrzeug war nur auf der Kameraden-Seite definiert -> ReferenceError beim Klick von der Dienste-Seite aus behoben"]}]

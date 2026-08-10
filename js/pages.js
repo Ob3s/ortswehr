@@ -3,6 +3,22 @@ function waitFw(cb) { if (window.fw) cb(); else setTimeout(() => waitFw(cb), 50)
 
 waitFw(() => {
 
+// Global: von überall aufrufbar (Kamerad-Aufgaben, Fahrzeuge-Übersicht), nicht an eine Seite gebunden
+window.navigiereZuFahrzeug = (fahrzeugId) => {
+  // Falls wir bereits auf der Dienste-Seite sind, nicht neu laden – nur aufklappen/scrollen
+  const bereitsDa = !!document.getElementById('fz-pruef-details');
+  if (!bereitsDa) navigate('dienste');
+  // Nach dem (Neu-)Rendern das äußere und das richtige Fahrzeug-Accordion öffnen
+  if (fahrzeugId) {
+    setTimeout(() => {
+      const aussen = document.getElementById('fz-pruef-details');
+      if (aussen) aussen.open = true;
+      const el = document.querySelector(`details[data-fz-id="${fahrzeugId}"]`);
+      if (el) { el.open = true; el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    }, bereitsDa ? 0 : 600);
+  }
+};
+
 // ── Helpers ───────────────────────────────────────────────
 function datum(d) {
   if (!d) return '–';
@@ -2791,21 +2807,6 @@ registerPage('kameraden', async (el) => {
     navigate('kameraden');
   } catch(e) {
     fw.toast('Fehler: ' + e.message, true);
-  }
-};
-
-window.navigiereZuFahrzeug = (fahrzeugId) => {
-  // Falls wir bereits auf der Dienste-Seite sind, nicht neu laden – nur aufklappen/scrollen
-  const bereitsDa = !!document.getElementById('fz-pruef-details');
-  if (!bereitsDa) navigate('dienste');
-  // Nach dem (Neu-)Rendern das äußere und das richtige Fahrzeug-Accordion öffnen
-  if (fahrzeugId) {
-    setTimeout(() => {
-      const aussen = document.getElementById('fz-pruef-details');
-      if (aussen) aussen.open = true;
-      const el = document.querySelector(`details[data-fz-id="${fahrzeugId}"]`);
-      if (el) { el.open = true; el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
-    }, bereitsDa ? 0 : 600);
   }
 };
 
