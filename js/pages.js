@@ -55,8 +55,8 @@ function getStats(anwesenheiten, dienstMap, einsatzMap) {
   const jahrAkt = jetzt.getFullYear();
   const vor12m  = new Date(); vor12m.setFullYear(jetzt.getFullYear()-1); vor12m.setHours(0,0,0,0);
 
-  let gesamtEinsatz=0, gesamtDienst=0, einsaetze=0, dienste=0;
-  let dienstStundenJahr=0, dienstStunden12m=0;
+  let gesamtEinsatz=0, dienstRelevant=0, dienstIrrelevant=0, einsaetze=0, dienste=0;
+  let dienstStunden12m=0;
   for (const a of anwesenheiten) {
     if (a.status !== 'bestaetigt' && a.status !== 'kommt') continue;
     const dienstEintrag  = dienstMap?.get(a.uebungId)  || null;
@@ -66,21 +66,30 @@ function getStats(anwesenheiten, dienstMap, einsatzMap) {
     const istEinsatz = typNorm === 'einsatz' || (!a.typ && !!einsatzEintrag && !dienstEintrag);
     const h = eintrag?.dauer_h ?? a.dauer_h ?? 0;
     const d = a.datum?.toDate ? a.datum.toDate() : (eintrag?.datum?.toDate?.()  || new Date(a.datum));
+    // relevant: default true, explizit false nur wenn gesetzt
+    const istRelevant = eintrag?.relevant !== false;
 
     if (istEinsatz) {
       if (d.getFullYear() === jahrAkt) { gesamtEinsatz += h; einsaetze++; }
     } else {
-      if (d.getFullYear() === jahrAkt) { gesamtDienst += h; dienste++; dienstStundenJahr += h; }
-      if (d >= vor12m) { dienstStunden12m += h; }
+      if (d.getFullYear() === jahrAkt) {
+        dienste++;
+        if (istRelevant) dienstRelevant += h;
+        else             dienstIrrelevant += h;
+      }
+      if (d >= vor12m && istRelevant) dienstStunden12m += h;
     }
   }
+  const gesamtDienst = dienstRelevant + dienstIrrelevant;
   return {
-    gesamtEinsatz:  Math.round(gesamtEinsatz*10)/10,
-    gesamtDienst:   Math.round(gesamtDienst*10)/10,
+    gesamtEinsatz:    Math.round(gesamtEinsatz*10)/10,
+    gesamtDienst:     Math.round(gesamtDienst*10)/10,
+    dienstRelevant:   Math.round(dienstRelevant*10)/10,
+    dienstIrrelevant: Math.round(dienstIrrelevant*10)/10,
     einsaetze, dienste,
-    stunden12m: Math.round(dienstStundenJahr*10)/10,  // Anzeige: aktuelles Jahr
-    ziel: dienstStunden12m >= 40,                      // 40h-Ziel: letzte 12 Monate
-    stunden12mZiel: Math.round(dienstStunden12m*10)/10,
+    stunden12m:       Math.round(dienstRelevant*10)/10,  // aktuelles Jahr, nur relevante
+    ziel:             dienstStunden12m >= 40,
+    stunden12mZiel:   Math.round(dienstStunden12m*10)/10,
   };
 }
 
@@ -156,10 +165,18 @@ function initOrtAutocomplete(inputId, onSelect) {
 
 // ── Dienst-Sichtbarkeit ───────────────────────────────────
 function dienstSichtbar(d, profil, qualis) {
+  // Ortswehr-Filter: nur Dienste der eigenen Wehren anzeigen
+  // Wehrführer sieht immer alles
+  if (d.ortswehrIds?.length && profil?.rolle !== 'wehrfuehrer') {
+    const meineIds = profil?.ortswehrIds?.length ? profil.ortswehrIds
+      : (profil?.ortswehrId ? [profil.ortswehrId] : []);
+    // Wenn User keine Wehr zugeordnet: alle sehen
+    if (meineIds.length > 0 && !d.ortswehrIds.some(id => meineIds.includes(id))) return false;
+  }
   const titel = (d.titel || '').toLowerCase();
   const qs = (qualis || []).map(q => (q.bezeichnung || q.titel || q.name || '').toLowerCase());
   // AGT-Termine
-  const agtTitel = ['belastungslauf', 'wärmeübung', 'fortbildungstag agt'];
+  const agtTitel = (_dienstFilter?.agt || ['belastungslauf', 'wärmeübung', 'fortbildungstag agt']);
   if (agtTitel.some(t => titel.includes(t))) {
     return qs.some(q => q.includes('agt'));
   }
@@ -168,12 +185,12 @@ function dienstSichtbar(d, profil, qualis) {
     return qs.some(q => q.includes('maschinist'));
   }
   // Führungskräfte
-  const fuehTitel = ['führungskräfte', 'gruppenführersitzung', 'zugführersitzung', 'zug- und gruppenführer'];
+  const fuehTitel = (_dienstFilter?.fuehrung || ['führungskräfte', 'gruppenführersitzung', 'zugführersitzung', 'zug- und gruppenführer']);
   if (fuehTitel.some(t => titel.includes(t))) {
     const rolle = profil?.rolle || '';
     return ['gruppenführer','zugführer','wehrfuehrer'].includes(rolle);
   }
-  return true; // alle anderen sichtbar
+  return true;
 }
 // ── Nächste Dienste ──────────────────────────────────────
 function dienstKarte(d, label) {
@@ -231,8 +248,19 @@ ${renderNaechsteDienste(naechster, zweiter)}
 
     <div id="news-feed" style="margin-top:0.5rem"></div>
 
-    <div style="text-align:center;color:#374151;font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem">${document.querySelector('meta[name="app-version"]')?.content||''}</div>
+    <div style="text-align:center;color:#374151;font-size:0.7rem;margin-top:1.5rem;margin-bottom:0.5rem" id="version-display"></div>
   `;
+  // Versions-Anzeige: "App-Version · PWA-Version"
+  // Wenn die native App "-dev" im Namen hat, wird auch die PWA-Version mit "-dev" angezeigt
+  const pwaVersionRaw = document.querySelector('meta[name="app-version"]')?.content || '';
+  const appVersion = typeof window.AppInfo !== 'undefined' ? window.AppInfo.getVersion() : null;
+  const isDev = appVersion?.includes('-dev') || false;
+  const pwaVersion = pwaVersionRaw + (isDev ? '-dev' : '');
+  const versionEl = document.getElementById('version-display');
+  if (versionEl) {
+    versionEl.textContent = appVersion ? `${appVersion} · ${pwaVersion}` : pwaVersion;
+  }
+
   checkDeepLink();
   startStatusPruefung();
   ladeNewsFeed();
@@ -245,7 +273,7 @@ function renderNewsBeitrag(b, usersMap) {
   const gesamt = b.abstimmung?.optionen?.reduce((s,o) => s+(o.stimmen?.length||0), 0) || 0;
   const abstimmungHtml = b.abstimmung ? `
     <div style="margin-top:0.8rem;border-top:1px solid var(--border);padding-top:0.6rem">
-      <div style="font-weight:600;font-size:0.88rem;margin-bottom:0.6rem">🗳️ ${b.abstimmung.frage}</div>
+      <div style="font-weight:600;font-size:0.88rem;margin-bottom:0.6rem">${b.abstimmung.frage}</div>
       ${b.abstimmung.optionen.map((o,i) => {
         const pct = gesamt ? Math.round(((o.stimmen||[]).length)/gesamt*100) : 0;
         const meineStimme = (o.stimmen||[]).includes(fw.user.uid);
@@ -284,7 +312,10 @@ function renderNewsBeitrag(b, usersMap) {
     ${b.pdf ? `<a href="${b.pdf.url}" target="_blank" style="display:inline-flex;align-items:center;gap:0.4rem;margin-top:0.5rem;padding:0.4rem 0.8rem;background:var(--panel2);border:1px solid var(--border);border-radius:8px;font-size:0.82rem;color:var(--blue);text-decoration:none;max-width:100%;overflow:hidden">📄 <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px">${b.pdf.name}</span></a>` : ''}
     ${abstimmungHtml}
     <div style="font-size:0.72rem;color:var(--muted);margin-top:0.5rem">${datum(b.erstelltAm)}</div>
-    ${fw.isWehrfuehrer() ? `<button onclick="newsLoeschen('${b.id}')" style="background:none;border:none;color:#9ca3af;font-size:0.75rem;cursor:pointer;padding:0;margin-top:0.3rem">🗑 Löschen</button>` : ''}
+    ${fw.isWehrfuehrer() ? `<div style="margin-top:0.3rem;display:flex;gap:0.8rem">
+      <button onclick="newsLoeschen('${b.id}')" style="background:none;border:none;color:#9ca3af;font-size:0.75rem;cursor:pointer;padding:0">Löschen</button>
+      <button onclick="newsArchivieren('${b.id}',${!b.archiviert})" style="background:none;border:none;color:#9ca3af;font-size:0.75rem;cursor:pointer;padding:0">${b.archiviert ? 'Wiederherstellen' : 'Archivieren'}</button>
+    </div>` : ''}
     <div style="margin-top:0.7rem;border-top:1px solid var(--border);padding-top:0.6rem">
       <div id="kommentare-${b.id}" style="margin-bottom:0.4rem">
         ${(b.kommentare||[]).map(k => {
@@ -346,14 +377,47 @@ async function ladeNewsFeed() {
 
   // Live-Listener auf news
   _newsFeedListener = fw.onQuerySnapshot('news', snap => {
-    const beitraege = snap.docs
+    const jetzt = Date.now();
+    const dreissigTage = 30 * 24 * 60 * 60 * 1000;
+    const meineWehrIds = fw.profil.ortswehrIds?.length ? fw.profil.ortswehrIds : (fw.profil.ortswehrId ? [fw.profil.ortswehrId] : []);
+    const alle = snap.docs
       .map(d => ({id:d.id,...d.data()}))
+      .filter(d => !d.ortswehrIds?.length || d.ortswehrIds.some(id => meineWehrIds.includes(id)) || fw.isWehrfuehrer())
       .sort((a,b) => (b.erstelltAm?.toMillis?.() || 0) - (a.erstelltAm?.toMillis?.() || 0));
-    if (!beitraege.length) {
+
+    // Automatisch archivieren wenn älter als 30 Tage
+    alle.forEach(b => {
+      if (!b.archiviert && b.erstelltAm?.toMillis && (jetzt - b.erstelltAm.toMillis()) > dreissigTage) {
+        fw.updateDoc('news/'+b.id, { archiviert: true });
+      }
+    });
+    const aktiv     = alle.filter(b => !b.archiviert);
+    const archiviert = alle.filter(b => b.archiviert);
+
+    if (!aktiv.length && !archiviert.length) {
       el.innerHTML = header + '<div class="card" style="color:var(--muted);font-size:0.88rem">Noch keine Neuigkeiten.</div>';
       return;
     }
-    el.innerHTML = header + beitraege.map(b => renderNewsBeitrag(b, usersMap)).join('');
+
+    let html = header;
+    if (aktiv.length === 0) {
+      html += '<div class="card" style="color:var(--muted);font-size:0.88rem">Keine neuen Neuigkeiten.</div>';
+    } else {
+      html += aktiv.map(b => renderNewsBeitrag(b, usersMap)).join('');
+    }
+
+    if (archiviert.length) {
+      html += `<details style="margin-top:0.5rem">
+        <summary style="font-size:0.85rem;color:var(--muted);cursor:pointer;padding:0.4rem 0">
+          Archiv (${archiviert.length})
+        </summary>
+        <div style="margin-top:0.4rem">
+          ${archiviert.map(b => renderNewsBeitrag(b, usersMap)).join('')}
+        </div>
+      </details>`;
+    }
+
+    el.innerHTML = html;
   });
 }
 
@@ -380,6 +444,11 @@ window.newsAbstimmen = async (newsId, optionIndex) => {
     'abstimmung.aenderungen': aenderungen,
   });
   ladeNewsFeed();
+};
+
+window.newsArchivieren = async (id, archiviert) => {
+  await fw.updateDoc('news/'+id, { archiviert });
+  fw.toast(archiviert ? 'Archiviert 📦' : 'Wiederhergestellt ✅');
 };
 
 window.newsLoeschen = async (id) => {
@@ -415,7 +484,11 @@ window.zeigeStatusDetail = () => {
             <div style="font-size:0.75rem;color:var(--muted)">${s.info}</div>
           </div>
         </div>`).join('')}
-      <button onclick="document.getElementById('status-modal').remove()" style="margin-top:1rem;width:100%;padding:0.6rem;background:var(--panel2);border:none;border-radius:8px;color:var(--text);cursor:pointer;font-size:0.9rem">Schließen</button>
+      ${_statusDetails.some(s => s.label === 'Push-Token' && !s.ok) ? `
+        <button onclick="tokenErneuern(this)" style="margin-top:0.8rem;width:100%;padding:0.5rem;background:var(--red);border:none;border-radius:8px;color:#fff;cursor:pointer;font-size:0.88rem;font-weight:600">
+          Token erneuern
+        </button>` : ''}
+      <button onclick="document.getElementById('status-modal').remove()" style="margin-top:0.5rem;width:100%;padding:0.6rem;background:var(--panel2);border:none;border-radius:8px;color:var(--text);cursor:pointer;font-size:0.9rem">Schließen</button>
     </div>`;
   document.body.appendChild(modal);
 };
@@ -423,62 +496,133 @@ window.zeigeStatusDetail = () => {
 async function pruefeStatus() {
   const lampe = document.getElementById('status-lampe');
   if (!lampe) return;
-  const online   = navigator.onLine;
-  const notifOk  = Notification.permission === 'granted';
-  const snap     = await fw.getDoc('users/'+fw.user.uid);
-  const tokenOk  = !!(snap.data()?.fcmToken);
+  if (!fw.user) return; // noch nicht eingeloggt
 
-  // FCM-Token validieren und ggf. erneuern
-  let tokenFrisch = tokenOk;
-  let tokenInfo = tokenOk ? 'Token vorhanden' : 'Kein Token gespeichert';
-  if (online && notifOk && tokenOk && fw.messaging) {
-    try {
-      const swReg = await navigator.serviceWorker.getRegistration('/firebase-messaging-sw.js');
-      if (swReg) {
-        const { getToken } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging.js');
-        const aktuellerToken = await getToken(fw.messaging, { vapidKey: fw._vapid, serviceWorkerRegistration: swReg });
-        if (aktuellerToken && aktuellerToken !== snap.data()?.fcmToken) {
-          await fw.setDoc('users/'+fw.user.uid, { fcmToken: aktuellerToken });
-          if (fw.profil) fw.profil.fcmToken = aktuellerToken;
-          tokenInfo = 'Token erneuert ✓';
-          console.log('Status-Check: FCM Token erneuert');
-        } else if (aktuellerToken) {
-          tokenInfo = 'Token gültig ✓';
-        }
-        tokenFrisch = !!aktuellerToken;
-      }
-    } catch(e) { tokenInfo = 'Token-Prüfung fehlgeschlagen'; }
-  }
+  try {
+    const online = navigator.onLine;
+    const istNativeApp = typeof AppInfo !== 'undefined';
 
-  const allesOk = online && notifOk && tokenFrisch;
-  const grund   = !online ? 'Kein Internet' : !notifOk ? 'Benachrichtigungen nicht erlaubt' : 'Kein Push-Token';
-
-  // Detail-Status für Modal
-  _statusDetails = [
-    { label: 'Internetverbindung', ok: online, info: online ? 'Verbunden' : 'Nicht verbunden' },
-    { label: 'Benachrichtigungen', ok: notifOk, info: notifOk ? 'Erlaubt' : 'Berechtigung verweigert' },
-    { label: 'Push-Token', ok: tokenFrisch, info: tokenInfo },
-  ];
-
-  lampe.style.background = allesOk ? '#22c55e' : '#ef4444';
-  lampe.style.boxShadow  = `0 0 6px ${allesOk ? '#22c55e' : '#ef4444'}`;
-  lampe.title = allesOk ? 'Alles bereit – tippen für Details' : grund;
-
-  if (allesOk) {
-    _statusWarnungGesendet = false;
-  } else if (!_statusWarnungGesendet && fw.profil?.notif_status !== false) {
-    _statusWarnungGesendet = true;
-    if (Notification.permission === 'granted') {
-      new Notification('⚠️ Ortswehr – Problem erkannt', {
-        body: grund + ' – Einsatzalarme können möglicherweise nicht empfangen werden!',
-        icon: '/ortswehr/icons/icon-192.png',
-        tag: 'status-warnung',
-        requireInteraction: true,
-      });
+    // 1. Benachrichtigungen
+    let notifOk = false, notifInfo = '';
+    if (istNativeApp) {
+      // Native: prüfe ob FCM-Bridge vorhanden ist
+      notifOk = typeof window.AlarmSettings !== 'undefined';
+      notifInfo = notifOk ? 'App-Benachrichtigungen aktiv' : 'AlarmSettings Bridge fehlt';
+    } else {
+      const notifPerm = typeof Notification !== 'undefined' ? Notification.permission : 'default';
+      notifOk = notifPerm === 'granted';
+      notifInfo = notifOk ? 'Erlaubt' : notifPerm === 'denied' ? 'Verweigert – in Browser-Einstellungen aktivieren' : 'Noch nicht erlaubt';
     }
+
+    // 2. Token
+    const snap = await fw.getDoc('users/' + fw.user.uid);
+    const gespeicherterToken = snap.data()?.fcmToken || null;
+    let tokenOk = !!gespeicherterToken;
+    let tokenInfo = tokenOk ? 'Vorhanden ✓' : 'Fehlt – bitte erneuern';
+
+    if (!istNativeApp && online && notifOk && fw.messaging) {
+      try {
+        const swReg = await navigator.serviceWorker.getRegistration('/ortswehr/sw.js')
+          || await navigator.serviceWorker.ready;
+        if (swReg) {
+          const { getToken } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging.js');
+          const aktuellerToken = await getToken(fw.messaging, { vapidKey: fw._vapid, serviceWorkerRegistration: swReg });
+          if (aktuellerToken && aktuellerToken !== gespeicherterToken) {
+            await fw.setDoc('users/' + fw.user.uid, { fcmToken: aktuellerToken });
+            if (fw.profil) fw.profil.fcmToken = aktuellerToken;
+            tokenInfo = 'Erneuert ✓';
+          } else if (aktuellerToken) {
+            tokenInfo = 'Gültig ✓';
+          }
+          tokenOk = !!aktuellerToken;
+        }
+      } catch(e) { tokenInfo = 'Prüfung fehlgeschlagen: ' + e.message; }
+    }
+
+    // 3. Akkuoptimierung (native)
+    let akkuOk = true, akkuInfo = 'Nicht relevant (PWA)';
+    if (istNativeApp) {
+      try {
+        const pm = window.PowerManager;
+        akkuOk = pm ? pm.isIgnoringBatteryOptimizations() : true;
+        akkuInfo = akkuOk ? 'Deaktiviert ✓' : 'Aktiv – Alarme können verzögert werden!';
+      } catch(e) { akkuInfo = 'Unbekannt'; }
+    }
+
+    const allesOk = online && notifOk && tokenOk && (istNativeApp ? akkuOk : true);
+    const grund = !online ? 'Kein Internet' : !notifOk ? 'Benachrichtigungen gesperrt' : !tokenOk ? 'Kein Push-Token' : 'Akkuoptimierung aktiv';
+
+    // Alle 4 Punkte immer anzeigen
+    _statusDetails = [
+      { label: 'Internet',            ok: online,   info: online ? 'Verbunden' : 'Nicht verbunden' },
+      { label: 'Benachrichtigungen',  ok: notifOk,  info: notifInfo },
+      { label: 'Push-Token',          ok: tokenOk,  info: tokenInfo },
+      { label: 'Akkuoptimierung',     ok: istNativeApp ? akkuOk : true,
+        info: istNativeApp ? akkuInfo : 'Nicht relevant (PWA)' },
+    ];
+
+    lampe.style.background = allesOk ? '#22c55e' : '#ef4444';
+    lampe.style.boxShadow  = `0 0 6px ${allesOk ? '#22c55e' : '#ef4444'}`;
+    lampe.title = allesOk ? 'Alles bereit – tippen für Details' : grund;
+
+    if (allesOk) {
+      _statusWarnungGesendet = false;
+    } else if (!_statusWarnungGesendet && fw.profil?.notif_status !== false) {
+      _statusWarnungGesendet = true;
+      if (typeof Notification !== 'undefined' && Notification.permission === 'granted') {
+        new Notification('⚠️ Ortswehr – Problem erkannt', {
+          body: grund + ' – Einsatzalarme können möglicherweise nicht empfangen werden!',
+          icon: '/ortswehr/icons/icon-192.png',
+          tag: 'status-warnung',
+          requireInteraction: true,
+        });
+      }
+    }
+    _letzterStatus = allesOk;
+  } catch(e) {
+    console.error('Status-Check Fehler:', e.message);
+    // Lampe grau lassen bei Fehler
   }
-  _letzterStatus = allesOk;
 }
+
+window.tokenErneuern = async (btn) => {
+  btn.disabled = true;
+  btn.textContent = '⏳ Wird erneuert…';
+  try {
+    const istNativeApp = typeof window.AppInfo !== 'undefined';
+    if (istNativeApp) {
+      // Native: Token über FCM anfordern – App neu starten ist der zuverlässigste Weg
+      // Aber wir können versuchen den Token aus der Bridge zu holen
+      if (window.AlarmSettings?.getFcmToken) {
+        const token = window.AlarmSettings.getFcmToken();
+        if (token) {
+          await fw.setDoc('users/'+fw.user.uid, { fcmToken: token });
+          fw.toast('Token gespeichert ✅');
+          document.getElementById('status-modal')?.remove();
+          await pruefeStatus();
+          return;
+        }
+      }
+      fw.toast('Bitte App neu starten um Token zu erneuern', true);
+    } else {
+      // PWA: Token über Messaging API holen
+      const swReg = await navigator.serviceWorker.getRegistration('/ortswehr/sw.js')
+        || await navigator.serviceWorker.ready;
+      if (!swReg) throw new Error('Service Worker nicht registriert');
+      const { getToken } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging.js');
+      const token = await getToken(fw.messaging, { vapidKey: fw._vapid, serviceWorkerRegistration: swReg });
+      if (!token) throw new Error('Kein Token erhalten – Benachrichtigungen erlaubt?');
+      await fw.setDoc('users/'+fw.user.uid, { fcmToken: token });
+      fw.toast('Token erneuert ✅');
+      document.getElementById('status-modal')?.remove();
+      await pruefeStatus();
+    }
+  } catch(e) {
+    fw.toast('Fehler: ' + e.message, true);
+    btn.disabled = false;
+    btn.textContent = 'Token erneuern';
+  }
+};
 
 function startStatusPruefung() {
   pruefeStatus();
@@ -496,9 +640,10 @@ function renderEintrag(u, meineMap) {
   const morgen = new Date(heute); morgen.setDate(heute.getDate()+1);
   const istHeute = u.typ === 'einsatz' && d >= heute && d < morgen;
   const highlightStyle = istHeute ? 'border-left:3px solid var(--red);padding-left:0.5rem;background:rgba(220,38,38,0.08);' : '';
+  const nichtRelevantBadge = ''; // nicht relevant wird nicht in der Liste angezeigt
   return `<div class="list-item" onclick="navigate('uebung-detail',{id:'${u.id}',typ:'${u.typ}'})" style="${highlightStyle}">
     <div class="list-item-body">
-      <div class="list-item-title">${istHeute ? '🚨 ' : ''}${u.titel}</div>
+      <div class="list-item-title">${istHeute ? '🚨 ' : ''}${u.titel}${nichtRelevantBadge}</div>
       ${u.ort ? `<div class="list-item-sub" style="margin-top:0.05rem">📍 ${u.ort}</div>` : ''}
       <div class="list-item-sub">${datum(u.datum)}${zeitZeile(u) ? ' · '+zeitZeile(u) : ''}</div>
     </div>
@@ -656,6 +801,7 @@ registerPage('einsaetze', async (el) => {
 // ── Dienste ───────────────────────────────────────────────
 registerPage('dienste', async (el) => {
   fw.setTitle('Dienste');
+  await ladeDienstFilter();
   if (fw.isWehrfuehrer()) fw.showHeaderAction('+ Dienst', () => navigate('uebung-form', {typ:'dienst'}));
   const [uSnap, aSnap, dQualiSnap] = await Promise.all([
     fw.getDocs('dienste', fw.orderBy('datum','desc')),
@@ -663,17 +809,26 @@ registerPage('dienste', async (el) => {
     fw.getDocs('users/'+fw.user.uid+'/qualifikationen'),
   ]);
   const dQualis  = dQualiSnap.docs.map(d => d.data());
+  const istMaschinist = dQualis.some(q => (q.bezeichnung||'').toLowerCase().includes('maschinist'));
   const liste    = uSnap.docs.map(d => ({id:d.id,...d.data()})).filter(d => dienstSichtbar(d, fw.profil, dQualis));
   const meineMap = new Map(aSnap.docs.map(d => [d.data().uebungId, d.data().status]));
   el.innerHTML = `
     <div class="card">${renderEintragListe(liste, meineMap)}</div>
+    ${(fw.isWehrfuehrer() || istMaschinist) ? `
+    <details id="fz-pruef-details" class="card" style="margin-top:0.8rem;padding:0">
+      <summary style="font-weight:600;cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;padding:0.4rem 0.8rem;font-size:13px;border-radius:8px">
+        <span>🔧 Fahrzeug- und Geräteprüfungen</span>
+        <span style="color:var(--muted)">▾</span>
+      </summary>
+      <div id="pruef-inline" style="padding:0 0.8rem 0.8rem">⏳ Lade...</div>
+    </details>` : ''}
     ${fw.isWehrfuehrer() ? `
-    <div style="margin-top:1rem">
-      <button class="btn btn-secondary btn-full" onclick="kalenderImportieren()" id="kal-btn">📅 Aus Google Kalender importieren</button>
+    <div style="margin-top:0.8rem">
+      <button class="btn btn-secondary btn-sm btn-full" onclick="kalenderImportieren()" id="kal-btn">📅 Aus Google Kalender importieren</button>
       <div id="kal-status" class="muted" style="font-size:0.8rem;text-align:center;margin-top:0.4rem"></div>
     </div>` : ''}
-
   `;
+  if (fw.isWehrfuehrer() || istMaschinist) ladePruefaufgabenInline();
 });
 
 window.kalenderImportieren = async () => {
@@ -790,12 +945,16 @@ let _einsatzListener = null; // aktiver onSnapshot Listener
 registerPage('uebung-detail', async (el, {id, typ}) => {
   // alten Listener aufräumen
   if (_einsatzListener) { _einsatzListener(); _einsatzListener = null; }
-  const snap = await fw.getDoc(col(typ||'dienst')+'/'+id);
+  const [snap, owSnap] = await Promise.all([
+    fw.getDoc(col(typ||'dienst')+'/'+id),
+    fw.getDocs('ortswehren'),
+  ]);
   if (!snap.exists()) { el.innerHTML='<div class="empty">Nicht gefunden</div>'; return; }
   const u = {id,...snap.data()};
+  const owMap = new Map(owSnap.docs.map(d => [d.id, d.data().name]));
   const isEinsatz = u.typ === 'einsatz';
   fw.setTitle(isEinsatz ? 'Einsatz' : 'Dienst');
-  fw.showBack(() => navigate(u.typ === 'einsatz' ? 'einsaetze' : 'dienste'));
+  fw.showBack(() => navigate(isEinsatz ? 'einsaetze' : 'dienste'));
   if (fw.isWehrfuehrer()) fw.showHeaderAction('✏️ Edit', () => navigate('uebung-form',{id, typ: u.typ}));
 
   const aSnap = await fw.getDocs('anwesenheiten',
@@ -809,35 +968,35 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
 
   el.innerHTML = `
     <div class="card">
-      <span class="badge badge-blue">${isEinsatz?'⚡ Einsatz':'📅 Dienst'}</span>
-      <div style="margin-top:0.6rem;font-weight:600;font-size:1.1rem">${u.titel}</div>
-      <div style="margin-top:0.3rem;color:var(--muted);font-size:0.85rem">${datum(u.datum)}${zeitZeile(u) ? ' · '+zeitZeile(u) : ''}</div>
+      <div style="font-weight:600;font-size:1.1rem">${u.titel}</div>
+      <div style="margin-top:0.3rem;color:var(--muted);font-size:0.85rem">${datum(u.datum)}${zeitZeile(u) ? ' · '+zeitZeile(u) : ''}${!isEinsatz && u.relevant !== false ? ' · <span style="color:#22c55e;font-weight:600">40h</span>' : ''}</div>
       ${u.beschreibung ? `<p class="muted" style="margin-top:0.4rem;font-size:0.85rem">${u.beschreibung}</p>` : ''}
-      ${u.ort ? `<div style="margin-top:0.5rem;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
+      ${u.ortswehrIds?.length > 1 ? `<div style="margin-top:0.4rem;font-size:0.78rem;color:var(--muted)">Beteiligte Wehren: ${u.ortswehrIds.map(id => owMap.get(id)||id).join(', ')}</div>` : ''}
+      <div id="ort-anzeige">${u.ort ? `<div style="margin-top:0.5rem;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
         <span style="font-size:0.85rem">📍 ${u.ort}</span>
         ${isEinsatz ? `<a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(u.ort)}" target="_blank"
           style="font-size:0.75rem;padding:0.2rem 0.6rem;background:var(--panel2);border-radius:20px;color:var(--blue);text-decoration:none;border:1px solid var(--border)">
           🗺 Navigation
         </a>` : ''}
-      </div>` : ''}
+      </div>` : ''}</div>
       ${isEinsatz && !u.zeitEnde && fw.isWehrfuehrer() ? `
         <button class="btn btn-secondary btn-sm" style="margin-top:0.6rem" onclick="navigate('uebung-form',{id:'${u.id}',typ:'einsatz'})">⏱ Endzeit nachtragen</button>
       ` : ''}
-      ${isEinsatz && !u.ort && fw.isWehrfuehrer() ? `
-        <div class="ac-wrapper" style="display:flex;gap:0.5rem;margin-top:0.6rem;align-items:center;position:relative">
+      ${isEinsatz && !u.ort ? `
+        <div id="ort-inline-wrapper" class="ac-wrapper" style="display:flex;gap:0.5rem;margin-top:0.6rem;align-items:center;position:relative">
           <input id="ort-inline" placeholder="Adresse eintragen…" style="flex:1;font-size:0.85rem">
           <button class="btn btn-secondary btn-sm" onclick="ortSpeichern('${u.id}')">📍 Speichern</button>
         </div>
       ` : ''}
     </div>
-    <div class="section-header">Wer kommt? <span id="einsatz-zaehler" style="font-weight:400;font-size:0.85rem"></span></div>
+    <div class="section-header"><span id="einsatz-zaehler" style="font-weight:400;font-size:0.85rem"></span></div>
     <div id="einsatz-reaktionen" class="card">⏳ Lade...</div>
     <div class="card" style="display:flex;gap:0.8rem">
       <button class="btn btn-full" id="btn-kommt"
-        style="background:#16a34a;color:#fff;font-size:1.1rem;padding:0.8rem"
+        style="background:#16a34a;color:#fff;font-size:1rem;padding:0.6rem"
         onclick="einsatzReagieren('${id}','kommt')">👍 Ich komme</button>
       <button class="btn btn-full" id="btn-kommt-nicht"
-        style="background:#dc2626;color:#fff;font-size:1.1rem;padding:0.8rem"
+        style="background:#dc2626;color:#fff;font-size:1rem;padding:0.6rem"
         onclick="einsatzReagieren('${id}','kommt_nicht')">👎 Komme nicht</button>
     </div>
     ${fw.isWehrfuehrer() ? `<div style="padding:0 0 0.5rem">${eintragBtn}</div>` : ''}
@@ -845,6 +1004,29 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
 
   // Autocomplete für inline Adress-Eingabe (Detail-Seite, kein <script> in innerHTML)
   requestAnimationFrame(() => initOrtAutocomplete('ort-inline'));
+
+  // Live: Ort-Änderungen anderer Geräte sofort anzeigen
+  if (isEinsatz) {
+    const _ortListener = fw.onDocSnapshot('einsaetze/'+id, (snap) => {
+      if (!snap.exists()) return;
+      const live = snap.data();
+      const ortAnzeige = document.getElementById('ort-anzeige');
+      if (!ortAnzeige) { _ortListener(); return; }
+      if (live.ort) {
+        ortAnzeige.innerHTML = `<div style="margin-top:0.5rem;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
+          <span style="font-size:0.85rem">📍 ${live.ort}</span>
+          <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(live.ort)}" target="_blank"
+            style="font-size:0.75rem;padding:0.2rem 0.6rem;background:var(--panel2);border-radius:20px;color:var(--blue);text-decoration:none;border:1px solid var(--border)">
+            🗺 Navigation
+          </a>
+        </div>`;
+        document.getElementById('ort-inline-wrapper')?.remove();
+      }
+    });
+    // Listener beim Seitenwechsel aufräumen
+    const _origEinsatzListener = window._einsatzListener;
+    window._einsatzListener = () => { _ortListener(); if (_origEinsatzListener) _origEinsatzListener(); };
+  }
 
   // Live-Listener für Reaktionen (Einsatz + Dienst)
   if (true) {
@@ -881,7 +1063,7 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
         const alle = snap.docs.map(d => {
           const a = {id:d.id,...d.data()};
           const profil = usersMap.get(a.userId) || {};
-          a.rolle         = profil.staerkeRolle || profil['stärkeRolle'] || profil.rolle || a.rolle || 'kamerad';
+          a.rolle         = profil.staerkeRolle || profil.rolle || a.rolle || 'kamerad';
           a.fuehrerschein = profil.fuehrerschein || a.fuehrerschein || '';
           return a;
         });
@@ -951,7 +1133,7 @@ window.teilnehmerEntfernen = async (aId, uebungId, typ) => {
 // ── Kamerad direkt eintragen ──────────────────────────────
 registerPage('uebung-eintragen', async (el, {id, titel, dauer, typ, datumStr}) => {
   fw.setTitle('Eintragen');
-  fw.showBack(() => navigate('uebung-detail',{id, typ}));
+  fw.showBack(() => navigateBack());
   const [usersSnap, bereitsSnap] = await Promise.all([
     fw.getDocs('users'),
     fw.getDocs('anwesenheiten', fw.where('uebungId','==',id)),
@@ -998,7 +1180,7 @@ registerPage('uebung-form', async (el, {id, typ: vorTyp, alarm: mitAlarm}) => {
   const selTyp = u?.typ || vorTyp || 'dienst';
   const isEinsatz = selTyp === 'einsatz';
   fw.setTitle(u ? 'Bearbeiten' : (isEinsatz ? 'Einsatz melden' : 'Neuer Dienst'));
-  fw.showBack(() => navigate(selTyp === 'einsatz' ? 'einsaetze' : 'dienste'));
+  fw.showBack(() => navigateBack());
 
   const datumVal = u?.datum?.toDate ? u.datum.toDate().toISOString().slice(0,10)
     : new Date().toISOString().slice(0,10);
@@ -1009,30 +1191,38 @@ registerPage('uebung-form', async (el, {id, typ: vorTyp, alarm: mitAlarm}) => {
     const jetztZeit = `${jetztH}:${jetztM}`;
     el.innerHTML = `
       <div class="card">
-        <div style="font-family:'DM Serif Display',serif;font-size:1.3rem;color:var(--red);margin-bottom:1rem">🚨 Einsatz</div>
-        <div class="form-row">
-          <label>Einsatzstichwort</label>
-          <input id="f-titel" value="${u?.titel||''}" placeholder="Brand, THL, Hilfeleistung…" autofocus>
-        </div>
-        <div class="form-row">
-          <label>Beginn</label>
-          <input id="f-beginn" type="time" value="${u?.zeitBeginn||jetztZeit}">
-        </div>
-        <div class="form-row">
-          <label>Ende (optional, kann nachgetragen werden)</label>
-          <input id="f-ende" type="time" value="${u?.zeitEnde||''}">
-        </div>
-        <div class="form-row ac-wrapper" style="position:relative">
-          <label>Einsatzort / Adresse (optional)</label>
-          <input id="f-ort" value="${u?.ort||''}" placeholder="Hauptstr. 12, Oegeln">
-        </div>
+        <div style="font-family:'DM Serif Display',serif;font-size:1.3rem;color:var(--red);margin-bottom:0.75rem">🚨 Einsatz</div>
         <input type="hidden" id="f-alarm" value="${mitAlarm ? '1' : '0'}">
-        <div class="btn-row" style="margin-top:0.5rem">
+        <div class="btn-row" style="margin-top:0;margin-bottom:0.75rem">
           <button class="btn btn-primary btn-full" onclick="uebungSpeichern('${id||''}','einsatz')">${u ? '💾 Speichern' : mitAlarm ? '🚨 Einsatz melden & Alarm senden' : '💾 Einsatz speichern'}</button>
           ${u ? `<button class="btn btn-danger" onclick="uebungLoeschen('${id}','einsatz')">🗑 Löschen</button>` : ''}
         </div>
-        ${u ? `<button class="btn btn-secondary btn-full" style="margin-top:0.5rem" onclick="einsatzNachbenachrichtigen('${id}')">🔔 Benachrichtigung erneut senden</button>` : ''}
-      </div>`;
+        ${u ? `<button class="btn btn-secondary btn-full" style="margin-bottom:0.75rem" onclick="einsatzNachbenachrichtigen('${id}')">🔔 Benachrichtigung erneut senden</button>` : ''}
+        <input id="f-titel" value="${u?.titel||''}" placeholder="Einsatzstichwort" style="margin-bottom:0.5rem" autofocus>
+        ${u ? `<div class="form-row" style="margin-bottom:0.5rem"><label>Datum</label><input id="f-datum" type="date" value="${datumVal}"></div>` : ''}
+        <div class="ac-wrapper" style="position:relative;margin-bottom:0.5rem">
+          <input id="f-ort" value="${u?.ort||''}" placeholder="Einsatzort / Adresse (optional)">
+        </div>
+        ${await (async () => {
+          const owSnap3 = await fw.getDocs('ortswehren');
+          const wehren3 = owSnap3.docs.map(d => ({id:d.id,...d.data()}));
+          if (wehren3.length <= 1) return '';
+          const aktiveIds = u?.ortswehrIds || (fw.profil.ortswehrIds || []);
+          return `<div style="margin-bottom:0.5rem"><label style="font-size:0.82rem;color:var(--muted)">Beteiligte Wehren</label>
+            <div style="display:flex;flex-wrap:wrap;gap:0.4rem;margin-top:0.2rem">
+              ${wehren3.map(w => `<label style="display:flex;align-items:center;gap:0.3rem;font-size:0.82rem;cursor:pointer;background:var(--panel2);border:1px solid var(--border);border-radius:6px;padding:0.2rem 0.5rem">
+                <input type="checkbox" class="f-wehr-cb" value="${w.id}" ${aktiveIds.includes(w.id)?'checked':''} style="width:0.9rem;height:0.9rem;accent-color:var(--red)">
+                ${w.name}
+              </label>`).join('')}
+            </div>
+          </div>`;
+        })()}
+        <div style="display:flex;gap:0.5rem">
+          <input id="f-beginn" type="time" value="${u?.zeitBeginn||jetztZeit}" style="flex:1">
+          <input id="f-ende" type="time" value="${u?.zeitEnde||''}" placeholder="Ende (optional)" style="flex:1">
+        </div>
+      </div>
+`;
     requestAnimationFrame(() => setTimeout(() => initOrtAutocomplete('f-ort'), 50));
   } else {
     // Dienst: vollständiges Formular
@@ -1053,8 +1243,27 @@ registerPage('uebung-form', async (el, {id, typ: vorTyp, alarm: mitAlarm}) => {
         <div class="form-row"><label>Ort (optional)</label>
           <input id="f-ort" value="${u?.ort||''}" placeholder="Gerätehaus Oegeln">
         </div>
+        ${await (async () => {
+          const owSnap2 = await fw.getDocs('ortswehren');
+          const wehren2 = owSnap2.docs.map(d => ({id:d.id,...d.data()}));
+          if (wehren2.length <= 1) return '';
+          const aktiveIds = u?.ortswehrIds || (u?.ortswehrId ? [u.ortswehrId] : (fw.profil.ortswehrIds || []));
+          return `<div class="form-row"><label>Beteiligte Ortswehren</label>
+            <div style="display:flex;flex-direction:column;gap:0.3rem;margin-top:0.2rem">
+              ${wehren2.map(w => `<label style="display:flex;align-items:center;gap:0.5rem;font-size:0.88rem;cursor:pointer">
+                <input type="checkbox" class="f-wehr-cb" value="${w.id}" ${aktiveIds.includes(w.id)?'checked':''} style="width:1rem;height:1rem;accent-color:var(--red)">
+                ${w.name}
+              </label>`).join('')}
+            </div>
+          </div>`;
+        })()}
+        ${fw.isWehrfuehrer() ? `
+        <div style="display:flex;align-items:center;gap:0.6rem;padding:0.4rem 0;border-top:1px solid var(--border);margin-top:0.2rem">
+          <input type="checkbox" id="f-relevant" style="width:1.2rem;height:1.2rem;accent-color:var(--red)" ${u?.relevant===false?'':'checked'}>
+          <label for="f-relevant" style="font-size:0.88rem;cursor:pointer">Zählt für 40-Stunden-Ziel</label>
+        </div>` : ''}
         <div class="btn-row">
-          <button class="btn btn-primary" onclick="uebungSpeichern('${id||''}','dienst')">💾 Speichern & Benachrichtigen</button>
+          <button class="btn btn-primary" onclick="uebungSpeichern('${id||''}','dienst')">${u ? '💾 Speichern' : '💾 Speichern & Benachrichtigen'}</button>
           ${u ? `<button class="btn btn-danger" onclick="uebungLoeschen('${id}','dienst')">🗑 Löschen</button>` : ''}
         </div>
       </div>`;
@@ -1077,9 +1286,8 @@ window.uebungSpeichern = async (id, forcTyp) => {
   const typ     = forcTyp === 'einsatz' ? 'einsatz' : 'dienst';
   const isEinsatz = typ === 'einsatz';
 
-  const datumStr = isEinsatz
-    ? new Date().toISOString().slice(0,10)
-    : (document.getElementById('f-datum')?.value || new Date().toISOString().slice(0,10));
+  const datumStr = document.getElementById('f-datum')?.value
+    || (isEinsatz ? new Date().toISOString().slice(0,10) : new Date().toISOString().slice(0,10));
   const beschr     = document.getElementById('f-beschr')?.value?.trim() || '';
   const zeitBeginn = document.getElementById('f-beginn')?.value || null;
   const zeitEnde   = document.getElementById('f-ende')?.value || null;
@@ -1094,7 +1302,13 @@ window.uebungSpeichern = async (id, forcTyp) => {
   if (!titel) { fw.toast('Stichwort erforderlich', true); return; }
 
   const ort = document.getElementById('f-ort')?.value?.trim() || null;
-  const data = { titel, datum: new Date(datumStr), typ, dauer_h, beschreibung: beschr, zeitBeginn, zeitEnde, ort };
+  const relevantEl = document.getElementById('f-relevant');
+  const relevant = isEinsatz ? true : (relevantEl ? relevantEl.checked : true);
+  // Ortswehren: aus Checkboxen oder primäre Wehr des Nutzers
+  const wehrCheckboxen = [...document.querySelectorAll('.f-wehr-cb:checked')].map(cb => cb.value);
+  const ortswehrIds = wehrCheckboxen.length > 0 ? wehrCheckboxen
+    : (fw.profil.ortswehrIds?.length ? fw.profil.ortswehrIds : (fw.profil.ortswehrId ? [fw.profil.ortswehrId] : []));
+  const data = { titel, datum: new Date(datumStr), typ, dauer_h, beschreibung: beschr, zeitBeginn, zeitEnde, ort, relevant, ortswehrIds };
   const isNeu = !id;
   try {
     let uebungId = id;
@@ -1107,7 +1321,7 @@ window.uebungSpeichern = async (id, forcTyp) => {
     const mitAlarmFlag = document.getElementById('f-alarm')?.value === '1';
   if (isNeu && mitAlarmFlag) await benachrichtigeOrtswehr(typ, titel, datumStr, dauer_h, uebungId);
   else if (isNeu && !mitAlarmFlag && typ === 'dienst') await benachrichtigeOrtswehr(typ, titel, datumStr, dauer_h, uebungId);
-    fw.toast(isEinsatz ? 'Einsatz gemeldet 🚨' : 'Gespeichert ✅');
+    fw.toast('Gespeichert ✅');
     navigate(typ === 'einsatz' ? 'einsaetze' : 'dienste');
   } catch(e) { fw.toast(e.message, true); }
 };
@@ -1115,9 +1329,9 @@ window.uebungSpeichern = async (id, forcTyp) => {
 // Profil-Ansicht: sortierte Lehrgänge ohne Bearbeiten-Button
 function renderQualisProfil(qualis, me) {
   if (!qualis.length) return '<p class="muted" style="font-size:0.85rem">Keine eingetragen</p>';
-  const QUALI_REIHENFOLGE = ['Truppmann','Sprechfunk','AGT','TH-Grund','Maschinist','Absturzsicherung','ABC-Grund','Truppführer','Gruppenführer','Zugführer','Wehrführer','Erste-Hilfe','Motorsäge A/B','Motorsäge C/D'];
+  const QUALI_REIHENFOLGE = getLehrgangsReihenfolge();
   const qualiIdx = (bez) => { const i = QUALI_REIHENFOLGE.findIndex(r => r.toLowerCase() === (bez||'').trim().toLowerCase()); return i < 0 ? 99 : i; };
-  const trennerIdx = QUALI_REIHENFOLGE.indexOf('Wehrführer');
+  const trennerIdx = -1; // kein Trenner mehr, Sortierung kommt aus Firestore
   const sorted = [...qualis].sort((a,b) => qualiIdx(a.bezeichnung) - qualiIdx(b.bezeichnung));
   let html = '', trennerGezeigt = false;
   for (const q of sorted) {
@@ -1151,7 +1365,18 @@ window.ortSpeichern = async (einsatzId) => {
   const ort = document.getElementById('ort-inline')?.value?.trim();
   if (!ort) { fw.toast('Bitte Adresse eingeben', true); return; }
   await fw.updateDoc('einsaetze/'+einsatzId, { ort });
-  fw.toast('Adresse gespeichert 📍'); navigate('uebung-detail', {id: einsatzId, typ: 'einsatz'});
+  fw.toast('Adresse gespeichert 📍');
+  const ortAnzeige = document.getElementById('ort-anzeige');
+  if (ortAnzeige) {
+    ortAnzeige.innerHTML = `<div style="margin-top:0.5rem;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
+      <span style="font-size:0.85rem">📍 ${ort}</span>
+      <a href="https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(ort)}" target="_blank"
+        style="font-size:0.75rem;padding:0.2rem 0.6rem;background:var(--panel2);border-radius:20px;color:var(--blue);text-decoration:none;border:1px solid var(--border)">
+        🗺 Navigation
+      </a>
+    </div>`;
+  }
+  document.getElementById('ort-inline-wrapper')?.remove();
 };
 
 window.uebungLoeschen = async (id, typ) => {
@@ -1162,12 +1387,14 @@ window.uebungLoeschen = async (id, typ) => {
 
 // ── Push ──────────────────────────────────────────────────
 async function benachrichtigeOrtswehr(typ, titel, datumStr, dauer_h, uebungId) {
-  const ortswehrId = fw.profil.ortswehrId;
+  const ortswehrIds = fw.profil.ortswehrIds?.length ? fw.profil.ortswehrIds : (fw.profil.ortswehrId ? [fw.profil.ortswehrId] : []);
+  const ortswehrId = ortswehrIds[0] || null;
   if (!ortswehrId) {
     fw.toast('⚠️ Keine Ortswehr zugeordnet – niemand wird benachrichtigt!', true);
     return;
   }
-  const usersSnap = await fw.getDocs('users', fw.where('ortswehrId','==',ortswehrId));
+  // Alle User die mindestens eine der betroffenen Wehren haben
+  const usersSnap = await fw.getDocs('users', fw.where('ortswehrIds', 'array-contains', ortswehrId));
   const isEinsatz = typ === 'einsatz';
   const tokens = [];
   for (const d of usersSnap.docs) {
@@ -1175,7 +1402,7 @@ async function benachrichtigeOrtswehr(typ, titel, datumStr, dauer_h, uebungId) {
     if (d.id === fw.user.uid && !fw.profil.notif_selbst) { console.log('Push: Selbst übersprungen'); continue; }
     if (!u.fcmToken) { console.log('Push: Kein Token für', d.id); continue; }
     if (isEinsatz && u.notif_einsatz !== false) tokens.push(u.fcmToken);
-    if (!isEinsatz && u.notif_uebung !== false) tokens.push(u.fcmToken);
+    // Dienst-Push bei Anlage wurde entfernt – Erinnerung erfolgt nur noch über dienstErinnerung (08:00 Uhr)
   }
   if (tokens.length === 0) { fw.toast('⚠️ Keine Push-Empfänger gefunden', true); return; }
   const title = isEinsatz ? '🚨 EINSATZ ALARM' : '🔔 Neuer Dienst';
@@ -1218,17 +1445,24 @@ function checkDeepLink() {
 // ── Profil ────────────────────────────────────────────────
 registerPage('profil', async (el) => {
   fw.setTitle('Mein Profil');
+  await ladeLehrgangsarten();
   // Immer frisch laden damit notif-Felder aktuell sind
-  const [meSnap, qSnap, aSnap, pDiensteSnap, pEinsaetzeSnap] = await Promise.all([
+  const [meSnap, qSnap, aSnap, pDiensteSnap, pEinsaetzeSnap, planSnap, owSnap] = await Promise.all([
     fw.getDoc('users/'+fw.user.uid),
     fw.getDocs('users/'+fw.user.uid+'/qualifikationen'),
     fw.getDocs('anwesenheiten', fw.where('userId','==',fw.user.uid)),
     fw.getDocs('dienste'),
     fw.getDocs('einsaetze'),
+    fw.getDocs('lehrgangsplanung', fw.where('userId','==',fw.user.uid)),
+    fw.getDocs('ortswehren'),
   ]);
   const me = meSnap.data() || fw.profil;
   Object.assign(fw.profil, me);
+  const owMapProfil = new Map(owSnap.docs.map(d => [d.id, d.data().name]));
+  const meineWehrNamen = (me.ortswehrIds?.length ? me.ortswehrIds : (me.ortswehrId ? [me.ortswehrId] : []))
+    .map(id => owMapProfil.get(id)).filter(Boolean).join(', ') || '–';
   const qualis = qSnap.docs.map(d => ({id:d.id,...d.data()}));
+  const planung = planSnap.docs.map(d => ({id:d.id,...d.data()}));
   const pDienstMap  = new Map(pDiensteSnap.docs.map(d => [d.id, d.data()]));
   const pEinsatzMap = new Map(pEinsaetzeSnap.docs.map(d => [d.id, d.data()]));
   const stats  = getStats(aSnap.docs.map(d => d.data()), pDienstMap, pEinsatzMap);
@@ -1242,52 +1476,10 @@ registerPage('profil', async (el) => {
       </div>
     </div>
     <div class="stats-grid">
-      <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.gesamtEinsatz)}h</div><div class="stat-label">Einsatzstunden ${new Date().getFullYear()}</div></div>
-      <div class="stat-card"><div class="stat-zahl">${stats.einsaetze}</div><div class="stat-label">${stats.einsaetze===1?'Einsatz':'Einsätze'} ${new Date().getFullYear()}</div></div>
       <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.gesamtDienst)}h</div><div class="stat-label">Dienststunden ${new Date().getFullYear()}</div></div>
       <div class="stat-card"><div class="stat-zahl">${stats.dienste}</div><div class="stat-label">${stats.dienste===1?'Dienst':'Dienste'} ${new Date().getFullYear()}</div></div>
-    </div>
-    <div class="section-header">Persönliche Daten</div>
-    <div class="card">
-      <div class="form-row"><label>Vorname</label><input id="p-vn" value="${me.vorname||''}"></div>
-      <div class="form-row"><label>Nachname</label><input id="p-nn" value="${me.nachname||''}"></div>
-
-      <div class="form-row"><label>Führerscheinklassen (z.B. B, C, CE)</label><input id="p-fs" value="${me.fuehrerschein||''}"></div>
-
-      <div class="form-row" style="margin-top:0.5rem">
-        <label>Design</label>
-        <div style="display:flex;gap:0.6rem;margin-top:0.3rem">
-          <button id="theme-standard" onclick="themeWaehlen('standard')"
-            class="btn btn-sm ${(me.theme||'standard')==='standard'?'btn-primary':'btn-secondary'}"
-            style="flex:1">🎨 Modern</button>
-          <button id="theme-klassisch" onclick="themeWaehlen('klassisch')"
-            class="btn btn-sm ${(me.theme||'standard')==='klassisch'?'btn-primary':'btn-secondary'}"
-            style="flex:1">🖥️ Klassisch</button>
-        </div>
-      </div>
-      <button class="btn btn-primary btn-full" onclick="profilSpeichern()">💾 Speichern</button>
-    </div>
-
-    <div class="section-header">🔔 Benachrichtigungen</div>
-    <div class="card">
-      <div class="notif-row" style="display:flex;align-items:center;gap:0.8rem;padding:0.6rem 0;border-bottom:1px solid var(--border)">
-        <div style="flex:1"><div style="font-weight:600">🚨 Einsatzalarm</div><div class="muted" style="font-size:0.78rem">Bei neuen Einsätzen</div></div>
-        <input type="checkbox" id="n-einsatz" style="width:24px;height:24px;accent-color:var(--red);cursor:pointer;flex-shrink:0">
-      </div>
-      <div class="notif-row" style="display:flex;align-items:center;gap:0.8rem;padding:0.6rem 0;border-bottom:1px solid var(--border)">
-        <div style="flex:1"><div style="font-weight:600">📅 Neuer Dienst</div><div class="muted" style="font-size:0.78rem">Bei neuen Diensten</div></div>
-        <input type="checkbox" id="n-uebung" style="width:24px;height:24px;accent-color:var(--red);cursor:pointer;flex-shrink:0">
-      </div>
-      <div class="notif-row" style="display:flex;align-items:center;gap:0.8rem;padding:0.6rem 0;border-bottom:1px solid var(--border)">
-        <div style="flex:1"><div style="font-weight:600">⚠️ Status-Warnung</div><div class="muted" style="font-size:0.78rem">Wenn App offline oder Push nicht bereit</div></div>
-        <input type="checkbox" id="n-status" style="width:24px;height:24px;accent-color:var(--red);cursor:pointer;flex-shrink:0">
-      </div>
-      ${fw.isWehrfuehrer() ? `
-      <div class="notif-row" style="display:flex;align-items:center;gap:0.8rem;padding:0.6rem 0;border-bottom:1px solid var(--border)">
-        <div style="flex:1"><div style="font-weight:600">🧪 Selbst benachrichtigen</div><div class="muted" style="font-size:0.78rem">Nur für Tests – Wehrführer erhält eigene Alarme</div></div>
-        <input type="checkbox" id="n-selbst" style="width:24px;height:24px;accent-color:var(--red);cursor:pointer;flex-shrink:0">
-      </div>` : ''}
-      <button class="btn btn-primary btn-full" style="margin-top:0.8rem" id="notif-save-btn" onclick="notifSpeichern()">💾 Speichern</button>
+      <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.gesamtEinsatz)}h</div><div class="stat-label">Einsatzstunden ${new Date().getFullYear()}</div></div>
+      <div class="stat-card"><div class="stat-zahl">${stats.einsaetze}</div><div class="stat-label">${stats.einsaetze===1?'Einsatz':'Einsätze'} ${new Date().getFullYear()}</div></div>
     </div>
 
     <div class="section-header">Dienstlich</div>
@@ -1295,10 +1487,21 @@ registerPage('profil', async (el) => {
       <div style="display:flex;gap:1.2rem;flex-wrap:wrap">
         <div><div class="muted" style="font-size:0.72rem">Dienstgrad</div><div class="bold">${me.dienstgrad||'–'}</div></div>
         <div><div class="muted" style="font-size:0.72rem">Eingetreten</div><div class="bold">${datum(me.eintrittsdatum)||'–'}</div></div>
+        <div><div class="muted" style="font-size:0.72rem">Ortswehr</div><div class="bold">${meineWehrNamen}</div></div>
+        ${me.fuehrerschein ? `<div><div class="muted" style="font-size:0.72rem">Führerschein</div><div class="bold">${me.fuehrerschein}</div></div>` : ''}
       </div>
       <hr>
       <div class="card-title" style="margin-bottom:0.5rem">Lehrgänge</div>
       ${renderQualisProfil(qualis, me)}
+      ${planung.length ? `
+        <div style="margin-top:0.5rem;padding-top:0.5rem">
+          ${planung.sort((a,b) => (a.datum||'').localeCompare(b.datum||'')).map((p,i) => `
+            <div style="display:flex;align-items:center;gap:0.5rem;padding:0.35rem 0;${i > 0 ? 'border-top:1px solid var(--border)' : ''}">
+              <div style="flex:1;font-size:0.85rem;color:var(--muted)">${p.lehrgang}</div>
+              <div style="font-size:0.78rem;color:var(--muted)">${p.datum ? (([y,m,d]) => `${d}.${m}.${y}`)(p.datum.split('-')) : String(p.jahr||'')} · geplant</div>
+              <button onclick="planungLoeschenDirekt('${p.id}')" class="btn btn-sm btn-danger">🗑</button>
+            </div>`).join('')}
+        </div>` : ''}
     </div>
 
     <div class="section-header">Passwort ändern</div>
@@ -1308,21 +1511,14 @@ registerPage('profil', async (el) => {
       <button class="btn btn-primary btn-full" onclick="passwortAendern()">🔒 Passwort ändern</button>
     </div>
     <div class="card">
+      <div style="display:flex;gap:0.5rem;margin-bottom:0.5rem">
+        <button class="btn btn-secondary btn-sm" style="flex:1" onclick="navigate('einstellungen')">Einstellungen</button>
+        <button class="btn btn-secondary btn-sm" style="flex:1" onclick="pruefeAufUpdate(true)">🔄 Updates</button>
+      </div>
+      <button class="btn btn-secondary btn-full" style="margin-bottom:0.5rem" onclick="alarmSelbsttest()">🔔 Alarm-Selbsttest</button>
       <button class="btn btn-danger btn-full" onclick="abmelden()">Abmelden</button>
-      <button class="btn btn-secondary btn-full" style="margin-top:0.5rem" onclick="pruefeAufUpdate(true)">🔄 Auf Updates prüfen</button>
     </div>
   `;
-  // DOM-Elemente direkt nach innerHTML setzen
-  const cbEinsatz = document.getElementById('n-einsatz');
-  const cbUebung  = document.getElementById('n-uebung');
-  const cbBest    = document.getElementById('n-best');
-  const cbStatus  = document.getElementById('n-status');
-  const cbSelbst  = document.getElementById('n-selbst');
-  if (cbEinsatz) cbEinsatz.checked = me.notif_einsatz !== false;
-  if (cbUebung)  cbUebung.checked  = me.notif_uebung  !== false;
-  if (cbBest)    cbBest.checked    = me.notif_bestaetigung !== false;
-  if (cbStatus)  cbStatus.checked  = me.notif_status  !== false;
-  if (cbSelbst)  cbSelbst.checked  = me.notif_selbst  === true;
 });
 
 window.themeWaehlen = async (theme) => {
@@ -1335,18 +1531,6 @@ window.themeWaehlen = async (theme) => {
   document.getElementById('theme-klassisch')?.classList.toggle('btn-primary',  theme === 'klassisch');
   document.getElementById('theme-klassisch')?.classList.toggle('btn-secondary', theme !== 'klassisch');
   fw.toast(theme === 'klassisch' ? '🖥️ Design: Klassisch' : '🎨 Design: Modern');
-};
-
-window.profilSpeichern = async () => {
-  const data = {
-    vorname: document.getElementById('p-vn').value,
-    nachname: document.getElementById('p-nn').value,
-    fuehrerschein: document.getElementById('p-fs').value,
-    ortswehrId: fw.profil.ortswehrId || null,
-  };
-  await fw.setDoc('users/'+fw.user.uid, data);
-  Object.assign(fw.profil, data);
-  fw.toast('Gespeichert ✅');
 };
 
 function initNotifCheckboxes() {
@@ -1366,15 +1550,16 @@ function initNotifCheckboxes() {
 window.notifSpeichern = async () => {
   const selbstEl = document.getElementById('n-selbst');
   const data = {
-    notif_einsatz:      document.getElementById('n-einsatz').checked,
-    notif_uebung:       document.getElementById('n-uebung').checked,
-    notif_bestaetigung: document.getElementById('n-best').checked,
-    notif_selbst:       selbstEl ? selbstEl.checked : false,
-    notif_status:       document.getElementById('n-status')?.checked ?? true,
+    notif_einsatz:         document.getElementById('n-einsatz')?.checked ?? true,
+    notif_dienst_reminder: document.getElementById('n-dienst-reminder')?.checked ?? false,
+    notif_pruef_reminder:  document.getElementById('n-pruef-reminder')?.checked ?? true,
+    notif_news:            document.getElementById('n-news')?.checked ?? true,
+    notif_selbst:          selbstEl ? selbstEl.checked : false,
+    notif_status:          document.getElementById('n-status')?.checked ?? true,
   };
   await fw.setDoc('users/'+fw.user.uid, data);
   Object.assign(fw.profil, data);
-  if (data.notif_einsatz || data.notif_uebung || data.notif_bestaetigung) {
+  if (data.notif_einsatz || data.notif_dienst_reminder) {
     const token = await fw.registerPush();
     if (token) fw.toast('Gespeichert ✅ Push aktiv');
     else fw.toast('Gespeichert – Push nicht verfügbar', true);
@@ -1382,7 +1567,6 @@ window.notifSpeichern = async () => {
     await fw.setDoc('users/'+fw.user.uid, { fcmToken: null });
     fw.toast('Gespeichert ✅');
   }
-  fw.toast('Einstellungen gespeichert ✅');
 };
 
 window.passwortAendern = async () => {
@@ -1396,22 +1580,153 @@ window.passwortAendern = async () => {
     const cred = EmailAuthProvider.credential(fw.user.email, alt);
     await reauthenticateWithCredential(fw.user, cred);
     await updatePassword(fw.user, neu);
+    // Gespeicherte Credentials aktualisieren
+    if (typeof window.CredentialStore !== 'undefined') {
+      window.CredentialStore.save(fw.user.email, neu);
+    }
     fw.toast('Passwort geändert ✅');
     document.getElementById('pw-alt').value = '';
     document.getElementById('pw-neu').value = '';
   } catch(e) { fw.toast('Altes Passwort falsch', true); }
 };
 
+window.alarmSelbsttest = async () => {
+  const token = fw.profil?.fcmToken;
+  if (!token) {
+    fw.toast('Kein Push-Token vorhanden – bitte App neu starten', true);
+    return;
+  }
+  try {
+    await fw.addDoc('push_queue', {
+      tokens: [token],
+      title: '🚨 EINSATZ ALARM',
+      body: 'Selbsttest – Alarm funktioniert!',
+      alarm: true,
+      uebungId: '',
+      erstelltAm: new Date(),
+      erstelltVon: fw.user.uid,
+    });
+    fw.toast('Testalarm gesendet – du solltest gleich alarmiert werden 🔔');
+  } catch(e) {
+    fw.toast('Fehler: ' + e.message, true);
+  }
+};
+
+window.planungLoeschenDirekt = async (id) => {
+  if (!confirm('Eintrag löschen?')) return;
+  await fw.deleteDoc('lehrgangsplanung/'+id);
+  fw.toast('Gelöscht');
+  navigate(window._currentPage, window._currentParams);
+};
+
 window.abmelden = async () => {
+  // Alle aktiven Firestore-Listener stoppen
+  if (window._einsatzListener)  { window._einsatzListener();  window._einsatzListener  = null; }
+  if (_newsFeedListener)        { _newsFeedListener();         _newsFeedListener        = null; }
+  // FCM Token aus Firestore löschen – Token ist gerätebezogen, nicht nutzerbezogen
+  try {
+    if (fw.user?.uid) await fw.setDoc('users/'+fw.user.uid, { fcmToken: null });
+  } catch(e) { console.warn('Token-Löschung fehlgeschlagen:', e.message); }
+  // Gespeicherte Credentials löschen damit Auto-Login nicht greift
+  if (typeof window.CredentialStore !== 'undefined') window.CredentialStore.clear();
   const { signOut } = await import('https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js');
   await signOut(fw.auth);
 };
 
+// ── Einstellungen ─────────────────────────────────────────
+registerPage('einstellungen', async (el) => {
+  fw.setTitle('Einstellungen');
+  fw.showBack(() => navigateBack());
+
+  const isNative = typeof window.AlarmSettings !== 'undefined';
+  const aktivProfil = isNative ? (window.AlarmSettings.getProfil() || 'leise') : 'leise';
+  const profilLabel = { laut: '🔊 Laut', leise: '🔉 Leise', stumm: '🔇 Stumm' };
+
+  // Aktuelles Profil laden für Notif-Checkboxen
+  const meSnap = await fw.getDoc('users/' + fw.user.uid);
+  const me = meSnap.data() || fw.profil;
+
+  const notifRow = (id, icon, titel, sub) => `
+    <div style="display:flex;align-items:center;gap:0.8rem;padding:0.6rem 0;border-bottom:1px solid var(--border)">
+      <div style="flex:1"><div style="font-weight:600">${icon} ${titel}</div><div class="muted" style="font-size:0.78rem">${sub}</div></div>
+      <input type="checkbox" id="${id}" style="width:24px;height:24px;accent-color:var(--red);cursor:pointer;flex-shrink:0">
+    </div>`;
+
+  const renderButtons = (aktiv) => ['laut', 'leise', 'stumm'].map(p => `
+    <button
+      class="btn ${aktiv === p ? 'btn-primary' : 'btn-secondary'}"
+      style="flex:1;min-width:0;padding:0.6rem 0.3rem;font-size:0.9rem"
+      onclick="alarmProfilSetzen('${p}')">
+      ${profilLabel[p]}
+    </button>
+  `).join('');
+
+  el.innerHTML = `
+    <div class="section-header">🔔 Benachrichtigungen</div>
+    <div class="card">
+      ${notifRow('n-einsatz', '🚨', 'Einsatzalarm', 'Bei neuen Einsätzen')}
+      ${notifRow('n-dienst-reminder', '📅', 'Diensterinnerung', 'Am Morgen des Dienstes um 08:00 Uhr')}
+      ${notifRow('n-pruef-reminder', '🔧', 'Prüfintervalle', 'Am Morgen des Dienstes um 09:00 Uhr (nur Maschinisten)')}
+      ${notifRow('n-news', '📰', 'Neuigkeiten', 'Bei neuen Beiträgen für meine Ortswehr')}
+      ${notifRow('n-status', '⚠️', 'Status-Warnung', 'Wenn App offline oder Push nicht bereit')}
+      ${fw.isWehrfuehrer() ? notifRow('n-selbst', '🧪', 'Selbst benachrichtigen', 'Nur für Tests – Wehrführer erhält eigene Alarme') : ''}
+      <button class="btn btn-primary btn-full" style="margin-top:0.8rem" onclick="notifSpeichern()">💾 Speichern</button>
+    </div>
+
+    <div class="section-header">🎨 Design</div>
+    <div class="card">
+      <div style="display:flex;gap:0.6rem">
+        <button id="theme-standard" onclick="themeWaehlen('standard')"
+          class="btn btn-sm ${(me.theme||'standard')==='standard'?'btn-primary':'btn-secondary'}"
+          style="flex:1">🎨 Modern</button>
+        <button id="theme-klassisch" onclick="themeWaehlen('klassisch')"
+          class="btn btn-sm ${(me.theme||'standard')==='klassisch'?'btn-primary':'btn-secondary'}"
+          style="flex:1">🖥️ Klassisch</button>
+      </div>
+    </div>
+
+    <div class="section-header">🚨 Alarm-Lautstärke</div>
+    <div class="card">
+      <div style="color:var(--muted);font-size:0.82rem;margin-bottom:0.9rem">
+        Laut = 80 % &nbsp;·&nbsp; Leise = 30 % &nbsp;·&nbsp; Stumm = kein Ton, keine Vibration
+      </div>
+      <div id="alarm-profil-buttons" style="display:flex;gap:0.5rem;width:100%;box-sizing:border-box">
+        ${renderButtons(aktivProfil)}
+      </div>
+      ${!isNative ? `<div style="color:var(--muted);font-size:0.8rem;margin-top:0.8rem">
+        ⚠️ Nur in der nativen App verfügbar
+      </div>` : ''}
+    </div>
+  `;
+
+  // Checkboxen setzen
+  const cb = id => document.getElementById(id);
+  if (cb('n-einsatz'))        cb('n-einsatz').checked        = me.notif_einsatz !== false;
+  if (cb('n-dienst-reminder'))cb('n-dienst-reminder').checked = me.notif_dienst_reminder === true;
+  if (cb('n-pruef-reminder')) cb('n-pruef-reminder').checked  = me.notif_pruef_reminder !== false;
+  if (cb('n-news'))           cb('n-news').checked            = me.notif_news !== false;
+  if (cb('n-status'))         cb('n-status').checked         = me.notif_status !== false;
+  if (cb('n-selbst'))         cb('n-selbst').checked         = me.notif_selbst === true;
+
+  window.alarmProfilSetzen = (profil) => {
+    if (!isNative) return;
+    window.AlarmSettings.setProfil(profil);
+    document.getElementById('alarm-profil-buttons').innerHTML = renderButtons(profil);
+    fw.toast(profil === 'laut' ? '🔊 Laut' : profil === 'leise' ? '🔉 Leise' : '🔇 Stumm');
+  };
+
+  // Default setzen wenn noch nichts gespeichert
+  if (isNative && !window.AlarmSettings.getProfil()) {
+    window.AlarmSettings.setProfil('leise');
+  }
+});
+
 
 // ── Statistik ─────────────────────────────────────────────
 registerPage('statistik', async (el) => {
+  await ladeLehrgangsarten();
   fw.setTitle('Statistik');
-  fw.showBack(() => navigate('kameraden'));
+  fw.showBack(() => navigateBack());
   el.innerHTML = '<div class="empty">⏳ Lade...</div>';
 
   const jetzt    = new Date();
@@ -1604,32 +1919,66 @@ registerPage('statistik', async (el) => {
 
 
 // ── Lehrgangsverwaltung ───────────────────────────────────
-const ALLE_LEHRGAENGE = ['Truppmann','Truppführer','Gruppenführer','Zugführer','Wehrführer','AGT','Maschinist','Sprechfunk','TH-Grund','Absturzsicherung','ABC-Grund','Erste-Hilfe','Motorsäge A/B','Motorsäge C/D'];
+// Lehrgangsarten werden dynamisch aus Firestore geladen
+let _lehrgangsarten = []; // [{id, bezeichnung, tage, stunden, wochentag, sortierung}]
+let _lehrgangsartenGeladen = false;
 
-// Lehrgänge die ausschließlich an Werktagen stattfinden
-const WERKTAG_LEHRGAENGE = ['Gruppenführer','Zugführer','Wehrführer'];
-const BELIEBIG_LEHRGAENGE  = ['Erste-Hilfe']; // beliebige Wochentage
+// Dienst-Filter (AGT/Führungskräfte Keywords) aus Firestore
+let _dienstFilter = null;
+async function ladeDienstFilter() {
+  if (_dienstFilter) return _dienstFilter;
+  try {
+    const snap = await fw.getDoc('einstellungen/dienstfilter');
+    if (snap.exists()) {
+      _dienstFilter = snap.data();
+    }
+  } catch(e) {}
+  return _dienstFilter;
+}
 
-// Vorlagen: { tage, stunden } – Stunden/Tag wird berechnet
-const LEHRGANG_VORLAGEN = {
-  'Truppführer':     { tage: 5,  stunden: 35 },
-  'Gruppenführer':   { tage: 10, stunden: 70 },
-  'Zugführer':       { tage: 10, stunden: 70 },
-  'Wehrführer':      { tage: 3,  stunden: 24 },
-  'AGT':             { tage: 4,  stunden: 38 },
-  'Maschinist':      { tage: 4,  stunden: 35 },
-  'Sprechfunk':      { tage: 3,  stunden: 32 },
-  'TH-Grund':        { tage: 4,  stunden: 35 },
-  'Absturzsicherung':{ tage: 3,  stunden: 29 },
-  'ABC-Grund':       { tage: 10, stunden: 70 },
-  'Erste-Hilfe':     { tage: 1,  stunden: 8  },
-  'Motorsäge A/B':   { tage: 2,  stunden: 16 },
-  'Motorsäge C/D':   { tage: 2,  stunden: 16 },
-};
+// Dienstgrade aus Firestore
+let _dienstgrade = null;
+async function ladeDienstgrade() {
+  if (_dienstgrade) return _dienstgrade;
+  try {
+    const snap = await fw.getDoc('einstellungen/dienstgrade');
+    if (snap.exists()) _dienstgrade = snap.data().liste || [];
+  } catch(e) {}
+  // Fallback: hardcoded
+  if (!_dienstgrade?.length) _dienstgrade = [
+    'Feuerwehrmann-Anwärter','Feuerwehrmann','Oberfeuerwehrmann','Hauptfeuerwehrmann',
+    '1. Hauptfeuerwehrmann','Löschmeister','Oberlöschmeister','Hauptlöschmeister',
+    '1. Hauptlöschmeister','Brandmeister','Oberbrandmeister','Hauptbrandmeister','1. Hauptbrandmeister'
+  ];
+  return _dienstgrade;
+}
+
+async function ladeLehrgangsarten() {
+  if (_lehrgangsartenGeladen) return _lehrgangsarten;
+  const snap = await fw.getDocs('lehrgangsarten');
+  _lehrgangsarten = snap.docs
+    .map(d => ({id: d.id, ...d.data()}))
+    .sort((a, b) => (a.sortierung||99) - (b.sortierung||99));
+  _lehrgangsartenGeladen = true;
+  return _lehrgangsarten;
+}
+
+function getLehrgangsartenNamen() {
+  return _lehrgangsarten.map(l => l.bezeichnung);
+}
+
+function getLehrgangsVorlage(bezeichnung) {
+  return _lehrgangsarten.find(l => l.bezeichnung === bezeichnung);
+}
+
+function getLehrgangsReihenfolge() {
+  return _lehrgangsarten.map(l => l.bezeichnung);
+}
 
 function berechneEndDatum(startDatumStr, tage, lehrgang) {
-  const nurWerktage = WERKTAG_LEHRGAENGE.includes(lehrgang);
-  const beliebig    = BELIEBIG_LEHRGAENGE.includes(lehrgang);
+  const art = getLehrgangsVorlage(lehrgang);
+  const nurWerktage = art?.wochentag === 'werktag';
+  const beliebig    = art?.wochentag === 'beliebig';
   const d = new Date(startDatumStr);
   let gezaehlt = 0;
   while (gezaehlt < tage) {
@@ -1647,9 +1996,183 @@ function berechneEndDatum(startDatumStr, tage, lehrgang) {
   return d.toISOString().slice(0, 10);
 }
 
+// ── Lehrgangsarten verwalten ──────────────────────────────
+// ── Admin: Dienstgrade & Dienst-Filter ───────────────────
+registerPage('einstellungen-admin', async (el) => {
+  if (!fw.isWehrfuehrer()) { navigate('dashboard'); return; }
+  fw.setTitle('Dienstgrade & Filter');
+  fw.showBack(() => navigateBack());
+
+  const [dgSnap, dfSnap] = await Promise.all([
+    fw.getDoc('einstellungen/dienstgrade'),
+    fw.getDoc('einstellungen/dienstfilter'),
+  ]);
+
+  const dg = dgSnap.exists() ? (dgSnap.data().liste || []) : [];
+  const df = dfSnap.exists() ? dfSnap.data() : { agt: [], fuehrung: [] };
+
+  el.innerHTML = `
+    <div class="card">
+      <div class="card-title">Dienstgrade</div>
+      <p class="muted" style="font-size:0.82rem;margin-bottom:0.5rem">Ein Grad pro Zeile</p>
+      <textarea id="adm-dg" rows="14" style="width:100%;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:0.6rem;font-size:0.82rem;color:var(--text);resize:vertical">${dg.join('\n')}</textarea>
+      <button class="btn btn-primary btn-sm btn-full" style="margin-top:0.4rem" onclick="admSaveDG()">💾 Speichern</button>
+    </div>
+    <div class="card">
+      <div class="card-title">AGT-Dienst-Schlüsselwörter</div>
+      <p class="muted" style="font-size:0.82rem;margin-bottom:0.5rem">Dienste mit diesen Stichwörtern sind nur für AGT-Träger sichtbar. Ein Begriff pro Zeile.</p>
+      <textarea id="adm-agt" rows="5" style="width:100%;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:0.6rem;font-size:0.82rem;color:var(--text);resize:vertical">${(df.agt||[]).join('\n')}</textarea>
+      <button class="btn btn-primary btn-sm btn-full" style="margin-top:0.4rem" onclick="admSaveFilter()">💾 Speichern</button>
+    </div>
+    <div class="card">
+      <div class="card-title">Führungskräfte-Schlüsselwörter</div>
+      <p class="muted" style="font-size:0.82rem;margin-bottom:0.5rem">Dienste mit diesen Stichwörtern sind nur für Gruppenführer+ sichtbar. Ein Begriff pro Zeile.</p>
+      <textarea id="adm-fuehr" rows="5" style="width:100%;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:0.6rem;font-size:0.82rem;color:var(--text);resize:vertical">${(df.fuehrung||[]).join('\n')}</textarea>
+      <button class="btn btn-primary btn-sm btn-full" style="margin-top:0.4rem" onclick="admSaveFilter()">💾 Speichern</button>
+    </div>`;
+
+  window.admSaveDG = async () => {
+    const liste = document.getElementById('adm-dg').value.split('\n').map(s => s.trim()).filter(Boolean);
+    await fw.setDoc('einstellungen/dienstgrade', { liste });
+    _dienstgrade = liste;
+    fw.toast('Dienstgrade gespeichert ✅');
+  };
+
+  window.admSaveFilter = async () => {
+    const agt     = document.getElementById('adm-agt').value.split('\n').map(s => s.trim().toLowerCase()).filter(Boolean);
+    const fuehrung = document.getElementById('adm-fuehr').value.split('\n').map(s => s.trim().toLowerCase()).filter(Boolean);
+    await fw.setDoc('einstellungen/dienstfilter', { agt, fuehrung });
+    _dienstFilter = { agt, fuehrung };
+    fw.toast('Filter gespeichert ✅');
+  };
+});
+
+registerPage('lehrgangsarten-verwalten', async (el) => {
+  if (!fw.isWehrfuehrer()) { navigate('dashboard'); return; }
+  fw.setTitle('Lehrgangsarten');
+  fw.showBack(() => navigateBack());
+  fw.showHeaderAction('+ Neu', () => navigate('lehrgangsart-form', {}));
+
+  _lehrgangsartenGeladen = false;
+  const arten = await ladeLehrgangsarten();
+
+  const renderListe = () => {
+    el.innerHTML = `
+      <div class="card" style="padding:0">
+        ${arten.length === 0 ? '<div class="empty" style="padding:1rem">Noch keine Lehrgangsarten</div>' :
+          arten.map((a, i) => `
+            <div class="list-item">
+              <div class="list-item-body" onclick="navigate('lehrgangsart-form',{id:'${a.id}'})" style="cursor:pointer">
+                <div class="list-item-title">${a.bezeichnung}</div>
+                <div class="list-item-sub">${a.tage ? a.tage+' Tage' : '–'}${a.stunden ? ' · '+a.stunden+'h' : ''}${a.wochentag ? ' · '+a.wochentag : ''}</div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:0.2rem">
+                <button onclick="lehrgangsartHoch('${a.id}')" ${i===0?'disabled':''} style="background:none;border:none;color:${i===0?'#ccc':'var(--text)'};cursor:pointer;padding:0.1rem 0.4rem;font-size:1rem">▲</button>
+                <button onclick="lehrgangsartRunter('${a.id}')" ${i===arten.length-1?'disabled':''} style="background:none;border:none;color:${i===arten.length-1?'#ccc':'var(--text)'};cursor:pointer;padding:0.1rem 0.4rem;font-size:1rem">▼</button>
+              </div>
+            </div>`).join('')}
+      </div>`;
+  };
+
+  renderListe();
+
+  window.lehrgangsartHoch = async (id) => {
+    const idx = arten.findIndex(a => a.id === id);
+    if (idx <= 0) return;
+    [arten[idx-1], arten[idx]] = [arten[idx], arten[idx-1]];
+    await speicherSortierung(arten);
+    renderListe();
+  };
+
+  window.lehrgangsartRunter = async (id) => {
+    const idx = arten.findIndex(a => a.id === id);
+    if (idx >= arten.length-1) return;
+    [arten[idx], arten[idx+1]] = [arten[idx+1], arten[idx]];
+    await speicherSortierung(arten);
+    renderListe();
+  };
+
+  async function speicherSortierung(liste) {
+    await Promise.all(liste.map((a, i) =>
+      fw.updateDoc('lehrgangsarten/'+a.id, { sortierung: i+1 })
+    ));
+    _lehrgangsartenGeladen = false;
+    await ladeLehrgangsarten();
+  }
+});
+
+registerPage('lehrgangsart-form', async (el, {id}) => {
+  if (!fw.isWehrfuehrer()) { navigate('dashboard'); return; }
+  let art = null;
+  if (id) {
+    const snap = await fw.getDoc('lehrgangsarten/'+id);
+    if (snap.exists()) art = {id, ...snap.data()};
+  }
+  fw.setTitle(art ? 'Lehrgangsart bearbeiten' : 'Neue Lehrgangsart');
+  fw.showBack(() => navigateBack());
+
+  el.innerHTML = `
+    <div class="card">
+      <div class="form-row"><label>Bezeichnung</label>
+        <input id="la-bez" value="${art?.bezeichnung||''}" placeholder="z.B. ABC-Grund">
+      </div>
+      <div class="form-row"><label>Tage (optional)</label>
+        <input id="la-tage" type="number" min="1" max="30" value="${art?.tage||''}" placeholder="z.B. 5">
+      </div>
+      <div class="form-row"><label>Stunden gesamt (optional)</label>
+        <input id="la-stunden" type="number" min="1" max="300" step="0.5" value="${art?.stunden||''}" placeholder="z.B. 35">
+      </div>
+      <div class="form-row"><label>Wochentag-Typ</label>
+        <select id="la-wochentag">
+          <option value="wochenende" ${(art?.wochentag||'wochenende')==='wochenende'?'selected':''}>Wochenende</option>
+          <option value="werktag"    ${art?.wochentag==='werktag'   ?'selected':''}>Werktag</option>
+          <option value="beliebig"   ${art?.wochentag==='beliebig'  ?'selected':''}>Beliebig</option>
+        </select>
+      </div>
+      <div class="btn-row">
+        <button class="btn btn-primary btn-full" onclick="lehrgangsartSpeichern('${id||''}')">💾 Speichern</button>
+        ${art ? `<button class="btn btn-danger" onclick="lehrgangsartLoeschen('${id}')">🗑 Löschen</button>` : ''}
+      </div>
+    </div>`;
+
+  window.lehrgangsartSpeichern = async (artId) => {
+    const bez = document.getElementById('la-bez').value.trim();
+    if (!bez) { fw.toast('Bezeichnung erforderlich', true); return; }
+    const data = {
+      bezeichnung: bez,
+      tage:        parseFloat(document.getElementById('la-tage').value)    || null,
+      stunden:     parseFloat(document.getElementById('la-stunden').value) || null,
+      wochentag:   document.getElementById('la-wochentag').value,
+    };
+    if (artId) {
+      await fw.updateDoc('lehrgangsarten/'+artId, data);
+    } else {
+      const snap = await fw.getDocs('lehrgangsarten');
+      data.sortierung = snap.size + 1;
+      const docId = bez.toLowerCase().replace(/[^a-z0-9]/g, '-');
+      await fw.setDoc('lehrgangsarten/'+docId, data);
+    }
+    _lehrgangsartenGeladen = false;
+    await ladeLehrgangsarten();
+    fw.toast('Gespeichert ✅');
+    navigate('lehrgangsarten-verwalten');
+  };
+
+  window.lehrgangsartLoeschen = async (artId) => {
+    if (!confirm('Lehrgangsart wirklich löschen?')) return;
+    await fw.deleteDoc('lehrgangsarten/'+artId);
+    _lehrgangsartenGeladen = false;
+    await ladeLehrgangsarten();
+    fw.toast('Gelöscht');
+    navigate('lehrgangsarten-verwalten');
+  };
+});
+
 registerPage('lehrgaenge', async (el) => {
+  await ladeLehrgangsarten();
   fw.setTitle('Lehrgänge');
-  fw.showBack(() => navigate('kameraden'));
+  if (fw.isWehrfuehrer()) fw.showHeaderAction('⚙️ Verwalten', () => navigate('lehrgangsarten-verwalten'));
+  fw.showBack(() => navigateBack());
 
   const jahrAkt = new Date().getFullYear();
   let aktivTab = 'uebersicht';
@@ -1684,7 +2207,7 @@ registerPage('lehrgaenge', async (el) => {
     const qualiPerUser = {};
     qualiSnaps.forEach(({userId, qualis}) => { qualiPerUser[userId] = qualis.map(q => (q.bezeichnung||'').trim().toLowerCase()); });
 
-    const cols = ALLE_LEHRGAENGE;
+    const cols = getLehrgangsartenNamen();
     const rows = users.map(u => {
       const hat = qualiPerUser[u.id] || [];
       return { u, checks: cols.map(l => hat.includes(l.toLowerCase())) };
@@ -1747,16 +2270,17 @@ registerPage('lehrgaenge', async (el) => {
         <select id="plan-jahr" onchange="planJahrWechsel(this.value)" style="font-size:0.88rem">${jahreOptionen}</select>
       </div>
       ${planung.length ? `
-      <div class="card" style="padding:0">
+      <div class="card">
         ${planung.sort((a,b) => {
           const na = usersMap.get(a.userId)?.nachname||''; const nb = usersMap.get(b.userId)?.nachname||'';
           return na.localeCompare(nb,'de') || (a.lehrgang||'').localeCompare(b.lehrgang||'');
         }).map(p => {
           const u = usersMap.get(p.userId);
-          return `<div class="list-item">
+          const idx = planung.indexOf(p);
+          return `<div class="list-item" style="${idx > 0 ? 'border-top:1px solid var(--border)' : ''}">
             <div class="list-item-body">
-              <div class="list-item-title">${u ? kurzName(u.vorname, u.nachname) : '–'} · ${p.lehrgang}</div>
-              <div class="list-item-sub">${p.tage ? p.tage+' Tage' : ''}${p.bemerkung ? (p.tage?' · ':'')+p.bemerkung : ''}${!p.tage&&!p.bemerkung?'Geplant':''}</div>
+              <div class="list-item-title">${u ? kurzName(u.vorname, u.nachname) : '–'}</div>
+              <div class="list-item-sub">${p.lehrgang}${p.datum ? ' · '+(([y,m,d]) => `${d}.${m}.${y}`)(p.datum.split('-')) : ''}${p.tage ? ' · '+p.tage+' Tage' : ''}${p.bemerkung ? ' · '+p.bemerkung : ''}</div>
             </div>
             <button class="btn btn-sm btn-danger" onclick="planungLoeschen('${p.id}')">🗑</button>
           </div>`;
@@ -1776,8 +2300,12 @@ registerPage('lehrgaenge', async (el) => {
           <label>Lehrgang</label>
           <select id="plan-lehrgang" onchange="planVorlageLaden()">
             <option value="">– wählen –</option>
-            ${ALLE_LEHRGAENGE.map(l => `<option value="${l}">${l}</option>`).join('')}
+            ${getLehrgangsartenNamen().map(l => `<option value="${l}">${l}</option>`).join('')}
           </select>
+        </div>
+        <div class="form-row">
+          <label>Geplantes Datum (optional)</label>
+          <input id="plan-datum" type="date">
         </div>
         <div class="form-row">
           <label>Geplante Tage (optional)</label>
@@ -1793,8 +2321,8 @@ registerPage('lehrgaenge', async (el) => {
     window.planJahrWechsel = (j) => { planJahr = parseInt(j); renderPlanung(); };
     window.planVorlageLaden = () => {
       const l = document.getElementById('plan-lehrgang').value;
-      const v = LEHRGANG_VORLAGEN[l];
-      if (v) document.getElementById('plan-tage').value = v.tage;
+      const v = getLehrgangsVorlage(l);
+      if (v) document.getElementById('plan-tage').value = v.tage || '';
     };
   };
 
@@ -1815,7 +2343,7 @@ registerPage('lehrgaenge', async (el) => {
           <label>Lehrgang</label>
           <select id="erf-lehrgang" onchange="erfVorlageLaden()">
             <option value="">– wählen –</option>
-            ${ALLE_LEHRGAENGE.map(l => `<option value="${l}">${l}</option>`).join('')}
+            ${getLehrgangsartenNamen().map(l => `<option value="${l}">${l}</option>`).join('')}
           </select>
         </div>
         <div class="form-row">
@@ -1858,7 +2386,7 @@ registerPage('lehrgaenge', async (el) => {
 
     window.erfVorlageLaden = () => {
       const lehrgang = document.getElementById('erf-lehrgang').value;
-      const vorlage = LEHRGANG_VORLAGEN[lehrgang];
+      const vorlage = getLehrgangsVorlage(lehrgang);
       if (vorlage) {
         document.getElementById('erf-tage').value = vorlage.tage;
         document.getElementById('erf-stunden').value = vorlage.stunden;
@@ -1874,7 +2402,8 @@ registerPage('lehrgaenge', async (el) => {
       if (!datumStr || !lehrgang) { hint.textContent = 'Im Profil wird der letzte Tag (Prüfungsdatum) gespeichert'; return; }
       const end = berechneEndDatum(datumStr, tage, lehrgang);
       const [y,m,d] = end.split('-');
-      const typ = WERKTAG_LEHRGAENGE.includes(lehrgang) ? 'Werktage' : BELIEBIG_LEHRGAENGE.includes(lehrgang) ? 'Tage' : 'Wochenendtage';
+      const _art = getLehrgangsVorlage(lehrgang);
+      const typ = _art?.wochentag === 'werktag' ? 'Werktage' : _art?.wochentag === 'beliebig' ? 'Tage' : 'Wochenendtage';
       hint.textContent = `Prüfungsdatum: ${d}.${m}.${y} (${tage} ${typ})`;
     };
   };
@@ -1928,7 +2457,8 @@ registerPage('lehrgaenge', async (el) => {
     if (!userId || !lehrgang) { fw.toast('Kamerad und Lehrgang wählen', true); return; }
     const tage = parseInt(document.getElementById('plan-tage').value) || null;
     const bemerkung = document.getElementById('plan-bem').value.trim();
-    await fw.addDoc('lehrgangsplanung', { userId, lehrgang, jahr, tage, bemerkung });
+    const datumStr = document.getElementById('plan-datum').value || null;
+    await fw.addDoc('lehrgangsplanung', { userId, lehrgang, jahr, tage, bemerkung, datum: datumStr });
     fw.toast('Gespeichert ✅');
     renderPlanung();
   };
@@ -1946,9 +2476,13 @@ registerPage('lehrgaenge', async (el) => {
 // ── News erstellen ────────────────────────────────────────
 registerPage('news-form', async (el) => {
   fw.setTitle('Beitrag erstellen');
-  fw.showBack(() => navigate('dashboard'));
+  fw.showBack(() => navigateBack());
   let optionen = ['', ''];
   let pdfFile = null;
+
+  // Ortswehren laden für Auswahl
+  const owSnap = await fw.getDocs('ortswehren');
+  const alleWehren = owSnap.docs.map(d => ({id:d.id,...d.data()}));
 
   const render = () => {
     el.innerHTML = `
@@ -1969,6 +2503,10 @@ registerPage('news-form', async (el) => {
           ${optionen.map((o,i) => `<div class="form-row"><label>Option ${i+1}</label><input class="nf-opt" data-i="${i}" value="${o}"></div>`).join('')}
           <button class="btn btn-secondary btn-sm" onclick="nfAddOption()">+ Option</button>
         </div>
+        <div class="form-row" id="nf-wehr-container">
+          <label>Sichtbar für</label>
+          <div id="nf-wehr-boxes" style="display:flex;flex-direction:column;gap:0.3rem;margin-top:0.2rem">⏳</div>
+        </div>
         <div class="btn-row" style="margin-top:1rem">
           <button class="btn btn-primary" onclick="newsSpeichern()" id="nf-save-btn">💾 Veröffentlichen</button>
         </div>
@@ -1986,6 +2524,20 @@ registerPage('news-form', async (el) => {
   };
   render();
 
+  // Wehr-Checkboxen befüllen
+  const wehrBox = document.getElementById('nf-wehr-boxes');
+  if (wehrBox) {
+    if (alleWehren.length <= 1) {
+      document.getElementById('nf-wehr-container')?.remove();
+    } else {
+      wehrBox.innerHTML = alleWehren.map(w => `
+        <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.88rem;cursor:pointer">
+          <input type="checkbox" class="nf-wehr-cb" value="${w.id}" checked style="width:1rem;height:1rem;accent-color:var(--red)">
+          ${w.name}
+        </label>`).join('');
+    }
+  }
+
   window.nfAddOption = () => { optionen.push(''); render(); };
   window.newsSpeichern = async () => {
     const titel  = document.getElementById('nf-titel').value.trim();
@@ -1994,7 +2546,8 @@ registerPage('news-form', async (el) => {
     const btn = document.getElementById('nf-save-btn');
     btn.disabled = true; btn.textContent = '⏳ Wird gespeichert...';
     const hatAbst = document.getElementById('nf-abstimmung-cb')?.checked;
-    const data = { titel, inhalt, erstelltAm: new Date(), erstelltVon: fw.user.uid };
+    const newsWehrIds = [...document.querySelectorAll('.nf-wehr-cb:checked')].map(cb => cb.value);
+    const data = { titel, inhalt, erstelltAm: new Date(), erstelltVon: fw.user.uid, ortswehrIds: newsWehrIds };
     if (hatAbst) {
       const frage = document.getElementById('nf-frage').value.trim();
       const opts  = optionen.filter(o => o.trim());
@@ -2014,6 +2567,26 @@ registerPage('news-form', async (el) => {
       }
     }
     await fw.addDoc('news', data);
+
+    // Push-Benachrichtigung direkt versenden (wie Alarm-Push)
+    try {
+      const usersSnap = await fw.getDocs('users');
+      const tokens = usersSnap.docs
+        .filter(d => {
+          const u = d.data();
+          if (!u.fcmToken) return false;
+          if (u.notif_news === false) return false;
+          if (!newsWehrIds.length) return true;
+          const uIds = Array.isArray(u.ortswehrIds) ? u.ortswehrIds : (u.ortswehrId ? [u.ortswehrId] : []);
+          return uIds.some(id => newsWehrIds.includes(id));
+        })
+        .map(d => d.data().fcmToken);
+      if (tokens.length) {
+        const body = inhalt.length > 100 ? inhalt.slice(0, 97) + '…' : inhalt;
+        await sendPush(tokens, `📰 ${titel}`, body, false, '');
+      }
+    } catch(e) { console.warn('News-Push Fehler:', e.message); }
+
     fw.toast('Veröffentlicht ✅');
     navigate('dashboard');
   };
@@ -2024,7 +2597,11 @@ registerPage('kameraden', async (el) => {
   fw.setTitle('Kameraden');
   fw.showHeaderAction('+ Neu', () => navigate('kamerad-form', {}));
 
-  const snap = await fw.getDocs('users');
+  const [snap, owSnapKam] = await Promise.all([
+    fw.getDocs('users'),
+    fw.getDocs('ortswehren'),
+  ]);
+  const owMapKam = new Map(owSnapKam.docs.map(d => [d.id, d.data().name]));
   const users = snap.docs.map(d => ({id:d.id,...d.data()}))
     .sort((a,b) => {
       const aAktiv = a.aktiv !== false;
@@ -2113,32 +2690,136 @@ registerPage('kameraden', async (el) => {
       }
     }
 
-    if (aufgaben.length) {
-      const icons = { 'kein-datum': '📅', 'agt': '🔴', 'eh': '⚠️', 'dienstgrad': '🪖' };
-      aufgabenHtml = `
-        <div class="card" style="margin-bottom:0.6rem">
-          <div class="card-title" style="color:#f59e0b">⚠️ Offene Aufgaben (${aufgaben.length})</div>
-          ${aufgaben.map(a => `
-            <div class="list-item" onclick="navigate('kamerad-detail',{id:'${a.userId}'})" style="border-bottom:1px solid var(--border);cursor:pointer">
-              <div style="font-size:1rem;margin-right:0.5rem">${icons[a.typ]||'•'}</div>
-              <div class="list-item-body"><div style="font-size:0.83rem">${a.text}</div></div>
-              <div class="list-chevron">›</div>
-            </div>`).join('')}
+    // Passwort-Reset-Anfragen laden
+    const pwResetSnap = await fw.getDocs('pw_reset_requests', fw.where('erledigt','==',false));
+    for (const d of pwResetSnap.docs) {
+      const r = d.data();
+      aufgaben.push({ typ: 'pw-reset', text: `Passwort zurücksetzen: ${r.userName||r.loginName}`, resetId: d.id, userId: r.userId });
+    }
+
+    // Geräteprüfungen: nicht bestandene + kommentierte laden
+    const pruefSnap = await fw.getDocs('pruefaufgaben');
+    const pruefIssues = pruefSnap.docs
+      .map(d => ({id: d.id, ...d.data()}))
+      .filter(p => p.id !== 'allgemeine-notiz' && !p.ausgeblendet && (p.bestanden === false || p.kommentar));
+    for (const p of pruefIssues) {
+      if (p.bestanden === false) {
+        aufgaben.push({ typ: 'pruef-fail', text: `${p.bezeichnung}`, pruefId: p.id });
+      } else if (p.kommentar) {
+        aufgaben.push({ typ: 'pruef-kommentar', text: `Prüfung Kommentar: ${p.bezeichnung} – ${p.kommentar}`, pruefId: p.id });
+      }
+    }
+
+    // Ausgeblendete Aufgaben aus Firestore laden
+    const ausgeblendetSnap = await fw.getDoc('users/'+fw.user.uid+'/settings/aufgaben_ausgeblendet').catch(() => null);
+    const ausgeblendet = new Set((ausgeblendetSnap?.data()?.ids) || []);
+    const ausgeblendetAufgaben = aufgaben.filter(a => ausgeblendet.has(a.typ + (a.userId||'') + (a.pruefId||'')));
+    const sichtbareAufgaben = aufgaben.filter(a => !ausgeblendet.has(a.typ + (a.userId||'') + (a.pruefId||'')));
+
+    const icons = { 'kein-datum': '📅', 'agt': '🔴', 'eh': '⚠️', 'dienstgrad': '🪖', 'pruef-fail': '❌', 'pruef-kommentar': '💬' };
+
+    const aufgabeZeile = (a, mitAusblenden) => {
+      const key = a.typ + (a.userId||'') + (a.pruefId||'');
+      const ziel = a.typ === 'pw-reset'
+        ? `pwResetDurchfuehren('${a.resetId}','${a.userId}')`
+        : (a.typ === 'pruef-fail' || a.typ === 'pruef-kommentar')
+        ? `navigiereZuFahrzeug('${a.fahrzeugId||''}')`
+        : a.userId ? `navigate('kamerad-detail',{id:'${a.userId}'})`
+        : `navigate('dienste')`;
+      return `
+        <div style="display:flex;align-items:center;border-bottom:1px solid var(--border);padding:0.35rem 0">
+          <div style="font-size:1rem;margin-right:0.5rem;cursor:pointer;flex:1" onclick="${ziel}">
+            ${icons[a.typ]||'•'} <span style="font-size:0.83rem">${a.text}</span>
+          </div>
+          ${mitAusblenden
+            ? `<button onclick="aufgabeAusblenden('${key}')" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:0.75rem;padding:0.1rem 0.3rem" title="Ausblenden">Ausblenden</button>`
+            : `<button onclick="aufgabeEinblenden('${key}')" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:0.75rem;padding:0.1rem 0.3rem" title="Wieder einblenden">Einblenden</button>`
+          }
         </div>`;
+    };
+
+    const archivBlock = ausgeblendetAufgaben.length ? `
+      <details style="margin-top:0.4rem">
+        <summary style="font-size:0.82rem;color:var(--muted);cursor:pointer;padding:0.3rem 0">
+          Ausgeblendet (${ausgeblendetAufgaben.length})
+        </summary>
+        <div style="margin-top:0.3rem">
+          ${ausgeblendetAufgaben.map(a => aufgabeZeile(a, false)).join('')}
+        </div>
+      </details>` : '';
+
+    if (sichtbareAufgaben.length || ausgeblendetAufgaben.length) {
+      aufgabenHtml = `
+        <details class="card" style="margin-bottom:0.6rem;padding:0">
+          <summary style="list-style:none;padding:0.4rem 0.8rem;cursor:pointer;display:flex;align-items:center;justify-content:space-between;font-size:13px;border-radius:8px">
+            <span style="font-weight:600;color:#f59e0b">⚠️ Offene Aufgaben (${sichtbareAufgaben.length})</span>
+            <span style="color:var(--muted);font-size:1.1rem">▾</span>
+          </summary>
+          <div style="padding:0 0.8rem 0.8rem">
+            ${sichtbareAufgaben.map(a => aufgabeZeile(a, true)).join('')}
+            ${archivBlock}
+          </div>
+        </details>`;
     } else {
       aufgabenHtml = `<div class="card" style="margin-bottom:0.6rem;color:#22c55e;font-size:0.88rem">✅ Keine offenen Aufgaben</div>`;
     }
+
+    window.aufgabeAusblenden = async (key) => {
+      const snap = await fw.getDoc('users/'+fw.user.uid+'/settings/aufgaben_ausgeblendet').catch(() => null);
+      const ids = new Set((snap?.data()?.ids) || []);
+      ids.add(key);
+      await fw.setDoc('users/'+fw.user.uid+'/settings/aufgaben_ausgeblendet', { ids: [...ids] });
+      fw.toast('Ausgeblendet');
+      navigate('kameraden');
+    };
+
+    window.pwResetDurchfuehren = async (resetId, userId) => {
+  const neuesPasswort = prompt('Neues Passwort für diesen Kamerad (mind. 6 Zeichen):');
+  if (!neuesPasswort || neuesPasswort.length < 6) { fw.toast('Passwort zu kurz', true); return; }
+  try {
+    // Passwort über Cloud Function setzen
+    const token = await fw.user.getIdToken();
+    const res = await fetch('https://europe-west3-ffw-oegeln-791ca.cloudfunctions.net/resetUserPassword', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer '+token },
+      body: JSON.stringify({ userId, newPassword: neuesPasswort }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    // Anfrage als erledigt markieren
+    await fw.setDoc('pw_reset_requests/'+resetId, { erledigt: true });
+    fw.toast('Passwort zurückgesetzt ✅');
+    navigate('kameraden');
+  } catch(e) {
+    fw.toast('Fehler: ' + e.message, true);
+  }
+};
+
+window.navigiereZuFahrzeug = (fahrzeugId) => {
+  // Falls wir bereits auf der Dienste-Seite sind, nicht neu laden – nur aufklappen/scrollen
+  const bereitsDa = !!document.getElementById('fz-pruef-details');
+  if (!bereitsDa) navigate('dienste');
+  // Nach dem (Neu-)Rendern das äußere und das richtige Fahrzeug-Accordion öffnen
+  if (fahrzeugId) {
+    setTimeout(() => {
+      const aussen = document.getElementById('fz-pruef-details');
+      if (aussen) aussen.open = true;
+      const el = document.querySelector(`details[data-fz-id="${fahrzeugId}"]`);
+      if (el) { el.open = true; el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+    }, bereitsDa ? 0 : 600);
+  }
+};
+
+window.aufgabeEinblenden = async (key) => {
+      const snap = await fw.getDoc('users/'+fw.user.uid+'/settings/aufgaben_ausgeblendet').catch(() => null);
+      const ids = new Set((snap?.data()?.ids) || []);
+      ids.delete(key);
+      await fw.setDoc('users/'+fw.user.uid+'/settings/aufgaben_ausgeblendet', { ids: [...ids] });
+      fw.toast('Wieder eingeblendet ✅');
+      navigate('kameraden');
+    };
   }
 
   el.innerHTML = `
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.6rem;margin-bottom:0.2rem">
-      <button class="btn btn-secondary btn-full" onclick="navigate('lehrgaenge')" style="display:flex;align-items:center;justify-content:center;gap:0.4rem;padding:0.7rem">
-        <span style="font-size:1.2rem">📚</span><span style="font-weight:600">Lehrgänge</span>
-      </button>
-      <button class="btn btn-secondary btn-full" onclick="navigate('statistik')" style="display:flex;align-items:center;justify-content:center;gap:0.4rem;padding:0.7rem">
-        <span style="font-size:1.2rem">📊</span><span style="font-weight:600">Statistiken</span>
-      </button>
-    </div>
     ${aufgabenHtml}
     <div style="font-size:0.72rem;color:var(--muted);text-align:right;padding:0 0.2rem 0.3rem">Dienststunden (12 Mon.) · Ziel: ${ZIEL}h</div>
     <div class="card">
@@ -2147,6 +2828,7 @@ registerPage('kameraden', async (el) => {
           <div class="list-item-icon" style="${u.aktiv===false?'filter:grayscale(1);opacity:0.4':''}">🧑</div>
           <div class="list-item-body">
             <div class="list-item-title">${u.nachname||''}, ${u.vorname||''}</div>
+            ${u.ortswehrIds?.length || u.ortswehrId ? `<div class="list-item-sub">${(u.ortswehrIds||[u.ortswehrId]).map(id => owMapKam.get(id)).filter(Boolean).join(', ')}</div>` : ''}
           </div>
           ${stundenBadge(u.id)}
           <div class="list-chevron">›</div>
@@ -2157,6 +2839,13 @@ registerPage('kameraden', async (el) => {
       <summary style="font-weight:600;cursor:pointer;list-style:none;display:flex;align-items:center;gap:0.5rem">🏘️ Ortswehren verwalten</summary>
       <div id="ortswehr-inline" style="margin-top:0.8rem">⏳ Lade...</div>
     </details>` : ''}
+    <div style="display:flex;flex-direction:column;gap:0.4rem;margin-top:0.8rem">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.4rem">
+        <button class="btn btn-secondary btn-sm btn-full" onclick="navigate('lehrgaenge')">Lehrgänge</button>
+        <button class="btn btn-secondary btn-sm btn-full" onclick="navigate('statistik')">Statistiken</button>
+      </div>
+      ${fw.isWehrfuehrer() ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('einstellungen-admin')">Dienstgrade & Filter</button>` : ''}
+    </div>
   `;
   if (fw.isWehrfuehrer()) ladeOrtswehrenInline();
 });
@@ -2205,21 +2894,21 @@ window.ortMigration = async () => {
   btn.disabled = false;
 };
 
-const QUALI_REIHENFOLGE = ['Truppmann','Sprechfunk','AGT','TH-Grund','Maschinist','Absturzsicherung','ABC-Grund','Truppführer','Gruppenführer','Zugführer','Wehrführer','Erste-Hilfe','Motorsäge A/B','Motorsäge C/D'];
-const QUALI_TRENNER_NACH = 'Wehrführer';
+// QUALI_REIHENFOLGE kommt jetzt aus _lehrgangsarten (dynamisch)
+const QUALI_TRENNER_NACH = null; // kein fixer Trenner mehr
 
 function renderQualis(qualis, userId, u) {
   if (!qualis.length) return '<p class="muted" style="font-size:0.85rem">Keine</p>';
-  // Bezeichnung normalisieren (trim + Groß-/Kleinschreibung)
+  const _reihenfolge = getLehrgangsReihenfolge();
   const qualiIdx = (bez) => {
     const b = (bez||'').trim();
-    const i = QUALI_REIHENFOLGE.findIndex(r => r.toLowerCase() === b.toLowerCase());
+    const i = _reihenfolge.findIndex(r => r.toLowerCase() === b.toLowerCase());
     return i < 0 ? 99 : i;
   };
   const sorted = [...qualis].sort((a, b) => qualiIdx(a.bezeichnung) - qualiIdx(b.bezeichnung));
   let html = '';
   let trennerGezeigt = false;
-  const trennerIdx = QUALI_REIHENFOLGE.indexOf(QUALI_TRENNER_NACH);
+  const trennerIdx = -1; // kein fixer Trenner
   for (const q of sorted) {
     const istErsterNachTrenner = !trennerGezeigt && qualiIdx(q.bezeichnung) > trennerIdx;
     if (istErsterNachTrenner) trennerGezeigt = true;
@@ -2281,23 +2970,26 @@ function renderAgtFelder(u, id, qualis) {
 }
 
 registerPage('kamerad-detail', async (el, {id}) => {
+  await ladeLehrgangsarten();
   const snap = await fw.getDoc('users/'+id);
   if (!snap.exists()) { el.innerHTML='<div class="empty">Nicht gefunden</div>'; return; }
   const u = {id,...snap.data()};
   fw.setTitle(u.vorname+' '+u.nachname);
-  fw.showBack(() => navigate('kameraden'));
+  fw.showBack(() => navigateBack());
   fw.showHeaderAction('✏️ Edit', () => navigate('kamerad-form',{id}));
 
   const [aSnap, qSnap, ortSnap, planSnap] = await Promise.all([
     fw.getDocs('anwesenheiten', fw.where('userId','==',id)),
     fw.getDocs('users/'+id+'/qualifikationen'),
-    u.ortswehrId ? fw.getDoc('ortswehren/'+u.ortswehrId) : Promise.resolve(null),
+    fw.getDocs('ortswehren'),
     fw.getDocs('lehrgangsplanung', fw.where('userId','==',id)),
   ]);
   const stats    = getStats(aSnap.docs.map(d => d.data()));
   const qualis   = qSnap.docs.map(d => ({id:d.id,...d.data()}));
   const planung  = planSnap.docs.map(d => ({id:d.id,...d.data()}));
-  const wehrName = ortSnap?.exists?.() ? ortSnap.data().name : '–';
+  const owMap2 = new Map(ortSnap.docs.map(d => [d.id, d.data().name]));
+  const uWehrIds = u.ortswehrIds?.length ? u.ortswehrIds : (u.ortswehrId ? [u.ortswehrId] : []);
+  const wehrName = uWehrIds.map(id => owMap2.get(id)).filter(Boolean).join(', ') || '–';
 
   // Geplante Lehrgänge die noch nicht in qualis sind
   const vorhandeneBezeichnungen = new Set(qualis.map(q => (q.bezeichnung||'').toLowerCase()));
@@ -2310,7 +3002,7 @@ registerPage('kamerad-detail', async (el, {id}) => {
         <div class="list-item" style="border-bottom:1px solid var(--border)">
           <div class="list-item-body">
             <div class="list-item-title">${p.lehrgang}</div>
-            <div class="list-item-sub">${p.startdatum ? datum(p.startdatum) : (p.jahr ? p.jahr : '–')}${p.bemerkung?' · '+p.bemerkung:''}</div>
+            <div class="list-item-sub">${p.datum ? (([y,m,d]) => `${d}.${m}.${y}`)(p.datum.split('-')) : p.startdatum ? datum(p.startdatum) : (p.jahr ? p.jahr : '–')}${p.bemerkung?' · '+p.bemerkung:''}</div>
           </div>
           <span class="badge badge-blue">geplant</span>
         </div>`).join('')}
@@ -2325,10 +3017,10 @@ registerPage('kamerad-detail', async (el, {id}) => {
       </div>
     </div>
     <div class="stats-grid">
+      <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.dienstRelevant)}h</div><div class="stat-label">Dienste (relevant) ${new Date().getFullYear()}</div></div>
+      <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.dienstIrrelevant)}h</div><div class="stat-label">Dienste (nicht relevant) ${new Date().getFullYear()}</div></div>
       <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.gesamtEinsatz)}h</div><div class="stat-label">Einsatzstunden ${new Date().getFullYear()}</div></div>
       <div class="stat-card"><div class="stat-zahl">${stats.einsaetze}</div><div class="stat-label">${stats.einsaetze===1?'Einsatz':'Einsätze'} ${new Date().getFullYear()}</div></div>
-      <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.gesamtDienst)}h</div><div class="stat-label">Dienststunden ${new Date().getFullYear()}</div></div>
-      <div class="stat-card"><div class="stat-zahl">${stats.dienste}</div><div class="stat-label">${stats.dienste===1?'Dienst':'Dienste'} ${new Date().getFullYear()}</div></div>
     </div>
     <div class="card">
       <div class="card-title">Stammdaten</div>
@@ -2342,8 +3034,18 @@ registerPage('kamerad-detail', async (el, {id}) => {
     <div class="card">
       <div class="card-title">Lehrgänge</div>
       ${renderQualis(qualis, id, u)}
+      ${geplanteNeu.length ? `
+        <div style="margin-top:0.5rem;padding-top:0.5rem">
+          ${geplanteNeu.map((p,i) => `
+            <div class="list-item" style="${i > 0 ? 'border-top:1px solid var(--border)' : ''}">
+              <div class="list-item-body">
+                <div class="list-item-title" style="color:var(--muted)">${p.lehrgang}</div>
+                <div class="list-item-sub">${p.datum ? (([y,m,d]) => `${d}.${m}.${y}`)(p.datum.split('-')) : p.jahr} · geplant${p.bemerkung?' · '+p.bemerkung:''}</div>
+              </div>
+              <button onclick="planungLoeschenDirekt('${p.id}')" class="btn btn-sm btn-danger">🗑</button>
+            </div>`).join('')}
+        </div>` : ''}
     </div>
-    ${planungHtml}
     ${renderAgtFelder(u, id, qualis)}
     <div class="card" style="display:flex;flex-direction:column;gap:0.5rem">
       ${u.aktiv === false
@@ -2400,6 +3102,10 @@ window.qualiHinzufuegen = async (userId) => {
     stunden: (tage && stundenProTag) ? Math.round(tage * stundenProTag * 100) / 100 : null,
     bemerkung: document.getElementById('q-bem').value || '',
   });
+  // Maschinist-Flag auf User setzen wenn Lehrgang "Maschinist" hinzugefügt
+  if (bez.toLowerCase().includes('maschinist')) {
+    await fw.updateDoc('users/'+userId, { istMaschinist: true });
+  }
   fw.toast('Hinzugefügt'); navigate('kamerad-detail',{id:userId});
 };
 window.qualiLoeschen = async (userId, qualiId) => {
@@ -2417,6 +3123,8 @@ window.agtSpeichern = async (userId) => {
 };
 
 registerPage('kamerad-form', async (el, {id}) => {
+  await ladeLehrgangsarten();
+  const dienstgradeLoaded = await ladeDienstgrade();
   let u = null;
   if (id) { const s=await fw.getDoc('users/'+id); if(s.exists()) u={id,...s.data()}; }
   fw.setTitle(u ? 'Bearbeiten' : 'Neuer Kamerad');
@@ -2425,25 +3133,27 @@ registerPage('kamerad-form', async (el, {id}) => {
   const owSnap = await fw.getDocs('ortswehren');
   const ortswehren = owSnap.docs.map(d => ({id:d.id,...d.data()}));
   const owOptions = ortswehren.map(o =>
-    `<option value="${o.id}" ${u?.ortswehrId===o.id?'selected':''}>${o.name}</option>`).join('');
+    `<option value="${o.id}" ${(u?.ortswehrIds||[u?.ortswehrId]).includes(o.id)?'selected':''}>${o.name}</option>`).join('');
 
   const datumVal = u?.eintrittsdatum?.toDate ? u.eintrittsdatum.toDate().toISOString().slice(0,10) : (u?.eintrittsdatum||'');
 
   el.innerHTML = `
     <div class="card">
       ${!u ? `
-        <div class="form-row"><label>Benutzername (wird Login)</label><input id="k-email" type="text" placeholder="vorname.nachname" autocapitalize="none"></div>
         <div class="form-row"><label>Initiales Passwort (mind. 6 Zeichen)</label><input id="k-pw" type="password"></div>
       ` : ''}
-      <div class="form-row"><label>Vorname</label><input id="k-vn" value="${u?.vorname||''}"></div>
-      <div class="form-row"><label>Nachname</label><input id="k-nn" value="${u?.nachname||''}"></div>
-      <div class="form-row"><label>Dienstgrad</label><select id="k-dg"><option value="">– wählen –</option><option value="Feuerwehrmann-Anwärter" ${u?.dienstgrad==="Feuerwehrmann-Anwärter"?"selected":""}>Feuerwehrmann-Anwärter</option><option value="Feuerwehrmann" ${u?.dienstgrad==="Feuerwehrmann"?"selected":""}>Feuerwehrmann</option><option value="Oberfeuerwehrmann" ${u?.dienstgrad==="Oberfeuerwehrmann"?"selected":""}>Oberfeuerwehrmann</option><option value="Hauptfeuerwehrmann" ${u?.dienstgrad==="Hauptfeuerwehrmann"?"selected":""}>Hauptfeuerwehrmann</option><option value="1. Hauptfeuerwehrmann" ${u?.dienstgrad==="1. Hauptfeuerwehrmann"?"selected":""}>1. Hauptfeuerwehrmann</option><option value="Löschmeister" ${u?.dienstgrad==="Löschmeister"?"selected":""}>Löschmeister</option><option value="Oberlöschmeister" ${u?.dienstgrad==="Oberlöschmeister"?"selected":""}>Oberlöschmeister</option><option value="Hauptlöschmeister" ${u?.dienstgrad==="Hauptlöschmeister"?"selected":""}>Hauptlöschmeister</option><option value="1. Hauptlöschmeister" ${u?.dienstgrad==="1. Hauptlöschmeister"?"selected":""}>1. Hauptlöschmeister</option><option value="Brandmeister" ${u?.dienstgrad==="Brandmeister"?"selected":""}>Brandmeister</option><option value="Oberbrandmeister" ${u?.dienstgrad==="Oberbrandmeister"?"selected":""}>Oberbrandmeister</option><option value="Hauptbrandmeister" ${u?.dienstgrad==="Hauptbrandmeister"?"selected":""}>Hauptbrandmeister</option><option value="1. Hauptbrandmeister" ${u?.dienstgrad==="1. Hauptbrandmeister"?"selected":""}>1. Hauptbrandmeister</option></select></div>
+      <div class="form-row"><label>Vorname</label><input id="k-vn" value="${u?.vorname||''}" ></div>
+      <div class="form-row"><label>Nachname</label><input id="k-nn" value="${u?.nachname||''}" ></div>
+      ${!u ? `<div class="form-row"><label>Benutzername (Login)</label><input id="k-email" type="text" readonly style="color:var(--muted)" placeholder="wird automatisch generiert"></div>` : ''}
+      <div class="form-row"><label>Dienstgrad</label><select id="k-dg"><option value="">– wählen –</option>${dienstgradeLoaded.map(dg => `<option value="${dg}" ${u?.dienstgrad===dg?'selected':''}>${dg}</option>`).join('')}</select></div>
       <div class="form-row"><label>Eintrittsdatum</label><input id="k-ed" type="date" value="${datumVal}"></div>
-      <div class="form-row"><label>Ortswehr</label>
-        <select id="k-ow">
-          <option value="">– Keine Zuordnung –</option>
-          ${owOptions}
-        </select>
+      <div class="form-row"><label>Ortswehr(en)</label>
+        <div style="display:flex;flex-direction:column;gap:0.3rem;margin-top:0.2rem">
+          ${ortswehren.map(o => `<label style="display:flex;align-items:center;gap:0.5rem;font-size:0.88rem;cursor:pointer">
+            <input type="checkbox" class="k-ow-cb" value="${o.id}" ${(u?.ortswehrIds||[u?.ortswehrId].filter(Boolean)).includes(o.id)?'checked':''} style="width:1rem;height:1rem;accent-color:var(--red)">
+            ${o.name}
+          </label>`).join('')}
+        </div>
       </div>
       <div class="form-row"><label>Rolle</label>
         <select id="k-rolle" onchange="rolleGeaendert(this.value)">
@@ -2468,13 +3178,39 @@ registerPage('kamerad-form', async (el, {id}) => {
     </div>`;
 });
 
+// ── Login-Name Generierung ────────────────────────────────
+function generiereLoginBasis(vorname, nachname) {
+  const v = (vorname || '').trim().toLowerCase().replace(/[^a-zäöüß]/g, '');
+  const n = (nachname || '').trim().toLowerCase().replace(/[^a-zäöüß]/g, '');
+  if (!v || !n) return '';
+  return v[0] + n;
+}
+
+window.kameradLoginAktualisieren = async () => {
+  const vn = document.getElementById('k-vn')?.value || '';
+  const nn = document.getElementById('k-nn')?.value || '';
+  const el = document.getElementById('k-email');
+  if (!el) return;
+  const basis = generiereLoginBasis(vn, nn);
+  if (!basis) { el.value = ''; return; }
+
+  // Duplikat-Check gegen Firestore
+  const snap = await fw.getDocs('users', fw.where('loginName', '>=', basis), fw.where('loginName', '<', basis + '\uf8ff'));
+  const existing = snap.docs.map(d => d.data().loginName).filter(Boolean);
+  let login = basis;
+  let i = 2;
+  while (existing.includes(login)) { login = basis + i; i++; }
+  el.value = login;
+};
+
 window.kameradSpeichern = async (id) => {
   const data = {
     vorname: document.getElementById('k-vn').value,
     nachname: document.getElementById('k-nn').value,
     dienstgrad: document.getElementById('k-dg').value,
     eintrittsdatum: document.getElementById('k-ed').value || null,
-    ortswehrId: document.getElementById('k-ow').value || null,
+    ortswehrIds: [...document.querySelectorAll('.k-ow-cb:checked')].map(cb => cb.value),
+    ortswehrId: document.querySelector('.k-ow-cb:checked')?.value || null, // Kompatibilität
     rolle: document.getElementById('k-rolle').value,
     staerkeRolle: document.getElementById('k-rolle').value === 'wehrfuehrer'
       ? (document.getElementById('k-staerke-rolle')?.value || 'kamerad')
@@ -2488,9 +3224,9 @@ window.kameradSpeichern = async (id) => {
     } else {
       const loginName = document.getElementById('k-email').value.trim().toLowerCase();
       const pw = document.getElementById('k-pw').value;
-      if (!loginName||!pw) { fw.toast('Benutzername und Passwort erforderlich', true); return; }
+      if (!loginName||!pw) { fw.toast('Bitte zuerst Vor- und Nachname eintragen', true); return; }
       if (pw.length < 6) { fw.toast('Passwort mind. 6 Zeichen', true); return; }
-      const email = loginName.includes('@') ? loginName : loginName + '@ffw-oegeln.de';
+      const email = loginName + '@ffw-oegeln.de';
       data.loginName = loginName;
       await window.createKamerad(email, pw, data);
       fw.toast('Kamerad angelegt ✅'); navigate('kameraden');
@@ -2525,7 +3261,7 @@ registerPage('ortswehr-form', async (el, {id}) => {
   let w = null;
   if (id) { const s=await fw.getDoc('ortswehren/'+id); if(s.exists()) w={id,...s.data()}; }
   fw.setTitle(w ? 'Ortswehr bearbeiten' : 'Neue Ortswehr');
-  fw.showBack(() => navigate('ortswehren'));
+  fw.showBack(() => navigateBack());
   el.innerHTML = `
     <div class="card">
       <div class="form-row"><label>Name der Wehr</label><input id="ow-name" value="${w?.name||''}" placeholder="FFW Musterort"></div>
@@ -2556,3 +3292,441 @@ window.ortswehrLoeschen = async (id) => {
 };
 
 }); // end waitFw
+
+// ── Fahrzeug- und Geräteprüfungen ─────────────────────────
+async function ladePruefaufgabenInline() {
+  const el = document.getElementById('pruef-inline');
+  if (!el) return;
+
+  const istWF = fw.isWehrfuehrer();
+  const ortswehrId = fw.profil?.ortswehrIds?.[0] || fw.profil?.ortswehrId || null;
+
+  // Fahrzeuge laden – WF sieht alle, Maschinist nur eigene Ortswehr
+  // Maschinist-Check
+  const myQualiSnap = await fw.getDocs('users/'+fw.user.uid+'/qualifikationen');
+  const myQualis = myQualiSnap.docs.map(d => d.data());
+  const istMaschinist = myQualis.some(q => (q.bezeichnung||'').toLowerCase().includes('maschinist'));
+
+  const fahrzeugSnap = await fw.getDocs('fahrzeuge', fw.orderBy('name','asc'));
+  const meineWehrIdsFz = fw.profil.ortswehrIds?.length ? fw.profil.ortswehrIds : (fw.profil.ortswehrId ? [fw.profil.ortswehrId] : []);
+  const fahrzeuge = fahrzeugSnap.docs
+    .map(d => ({id:d.id,...d.data()}))
+    .filter(f => istWF || !f.ortswehrId || meineWehrIdsFz.includes(f.ortswehrId));
+
+  // Alle Prüfaufgaben laden
+  const aufgabenSnap = await fw.getDocs('pruefaufgaben', fw.orderBy('bezeichnung','asc'));
+  const alleAufgaben = aufgabenSnap.docs.map(d => ({id:d.id,...d.data()}));
+
+  const heute = new Date(); heute.setHours(0,0,0,0);
+
+  function statusFarbe(a) {
+    if (!a.letztesPruefDatum) return '#f59e0b';
+    const letztes = a.letztesPruefDatum.toDate ? a.letztesPruefDatum.toDate() : new Date(a.letztesPruefDatum);
+    if (!a.intervall) return '#94a3b8';
+    const intervallMs = a.intervall * 30.44 * 24 * 60 * 60 * 1000; // Monate in ms
+    const faellig = new Date(letztes.getTime() + intervallMs);
+    const warnungMs = intervallMs * 0.1; // 10% des Intervalls
+    const warnung = new Date(faellig.getTime() - warnungMs);
+    if (heute > faellig) return '#dc2626';
+    if (heute >= warnung) return '#f59e0b';
+    return '#22c55e';
+  }
+
+  function datumsAnzeige(a) {
+    if (!a.letztesPruefDatum) return 'Noch nie geprüft';
+    if (!a.intervall) {
+      const d = a.letztesPruefDatum.toDate ? a.letztesPruefDatum.toDate() : new Date(a.letztesPruefDatum);
+      return 'Zuletzt: ' + d.toLocaleDateString('de-DE');
+    }
+    const letztes = a.letztesPruefDatum.toDate ? a.letztesPruefDatum.toDate() : new Date(a.letztesPruefDatum);
+    const naechstes = new Date(letztes);
+    naechstes.setDate(1); // Overflow vermeiden
+    naechstes.setMonth(naechstes.getMonth() + a.intervall);
+    // Auf letzten Tag des Monats setzen wenn nötig
+    const maxTag = new Date(naechstes.getFullYear(), naechstes.getMonth()+1, 0).getDate();
+    naechstes.setDate(Math.min(letztes.getDate(), maxTag));
+    const istUeberfaellig = naechstes < heute;
+    return (istUeberfaellig ? '⚠️ Nächste: ' : 'Nächste: ') + naechstes.toLocaleDateString('de-DE');
+  }
+
+  // Dringlichkeit: je kleiner, desto dringlicher (negativ = überfällig)
+  function dringlichkeit(a) {
+    if (!a.letztesPruefDatum || !a.intervall) return 0;
+    const letztes = a.letztesPruefDatum.toDate ? a.letztesPruefDatum.toDate() : new Date(a.letztesPruefDatum);
+    const intervallMs = a.intervall * 30.44 * 24 * 60 * 60 * 1000;
+    const faellig = new Date(letztes.getTime() + intervallMs);
+    return faellig.getTime() - heute.getTime(); // ms bis Fälligkeit (negativ = überfällig)
+  }
+
+  function aufgabenHtml(fahrzeugId) {
+    const aufgaben = alleAufgaben.filter(a => a.fahrzeugId === fahrzeugId);
+    if (aufgaben.length === 0) return '<p class="muted" style="font-size:0.82rem;padding:0.3rem 0">Keine Aufgaben</p>';
+    const sorted = [...aufgaben.filter(a => !a.ausgeblendet)].sort((a,b) => dringlichkeit(a) - dringlichkeit(b));
+    return sorted.map(a => `
+      <div style="padding:0.5rem 0;border-bottom:1px solid var(--border)">
+        <div style="display:flex;align-items:flex-start;gap:0.6rem">
+          <div style="width:10px;height:10px;border-radius:50%;flex-shrink:0;margin-top:0.3rem;background:${statusFarbe(a)}"></div>
+          <div style="flex:1;min-width:0">
+            <div style="font-size:0.85rem;font-weight:600">${a.bezeichnung}</div>
+            <div style="font-size:0.73rem;color:var(--muted)">${datumsAnzeige(a)}${a.intervall ? ` · alle ${a.intervall} Mon.` : ''}</div>
+            ${a.kommentar ? `<div style="font-size:0.73rem;color:var(--muted);margin-top:0.15rem">💬 ${a.kommentar}</div>` : ''}
+          </div>
+          <div style="display:flex;flex-direction:column;gap:0.2rem;flex-shrink:0;align-items:flex-end">
+            <div style="display:flex;gap:0.2rem">
+              <button class="btn btn-sm btn-success" style="font-size:0.7rem;padding:0.15rem 0.35rem" onclick="pruefBestanden('${a.id}',true)" title="Bestanden">✅</button>
+              <button class="btn btn-sm btn-danger" style="font-size:0.7rem;padding:0.15rem 0.35rem" onclick="pruefBestanden('${a.id}',false)" title="Nicht bestanden">❌</button>
+            </div>
+            <div style="display:flex;gap:0.2rem">
+              <button class="btn btn-sm btn-secondary" style="font-size:0.7rem;padding:0.15rem 0.35rem" onclick="pruefKommentar('${a.id}')" title="Kommentar">💬</button>
+              ${istWF ? `<button class="btn btn-sm btn-secondary" style="font-size:0.7rem;padding:0.15rem 0.35rem" onclick="navigate('pruefaufgabe-form',{id:'${a.id}'})">✏️</button>` : ''}
+            </div>
+          </div>
+        </div>
+      </div>`).join('');
+  }
+
+  if (fahrzeuge.length === 0) {
+    el.innerHTML = `<p class="muted" style="font-size:0.85rem">Noch keine Fahrzeuge</p>
+      ${istWF ? `<button class="btn btn-secondary btn-sm" style="margin-top:0.5rem" onclick="navigate('fahrzeug-form',{})">+ Fahrzeug hinzufügen</button>` : ''}`;
+    return;
+  }
+
+  // Dashboard-Hinweis: nicht bestandene oder kommentierte Aufgaben
+  const offene = alleAufgaben.filter(a => !a.ausgeblendet && (a.bestanden === false || a.kommentar));
+  const dashHtml = (istWF || istMaschinist) && offene.length ? `
+    <div class="card" style="border-left:3px solid #ef4444;margin-bottom:0.5rem">
+      <div style="font-weight:600;font-size:0.88rem;color:#ef4444;margin-bottom:0.4rem">⚠️ ${offene.length} Aufgabe${offene.length!==1?'n':''} mit Handlungsbedarf</div>
+      ${offene.map(a => `<div style="font-size:0.82rem;padding:0.3rem 0;border-bottom:1px solid var(--border);cursor:pointer" onclick="navigiereZuFahrzeug('${a.fahrzeugId||''}')"><div style="display:flex;align-items:center;gap:0.4rem"><span style="flex:1;font-weight:600">${a.bezeichnung}</span><button onclick="event.stopPropagation();pruefKommentar('${a.id}')" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:0.8rem;padding:0;flex-shrink:0">💬</button></div>${a.kommentar?`<div style="font-size:0.75rem;color:var(--muted);margin-top:0.1rem">${a.kommentar}</div>`:''}</div>`).join('')}
+    </div>` : '';
+
+  // Freitext-Notiz laden
+  // Freitext pro Fahrzeug laden
+  const fahrzeugNotizen = {};
+  await Promise.all(fahrzeuge.map(async f => {
+    const s = await fw.getDoc('fahrzeuge/'+f.id+'/meta/notiz').catch(() => null);
+    fahrzeugNotizen[f.id] = s?.exists() ? (s.data().text || '') : '';
+  }));
+
+  // Offene Dropdowns merken vor dem Re-Render
+  const offeneDetails = new Set(
+    [...el.querySelectorAll('details[open]')].map(d => d.dataset.fzId)
+  );
+
+  el.innerHTML = dashHtml + fahrzeuge.map(f => `
+    <details data-fz-id="${f.id}" style="margin-bottom:0.5rem;border:1px solid var(--border);border-radius:10px" ${offeneDetails.has(f.id) ? 'open' : ''}>
+      <summary style="padding:0.4rem 0.8rem;cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;font-weight:600;font-size:13px;border-radius:8px">
+        <span>${f.name}${f.bezeichnung ? ` <span style="font-weight:400;color:var(--muted);font-size:0.8rem">(${f.bezeichnung})</span>` : ''}</span>
+        <div style="display:flex;gap:0.4rem;align-items:center">
+          ${istWF ? `<button class="btn btn-sm btn-secondary" style="font-size:0.65rem;padding:0.15rem 0.4rem" onclick="event.stopPropagation();navigate('fahrzeug-form',{id:'${f.id}'})">✏️</button>
+          <button class="btn btn-sm btn-secondary" style="font-size:0.65rem;padding:0.15rem 0.4rem" onclick="event.stopPropagation();navigate('pruefaufgabe-form',{fahrzeugId:'${f.id}'})">+</button>` : ''}
+          <span style="color:var(--muted)">▾</span>
+        </div>
+      </summary>
+      <div style="padding:0 0.8rem 0.8rem">
+        ${aufgabenHtml(f.id)}
+        <div style="margin-top:0.6rem;padding-top:0.4rem;border-top:1px solid var(--border)">
+          <textarea id="notiz-${f.id}" rows="3" style="width:100%;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:0.5rem;font-size:0.8rem;color:var(--text);resize:vertical" placeholder="Notizen zu diesem Fahrzeug…">${fahrzeugNotizen[f.id]||''}</textarea>
+          <button class="btn btn-secondary btn-sm" style="margin-top:0.3rem" onclick="fahrzeugNotizSpeichern('${f.id}')">💾 Notiz speichern</button>
+        </div>
+      </div>
+    </details>`).join('') +
+    (istWF ? `<button class="btn btn-secondary btn-sm" style="margin-top:0.5rem" onclick="navigate('fahrzeug-form',{})">+ Fahrzeug hinzufügen</button>` : '');
+
+  window.fahrzeugNotizSpeichern = async (fzId) => {
+    const text = document.getElementById('notiz-'+fzId)?.value || '';
+    await fw.setDoc('fahrzeuge/'+fzId+'/meta/notiz', { text });
+    fw.toast('Notiz gespeichert ✅');
+  };
+}
+
+window.pruefBestanden = async (id, bestanden) => {
+  const label = bestanden ? 'Bestanden' : 'Nicht bestanden';
+  if (!confirm(`Aufgabe als "${label}" markieren?`)) return;
+  const data = { letztesPruefDatum: new Date(), bestanden };
+  await fw.setDoc('pruefaufgaben/'+id, data);
+  if (bestanden) {
+    // Bestanden: Kommentar separat löschen (nur wenn vorhanden)
+    try { await fw.updateDoc('pruefaufgaben/'+id, { kommentar: null }); } catch(e) {}
+  }
+  fw.toast(bestanden ? 'Als bestanden markiert ✅' : 'Als nicht bestanden markiert ❌');
+  ladePruefaufgabenInline();
+};
+
+window.pruefDatumAktualisieren = async (id) => {
+  await pruefBestanden(id, true);
+};
+
+window.pruefKommentar = async (id) => {
+  const snap = await fw.getDoc('pruefaufgaben/'+id);
+  const aktuell = snap.data()?.kommentar || '';
+  const neu = prompt('Kommentar:', aktuell);
+  if (neu === null) return;
+  await fw.setDoc('pruefaufgaben/'+id, { kommentar: neu.trim() || null });
+  fw.toast('Kommentar gespeichert ✅');
+  ladePruefaufgabenInline();
+};
+
+window.pruefAusblenden = async (id) => {
+  if (!confirm('Aufgabe dauerhaft ausblenden?')) return;
+  await fw.setDoc('pruefaufgaben/'+id, { ausgeblendet: true });
+  fw.toast('Ausgeblendet');
+  ladePruefaufgabenInline();
+};
+
+// ── Fahrzeug Form ─────────────────────────────────────────
+registerPage('fahrzeug-form', async (el, {id}) => {
+  if (!fw.isWehrfuehrer()) { el.innerHTML = '<div class="empty">Keine Berechtigung</div>'; return; }
+  fw.setTitle(id ? 'Fahrzeug bearbeiten' : 'Neues Fahrzeug');
+  fw.showBack(() => navigateBack());
+
+  let fahrzeug = null;
+  if (id) {
+    const snap = await fw.getDoc('fahrzeuge/'+id);
+    if (snap.exists()) fahrzeug = {id, ...snap.data()};
+  }
+
+  // Ortswehren für Dropdown laden
+  const wehrSnap = await fw.getDocs('ortswehren', fw.orderBy('name','asc'));
+  const wehren = wehrSnap.docs.map(d => ({id:d.id,...d.data()}));
+
+  el.innerHTML = `
+    <div class="card">
+      <div class="form-row">
+        <label>Fahrzeugkennung (z.B. 1/48/6)</label>
+        <input id="fz-name" value="${fahrzeug?.name||''}">
+      </div>
+      <div class="form-row">
+        <label>Bezeichnung (z.B. ZF-16)</label>
+        <input id="fz-bez" value="${fahrzeug?.bezeichnung||''}">
+      </div>
+      <div class="form-row">
+        <label>Ortswehr</label>
+        <select id="fz-wehr">
+          <option value="">– Bitte wählen –</option>
+          ${wehren.map(w => `<option value="${w.id}" ${fahrzeug?.ortswehrId===w.id?'selected':''}>${w.name}</option>`).join('')}
+        </select>
+      </div>
+      <div class="btn-row" style="margin-top:0.5rem">
+        <button class="btn btn-primary" onclick="fahrzeugSpeichern('${id||''}')">💾 Speichern</button>
+        ${id ? `<button class="btn btn-danger" onclick="fahrzeugLoeschen('${id}')">🗑 Löschen</button>` : ''}
+      </div>
+    </div>
+  `;
+});
+
+window.fahrzeugSpeichern = async (id) => {
+  const name = document.getElementById('fz-name').value.trim();
+  const bez  = document.getElementById('fz-bez').value.trim();
+  const wehr = document.getElementById('fz-wehr').value;
+  if (!name) { fw.toast('Fahrzeugkennung fehlt', true); return; }
+  const data = { name, bezeichnung: bez, ortswehrId: wehr || null };
+  if (id) { await fw.setDoc('fahrzeuge/'+id, data); }
+  else    { await fw.addDoc('fahrzeuge', data); }
+  fw.toast('Gespeichert ✅');
+  navigate('dienste');
+};
+
+window.fahrzeugLoeschen = async (id) => {
+  if (!confirm('Fahrzeug wirklich löschen? Zugehörige Aufgaben bleiben erhalten.')) return;
+  await fw.deleteDoc('fahrzeuge/'+id);
+  fw.toast('Gelöscht');
+  navigate('dienste');
+};
+
+// ── Prüfaufgabe Form ──────────────────────────────────────
+registerPage('pruefaufgabe-form', async (el, {id, fahrzeugId: vorFahrzeugId}) => {
+  if (!fw.isWehrfuehrer()) { el.innerHTML = '<div class="empty">Keine Berechtigung</div>'; return; }
+  fw.setTitle(id ? 'Aufgabe bearbeiten' : 'Neue Aufgabe');
+  fw.showBack(() => navigateBack());
+
+  let aufgabe = null;
+  if (id) {
+    const snap = await fw.getDoc('pruefaufgaben/'+id);
+    if (snap.exists()) aufgabe = {id, ...snap.data()};
+  }
+
+  const letztesDatum = aufgabe?.letztesPruefDatum
+    ? (aufgabe.letztesPruefDatum.toDate ? aufgabe.letztesPruefDatum.toDate() : new Date(aufgabe.letztesPruefDatum)).toISOString().split('T')[0]
+    : '';
+
+  const fzSnap = await fw.getDocs('fahrzeuge', fw.orderBy('name','asc'));
+  const fahrzeuge = fzSnap.docs.map(d => ({id:d.id,...d.data()}));
+  const aktivFahrzeugId = aufgabe?.fahrzeugId || vorFahrzeugId || '';
+
+  el.innerHTML = `
+    <div class="card">
+      <div class="form-row">
+        <label>Fahrzeug</label>
+        <select id="pa-fz">
+          <option value="">– Bitte wählen –</option>
+          ${fahrzeuge.map(f => `<option value="${f.id}" ${aktivFahrzeugId===f.id?'selected':''}>${f.name}${f.bezeichnung?' ('+f.bezeichnung+')':''}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-row"><label>Bezeichnung</label><input id="pa-bez" value="${aufgabe?.bezeichnung||''}"></div>
+      <div class="form-row"><label>Intervall (Monate)</label><input id="pa-int" type="number" min="1" value="${aufgabe?.intervall||''}"></div>
+      <div class="form-row"><label>Letztes Prüfdatum</label><input id="pa-dat" type="date" value="${letztesDatum}"></div>
+      ${aufgabe?.ausgeblendet ? `<div style="margin-bottom:0.5rem"><button class="btn btn-secondary btn-full" onclick="pruefEinblenden('${id}')">👁 Wieder einblenden</button></div>` : ''}
+      <div class="btn-row" style="margin-top:0.5rem">
+        <button class="btn btn-primary" onclick="pruefaufgabeSpeichern('${id||''}')">💾 Speichern</button>
+        ${id ? `<button class="btn btn-danger" onclick="pruefaufgabeLoeschen('${id}')">🗑 Löschen</button>` : ''}
+      </div>
+    </div>
+  `;
+});
+
+window.pruefEinblenden = async (id) => {
+  await fw.setDoc('pruefaufgaben/'+id, { ausgeblendet: false });
+  fw.toast('Wieder eingeblendet ✅');
+  navigateBack();
+};
+
+window.pruefaufgabeSpeichern = async (id) => {
+  const fzId = document.getElementById('pa-fz').value;
+  const bez  = document.getElementById('pa-bez').value.trim();
+  const int  = parseInt(document.getElementById('pa-int').value) || null;
+  const datStr = document.getElementById('pa-dat').value;
+  if (!bez) { fw.toast('Bezeichnung fehlt', true); return; }
+  if (!fzId) { fw.toast('Fahrzeug fehlt', true); return; }
+  const data = { bezeichnung: bez, intervall: int, fahrzeugId: fzId, letztesPruefDatum: datStr ? new Date(datStr) : null };
+  if (id) { await fw.setDoc('pruefaufgaben/'+id, data); }
+  else    { await fw.addDoc('pruefaufgaben', data); }
+  fw.toast('Gespeichert ✅');
+  navigate('dienste');
+};
+
+window.pruefaufgabeLoeschen = async (id) => {
+  if (!confirm('Aufgabe wirklich löschen?')) return;
+  await fw.deleteDoc('pruefaufgaben/'+id);
+  fw.toast('Gelöscht');
+  navigate('dienste');
+};
+
+// ── Fahrzeug Form ─────────────────────────────────────────
+registerPage('fahrzeug-form', async (el, {id}) => {
+  if (!fw.isWehrfuehrer()) { el.innerHTML = '<div class="empty">Keine Berechtigung</div>'; return; }
+  fw.setTitle(id ? 'Fahrzeug bearbeiten' : 'Neues Fahrzeug');
+  fw.showBack(() => navigateBack());
+
+  let fahrzeug = null;
+  if (id) {
+    const snap = await fw.getDoc('fahrzeuge/'+id);
+    if (snap.exists()) fahrzeug = {id, ...snap.data()};
+  }
+
+  // Ortswehren für Dropdown laden
+  const wehrSnap = await fw.getDocs('ortswehren', fw.orderBy('name','asc'));
+  const wehren = wehrSnap.docs.map(d => ({id:d.id,...d.data()}));
+
+  el.innerHTML = `
+    <div class="card">
+      <div class="form-row">
+        <label>Fahrzeugkennung (z.B. 1/48/6)</label>
+        <input id="fz-name" value="${fahrzeug?.name||''}">
+      </div>
+      <div class="form-row">
+        <label>Bezeichnung (z.B. ZF-16)</label>
+        <input id="fz-bez" value="${fahrzeug?.bezeichnung||''}">
+      </div>
+      <div class="form-row">
+        <label>Ortswehr</label>
+        <select id="fz-wehr">
+          <option value="">– Bitte wählen –</option>
+          ${wehren.map(w => `<option value="${w.id}" ${fahrzeug?.ortswehrId===w.id?'selected':''}>${w.name}</option>`).join('')}
+        </select>
+      </div>
+      <div class="btn-row" style="margin-top:0.5rem">
+        <button class="btn btn-primary" onclick="fahrzeugSpeichern('${id||''}')">💾 Speichern</button>
+        ${id ? `<button class="btn btn-danger" onclick="fahrzeugLoeschen('${id}')">🗑 Löschen</button>` : ''}
+      </div>
+    </div>
+  `;
+});
+
+window.fahrzeugSpeichern = async (id) => {
+  const name = document.getElementById('fz-name').value.trim();
+  const bez  = document.getElementById('fz-bez').value.trim();
+  const wehr = document.getElementById('fz-wehr').value;
+  if (!name) { fw.toast('Fahrzeugkennung fehlt', true); return; }
+  const data = { name, bezeichnung: bez, ortswehrId: wehr || null };
+  if (id) { await fw.setDoc('fahrzeuge/'+id, data); }
+  else    { await fw.addDoc('fahrzeuge', data); }
+  fw.toast('Gespeichert ✅');
+  navigate('dienste');
+};
+
+window.fahrzeugLoeschen = async (id) => {
+  if (!confirm('Fahrzeug wirklich löschen? Zugehörige Aufgaben bleiben erhalten.')) return;
+  await fw.deleteDoc('fahrzeuge/'+id);
+  fw.toast('Gelöscht');
+  navigate('dienste');
+};
+
+// ── Prüfaufgabe Form ──────────────────────────────────────
+registerPage('pruefaufgabe-form', async (el, {id, fahrzeugId: vorFahrzeugId}) => {
+  if (!fw.isWehrfuehrer()) { el.innerHTML = '<div class="empty">Keine Berechtigung</div>'; return; }
+  fw.setTitle(id ? 'Aufgabe bearbeiten' : 'Neue Aufgabe');
+  fw.showBack(() => navigateBack());
+
+  let aufgabe = null;
+  if (id) {
+    const snap = await fw.getDoc('pruefaufgaben/'+id);
+    if (snap.exists()) aufgabe = {id, ...snap.data()};
+  }
+
+  const letztesDatum = aufgabe?.letztesPruefDatum
+    ? (aufgabe.letztesPruefDatum.toDate ? aufgabe.letztesPruefDatum.toDate() : new Date(aufgabe.letztesPruefDatum)).toISOString().split('T')[0]
+    : '';
+
+  const fzSnap = await fw.getDocs('fahrzeuge', fw.orderBy('name','asc'));
+  const fahrzeuge = fzSnap.docs.map(d => ({id:d.id,...d.data()}));
+  const aktivFahrzeugId = aufgabe?.fahrzeugId || vorFahrzeugId || '';
+
+  el.innerHTML = `
+    <div class="card">
+      <div class="form-row">
+        <label>Fahrzeug</label>
+        <select id="pa-fz">
+          <option value="">– Bitte wählen –</option>
+          ${fahrzeuge.map(f => `<option value="${f.id}" ${aktivFahrzeugId===f.id?'selected':''}>${f.name}${f.bezeichnung?' ('+f.bezeichnung+')':''}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-row"><label>Bezeichnung</label><input id="pa-bez" value="${aufgabe?.bezeichnung||''}"></div>
+      <div class="form-row"><label>Intervall (Monate)</label><input id="pa-int" type="number" min="1" value="${aufgabe?.intervall||''}"></div>
+      <div class="form-row"><label>Letztes Prüfdatum</label><input id="pa-dat" type="date" value="${letztesDatum}"></div>
+      ${aufgabe?.ausgeblendet ? `<div style="margin-bottom:0.5rem"><button class="btn btn-secondary btn-full" onclick="pruefEinblenden('${id}')">👁 Wieder einblenden</button></div>` : ''}
+      <div class="btn-row" style="margin-top:0.5rem">
+        <button class="btn btn-primary" onclick="pruefaufgabeSpeichern('${id||''}')">💾 Speichern</button>
+        ${id ? `<button class="btn btn-danger" onclick="pruefaufgabeLoeschen('${id}')">🗑 Löschen</button>` : ''}
+      </div>
+    </div>
+  `;
+});
+
+window.pruefEinblenden = async (id) => {
+  await fw.setDoc('pruefaufgaben/'+id, { ausgeblendet: false });
+  fw.toast('Wieder eingeblendet ✅');
+  navigateBack();
+};
+
+window.pruefaufgabeSpeichern = async (id) => {
+  const fzId = document.getElementById('pa-fz').value;
+  const bez  = document.getElementById('pa-bez').value.trim();
+  const int  = parseInt(document.getElementById('pa-int').value) || null;
+  const datStr = document.getElementById('pa-dat').value;
+  if (!bez) { fw.toast('Bezeichnung fehlt', true); return; }
+  if (!fzId) { fw.toast('Fahrzeug fehlt', true); return; }
+  const data = { bezeichnung: bez, intervall: int, fahrzeugId: fzId, letztesPruefDatum: datStr ? new Date(datStr) : null };
+  if (id) { await fw.setDoc('pruefaufgaben/'+id, data); }
+  else    { await fw.addDoc('pruefaufgaben', data); }
+  fw.toast('Gespeichert ✅');
+  navigate('dienste');
+};
+
+window.pruefaufgabeLoeschen = async (id) => {
+  if (!confirm('Aufgabe wirklich löschen?')) return;
+  await fw.deleteDoc('pruefaufgaben/'+id);
+  fw.toast('Gelöscht');
+  navigate('dienste');
+};
+
+

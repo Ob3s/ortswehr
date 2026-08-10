@@ -1,9 +1,1 @@
-{
-  "version": "2.7.0",
-  "datum": "16.03.2026",
-  "punkte": [
-    "Native App: Push-Token Registrierung über Capacitor Plugin",
-    "PWA: Push-Token Registrierung unverändert über Firebase Web SDK",
-    "Header: Uhrzeit auffälliger (fett)"
-  ]
-}
+[{"version": "20260810095541", "datum": "10.08.2026", "punkte": ["Fix: Klick auf Kommentar-\u00dcbersicht (\u00fcber den Fahrzeugen) springt jetzt direkt zur passenden Pr\u00fcfaufgabe"]}]
