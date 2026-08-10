@@ -122,14 +122,17 @@ function meineEintraegeListen(anwesenheiten, dienstMap, einsatzMap) {
     const dienstEintrag  = dienstMap?.get(a.uebungId)  || null;
     const einsatzEintrag = einsatzMap?.get(a.uebungId) || null;
     const eintrag = dienstEintrag || einsatzEintrag || null;
-    if (!eintrag) continue; // Dienst/Einsatz wurde inzwischen gelöscht
+    // Auch zählen, wenn der referenzierte Dienst/Einsatz inzwischen gelöscht wurde –
+    // dann auf die in der Anwesenheit gespeicherten Werte zurückfallen (wie getStats() es tut),
+    // damit Stats-Kachel und Liste nicht auseinanderlaufen.
     const typNorm    = a.typ === 'einsaetze' ? 'einsatz' : a.typ === 'dienste' ? 'dienst' : a.typ;
     const istEinsatz  = typNorm === 'einsatz' || (!a.typ && !!einsatzEintrag && !dienstEintrag);
     const d = a.datum?.toDate ? a.datum.toDate() : (eintrag?.datum?.toDate?.() || new Date(a.datum));
     const h = eintrag?.dauer_h ?? a.dauer_h ?? 0;
+    const titel = eintrag?.titel || a.uebungTitel || '(Details nicht mehr verfügbar)';
     const eintragObj = {
-      id: a.uebungId, titel: eintrag.titel || '(ohne Titel)', datum: d, dauer_h: h,
-      art: eintrag.art || null, relevant: eintrag.relevant !== false,
+      id: a.uebungId, titel, datum: d, dauer_h: h,
+      art: eintrag?.art || null, relevant: eintrag ? eintrag.relevant !== false : true,
     };
     if (istEinsatz) {
       if (d.getFullYear() === jahrAkt) einsaetzeListe.push(eintragObj);
