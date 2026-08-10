@@ -109,6 +109,39 @@ function getStats(anwesenheiten, dienstMap, einsatzMap) {
   };
 }
 
+// Für die Profil-Übersicht: Einzeleinträge statt nur Summen –
+// Dienste der letzten 12 Monate, Einsätze des laufenden Jahres.
+function meineEintraegeListen(anwesenheiten, dienstMap, einsatzMap) {
+  const jetzt   = new Date();
+  const jahrAkt = jetzt.getFullYear();
+  const vor12m  = new Date(); vor12m.setFullYear(jetzt.getFullYear()-1); vor12m.setHours(0,0,0,0);
+
+  const diensteListe = [], einsaetzeListe = [];
+  for (const a of anwesenheiten) {
+    if (a.status !== 'bestaetigt' && a.status !== 'kommt') continue;
+    const dienstEintrag  = dienstMap?.get(a.uebungId)  || null;
+    const einsatzEintrag = einsatzMap?.get(a.uebungId) || null;
+    const eintrag = dienstEintrag || einsatzEintrag || null;
+    if (!eintrag) continue; // Dienst/Einsatz wurde inzwischen gelöscht
+    const typNorm    = a.typ === 'einsaetze' ? 'einsatz' : a.typ === 'dienste' ? 'dienst' : a.typ;
+    const istEinsatz  = typNorm === 'einsatz' || (!a.typ && !!einsatzEintrag && !dienstEintrag);
+    const d = a.datum?.toDate ? a.datum.toDate() : (eintrag?.datum?.toDate?.() || new Date(a.datum));
+    const h = eintrag?.dauer_h ?? a.dauer_h ?? 0;
+    const eintragObj = {
+      id: a.uebungId, titel: eintrag.titel || '(ohne Titel)', datum: d, dauer_h: h,
+      art: eintrag.art || null, relevant: eintrag.relevant !== false,
+    };
+    if (istEinsatz) {
+      if (d.getFullYear() === jahrAkt) einsaetzeListe.push(eintragObj);
+    } else {
+      if (d >= vor12m) diensteListe.push(eintragObj);
+    }
+  }
+  diensteListe.sort((x,y) => y.datum - x.datum);
+  einsaetzeListe.sort((x,y) => y.datum - x.datum);
+  return { diensteListe, einsaetzeListe };
+}
+
 
 // ── Google Places Autocomplete (via Cloud Function Proxy) ─
 const AC_URL = 'https://europe-west3-ffw-oegeln-791ca.cloudfunctions.net/ortAutoComplete';
@@ -1542,6 +1575,7 @@ function checkDeepLink() {
 registerPage('profil', async (el) => {
   fw.setTitle('Mein Profil');
   await ladeLehrgangsarten();
+  await ladeDienstarten();
   // Immer frisch laden damit notif-Felder aktuell sind
   const [meSnap, qSnap, aSnap, pDiensteSnap, pEinsaetzeSnap, planSnap, owSnap] = await Promise.all([
     fw.getDoc('users/'+fw.user.uid),
@@ -1562,6 +1596,7 @@ registerPage('profil', async (el) => {
   const pDienstMap  = new Map(pDiensteSnap.docs.map(d => [d.id, d.data()]));
   const pEinsatzMap = new Map(pEinsaetzeSnap.docs.map(d => [d.id, d.data()]));
   const stats  = getStats(aSnap.docs.map(d => d.data()), pDienstMap, pEinsatzMap);
+  const { diensteListe, einsaetzeListe } = meineEintraegeListen(aSnap.docs.map(d => d.data()), pDienstMap, pEinsatzMap);
 
   el.innerHTML = `
     <div class="card" style="display:flex;align-items:center;gap:0.8rem;padding:0.9rem 1rem">
@@ -1598,6 +1633,34 @@ registerPage('profil', async (el) => {
               <button onclick="planungLoeschenDirekt('${p.id}')" class="btn btn-sm btn-danger">🗑</button>
             </div>`).join('')}
         </div>` : ''}
+    </div>
+
+    <div class="section-header">Meine Dienste (letzte 12 Monate)</div>
+    <div class="card" style="padding:0">
+      ${diensteListe.length === 0 ? '<div class="empty" style="padding:1rem">Keine Dienste in den letzten 12 Monaten</div>' :
+        diensteListe.map(e => `
+          <div class="list-item" onclick="navigate('uebung-detail',{id:'${e.id}',typ:'dienst'})">
+            <div class="list-item-body">
+              <div class="list-item-title">${e.titel}</div>
+              <div class="list-item-sub">${datum(e.datum)}${e.art ? ' · '+dienstArtLabel(e.art) : ''}${e.relevant ? ' · <span style="color:#22c55e">40h</span>' : ''}</div>
+            </div>
+            <div class="list-item-right" style="font-size:0.82rem;color:var(--muted)">${dauerFormat(e.dauer_h)}h</div>
+            <div class="list-chevron">›</div>
+          </div>`).join('')}
+    </div>
+
+    <div class="section-header">Meine Einsätze ${new Date().getFullYear()}</div>
+    <div class="card" style="padding:0">
+      ${einsaetzeListe.length === 0 ? `<div class="empty" style="padding:1rem">Keine Einsätze ${new Date().getFullYear()}</div>` :
+        einsaetzeListe.map(e => `
+          <div class="list-item" onclick="navigate('uebung-detail',{id:'${e.id}',typ:'einsatz'})">
+            <div class="list-item-body">
+              <div class="list-item-title">${e.titel}</div>
+              <div class="list-item-sub">${datum(e.datum)}</div>
+            </div>
+            <div class="list-item-right" style="font-size:0.82rem;color:var(--muted)">${dauerFormat(e.dauer_h)}h</div>
+            <div class="list-chevron">›</div>
+          </div>`).join('')}
     </div>
 
     <div class="section-header">Passwort ändern</div>
