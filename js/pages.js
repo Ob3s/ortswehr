@@ -1206,11 +1206,13 @@ async function ladeDienstarten() {
   let snap = await fw.getDocs('dienstarten');
   if (snap.empty) {
     // Einmalige Migration: bisherige fest codierte Dienst-Arten anlegen
+    // IDs sind fortlaufende Zahlen (als String), unabhängig von der Bezeichnung –
+    // so bleibt die Bezeichnung jederzeit umbenennbar, ohne bestehende Dienst-Zuordnungen zu verlieren.
     const defaults = [
-      { id: 'dienstabend',          bezeichnung: 'Dienstabend',          relevant: true,  sortierung: 1 },
-      { id: 'fortbildung',          bezeichnung: 'Fortbildung',          relevant: true,  sortierung: 2 },
-      { id: 'kameradschaftspflege', bezeichnung: 'Kameradschaftspflege', relevant: false, sortierung: 3 },
-      { id: 'training',             bezeichnung: 'Training',             relevant: false, sortierung: 4 },
+      { id: '1', bezeichnung: 'Dienstabend',          relevant: true,  sortierung: 1 },
+      { id: '2', bezeichnung: 'Fortbildung',          relevant: true,  sortierung: 2 },
+      { id: '3', bezeichnung: 'Kameradschaftspflege', relevant: false, sortierung: 3 },
+      { id: '4', bezeichnung: 'Training',             relevant: false, sortierung: 4 },
     ];
     await Promise.all(defaults.map(d =>
       fw.setDoc('dienstarten/'+d.id, { bezeichnung: d.bezeichnung, relevant: d.relevant, sortierung: d.sortierung })
@@ -2318,8 +2320,7 @@ registerPage('dienstart-form', async (el, {id}) => {
   el.innerHTML = `
     <div class="card">
       <div class="form-row"><label>Bezeichnung</label>
-        <input id="da-bez" value="${art?.bezeichnung||''}" placeholder="z.B. Sportabend" ${art?'disabled':''}>
-        ${art ? `<p class="muted" style="font-size:0.75rem;margin-top:0.2rem">Bezeichnung kann nach dem Anlegen nicht mehr geändert werden</p>` : ''}
+        <input id="da-bez" value="${art?.bezeichnung||''}" placeholder="z.B. Sportabend">
       </div>
       <div style="display:flex;align-items:center;gap:0.6rem;padding:0.4rem 0;border-top:1px solid var(--border);margin-top:0.2rem">
         <input type="checkbox" id="da-relevant" style="width:1.2rem;height:1.2rem;accent-color:var(--red)" ${art?.relevant===false?'':'checked'}>
@@ -2334,14 +2335,16 @@ registerPage('dienstart-form', async (el, {id}) => {
   window.dienstartSpeichern = async (artId) => {
     const bez = document.getElementById('da-bez').value.trim();
     if (!bez) { fw.toast('Bezeichnung erforderlich', true); return; }
+    const doppelt = _dienstarten.some(a => a.id !== artId && a.bezeichnung.toLowerCase() === bez.toLowerCase());
+    if (doppelt) { fw.toast('Diese Bezeichnung gibt es bereits', true); return; }
     const relevant = document.getElementById('da-relevant').checked;
     if (artId) {
-      await fw.updateDoc('dienstarten/'+artId, { relevant });
+      await fw.updateDoc('dienstarten/'+artId, { bezeichnung: bez, relevant });
     } else {
-      const docId = bez.toLowerCase().replace(/[^a-z0-9]/g, '-');
-      const bestehend = await fw.getDoc('dienstarten/'+docId);
-      if (bestehend.exists()) { fw.toast('Diese Dienst-Art gibt es bereits', true); return; }
-      await fw.setDoc('dienstarten/'+docId, { bezeichnung: bez, relevant, sortierung: _dienstarten.length + 1 });
+      // Fortlaufende numerische ID vergeben, unabhängig von der Bezeichnung
+      const maxId = _dienstarten.reduce((max, a) => Math.max(max, parseInt(a.id) || 0), 0);
+      const neueId = String(maxId + 1);
+      await fw.setDoc('dienstarten/'+neueId, { bezeichnung: bez, relevant, sortierung: _dienstarten.length + 1 });
     }
     _dienstartenGeladen = false;
     await ladeDienstarten();
