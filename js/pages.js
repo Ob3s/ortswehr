@@ -1203,25 +1203,34 @@ let _dienstarten = [];
 let _dienstartenGeladen = false;
 async function ladeDienstarten() {
   if (_dienstartenGeladen) return _dienstarten;
-  let snap = await fw.getDocs('dienstarten');
-  if (snap.empty) {
-    // Einmalige Migration: bisherige fest codierte Dienst-Arten anlegen
-    // IDs sind fortlaufende Zahlen (als String), unabhängig von der Bezeichnung –
-    // so bleibt die Bezeichnung jederzeit umbenennbar, ohne bestehende Dienst-Zuordnungen zu verlieren.
-    const defaults = [
-      { id: '1', bezeichnung: 'Dienstabend',          relevant: true,  sortierung: 1 },
-      { id: '2', bezeichnung: 'Fortbildung',          relevant: true,  sortierung: 2 },
-      { id: '3', bezeichnung: 'Kameradschaftspflege', relevant: false, sortierung: 3 },
-      { id: '4', bezeichnung: 'Training',             relevant: false, sortierung: 4 },
-    ];
-    await Promise.all(defaults.map(d =>
-      fw.setDoc('dienstarten/'+d.id, { bezeichnung: d.bezeichnung, relevant: d.relevant, sortierung: d.sortierung })
-    ));
-    snap = await fw.getDocs('dienstarten');
+  try {
+    let snap = await fw.getDocs('dienstarten');
+    // Einmalige Migration: bisherige fest codierte Dienst-Arten anlegen.
+    // Nur Wehrführer dürfen laut Firestore-Regeln in "dienstarten" schreiben – bei Kameraden
+    // schlägt der Schreibversuch fehl, darum hier vorher prüfen statt die Seite abstürzen zu lassen.
+    if (snap.empty && fw.isWehrfuehrer()) {
+      // IDs sind fortlaufende Zahlen (als String), unabhängig von der Bezeichnung –
+      // so bleibt die Bezeichnung jederzeit umbenennbar, ohne bestehende Dienst-Zuordnungen zu verlieren.
+      const defaults = [
+        { id: '1', bezeichnung: 'Dienstabend',          relevant: true,  sortierung: 1 },
+        { id: '2', bezeichnung: 'Fortbildung',          relevant: true,  sortierung: 2 },
+        { id: '3', bezeichnung: 'Kameradschaftspflege', relevant: false, sortierung: 3 },
+        { id: '4', bezeichnung: 'Training',             relevant: false, sortierung: 4 },
+      ];
+      try {
+        await Promise.all(defaults.map(d =>
+          fw.setDoc('dienstarten/'+d.id, { bezeichnung: d.bezeichnung, relevant: d.relevant, sortierung: d.sortierung })
+        ));
+        snap = await fw.getDocs('dienstarten');
+      } catch(e) { /* Migration fehlgeschlagen (z.B. Regeln noch nicht deployed) – ohne Absturz weitermachen */ }
+    }
+    _dienstarten = snap.docs
+      .map(d => ({id: d.id, ...d.data()}))
+      .sort((a,b) => (a.sortierung||99) - (b.sortierung||99));
+  } catch(e) {
+    // Lesen fehlgeschlagen (z.B. Firestore-Regeln noch nicht deployed) – App darf trotzdem weiterlaufen
+    _dienstarten = [];
   }
-  _dienstarten = snap.docs
-    .map(d => ({id: d.id, ...d.data()}))
-    .sort((a,b) => (a.sortierung||99) - (b.sortierung||99));
   _dienstartenGeladen = true;
   return _dienstarten;
 }
