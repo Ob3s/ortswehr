@@ -655,13 +655,19 @@ function renderEintrag(u, meineMap) {
   const heute = new Date(); heute.setHours(0,0,0,0);
   const morgen = new Date(heute); morgen.setDate(heute.getDate()+1);
   const istHeute = u.typ === 'einsatz' && d >= heute && d < morgen;
-  const highlightStyle = istHeute ? 'border-left:3px solid var(--red);padding-left:0.5rem;background:rgba(220,38,38,0.08);' : '';
+  // Unvollständige Dienste nur für Wehrführer hervorheben
+  const istUnvollstaendig = !istHeute && fw.isWehrfuehrer() && dienstUnvollstaendig(u);
+  let highlightStyle = '';
+  if (istHeute) highlightStyle = 'border-left:3px solid var(--red);padding-left:0.5rem;background:rgba(220,38,38,0.08);';
+  else if (istUnvollstaendig) highlightStyle = 'border-left:3px solid #f59e0b;padding-left:0.5rem;background:rgba(245,158,11,0.08);';
   const nichtRelevantBadge = ''; // nicht relevant wird nicht in der Liste angezeigt
+  const artLabel = u.art ? dienstArtLabel(u.art) : '';
   return `<div class="list-item" onclick="navigate('uebung-detail',{id:'${u.id}',typ:'${u.typ}'})" style="${highlightStyle}">
     <div class="list-item-body">
-      <div class="list-item-title">${istHeute ? '🚨 ' : ''}${u.titel}${nichtRelevantBadge}</div>
+      <div class="list-item-title">${istHeute ? '🚨 ' : ''}${istUnvollstaendig ? '⚠️ ' : ''}${u.titel}${nichtRelevantBadge}</div>
       ${u.ort ? `<div class="list-item-sub" style="margin-top:0.05rem">📍 ${u.ort}</div>` : ''}
-      <div class="list-item-sub">${datum(u.datum)}${zeitZeile(u) ? ' · '+zeitZeile(u) : ''}</div>
+      <div class="list-item-sub">${datum(u.datum)}${zeitZeile(u) ? ' · '+zeitZeile(u) : ''}${artLabel ? ' · '+artLabel : ''}</div>
+      ${istUnvollstaendig ? `<div class="list-item-sub" style="color:#f59e0b;margin-top:0.1rem">⚠️ Unvollständig (Daten prüfen)</div>` : ''}
     </div>
     <div class="list-item-right">${badge}</div>
     <div class="list-chevron">›</div>
@@ -985,7 +991,8 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
   el.innerHTML = `
     <div class="card">
       <div style="font-weight:600;font-size:1.1rem">${u.titel}</div>
-      <div style="margin-top:0.3rem;color:var(--muted);font-size:0.85rem">${datum(u.datum)}${zeitZeile(u) ? ' · '+zeitZeile(u) : ''}${!isEinsatz && u.relevant !== false ? ' · <span style="color:#22c55e;font-weight:600">40h</span>' : ''}</div>
+      <div style="margin-top:0.3rem;color:var(--muted);font-size:0.85rem">${datum(u.datum)}${zeitZeile(u) ? ' · '+zeitZeile(u) : ''}${!isEinsatz && u.art ? ' · '+dienstArtLabel(u.art) : ''}${!isEinsatz && u.relevant !== false ? ' · <span style="color:#22c55e;font-weight:600">40h</span>' : ''}</div>
+      ${!isEinsatz && fw.isWehrfuehrer() && dienstUnvollstaendig(u) ? `<div style="margin-top:0.4rem;padding:0.4rem 0.6rem;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.4);border-radius:8px;color:#f59e0b;font-size:0.8rem;font-weight:600">⚠️ Unvollständig – bitte fehlende Angaben (z. B. Dienst-Art) nachtragen</div>` : ''}
       ${u.beschreibung ? `<p class="muted" style="margin-top:0.4rem;font-size:0.85rem">${u.beschreibung}</p>` : ''}
       ${u.ortswehrIds?.length > 1 ? `<div style="margin-top:0.4rem;font-size:0.78rem;color:var(--muted)">Beteiligte Wehren: ${u.ortswehrIds.map(id => owMap.get(id)||id).join(', ')}</div>` : ''}
       <div id="ort-anzeige">${u.ort ? `<div style="margin-top:0.5rem;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
@@ -1189,6 +1196,29 @@ window.direktEintragen = async (uebungId, userId, name, dauer_h, typ, datumStr) 
   navigate('uebung-eintragen', {id: uebungId, titel: '', dauer: dauer_h, typ, datumStr});
 };
 
+// ── Dienst-Arten ──────────────────────────────────────────
+const DIENST_ARTEN = [
+  { wert: 'dienstabend',          label: 'Dienstabend',          relevant: true  },
+  { wert: 'fortbildung',          label: 'Fortbildung',          relevant: true  },
+  { wert: 'kameradschaftspflege', label: 'Kameradschaftspflege', relevant: false },
+  { wert: 'training',             label: 'Training',             relevant: false },
+];
+function dienstArtLabel(wert) {
+  return DIENST_ARTEN.find(a => a.wert === wert)?.label || '';
+}
+function dienstArtRelevant(wert) {
+  return DIENST_ARTEN.find(a => a.wert === wert)?.relevant ?? true;
+}
+// Pflichtfelder für einen vollständigen Dienst (nicht Einsatz)
+function dienstUnvollstaendig(u) {
+  if (u.typ !== 'dienst') return false;
+  if (!u.titel) return true;
+  if (!u.datum) return true;
+  if (!u.dauer_h || u.dauer_h <= 0) return true;
+  if (!u.art) return true;
+  return false;
+}
+
 // ── Einsatz / Dienst Form ─────────────────────────────────
 registerPage('uebung-form', async (el, {id, typ: vorTyp, alarm: mitAlarm}) => {
   let u = null;
@@ -1247,6 +1277,12 @@ registerPage('uebung-form', async (el, {id, typ: vorTyp, alarm: mitAlarm}) => {
         <div class="form-row"><label>Titel</label>
           <input id="f-titel" value="${u?.titel||''}" placeholder="Monatsübung April…">
         </div>
+        <div class="form-row"><label>Art</label>
+          <select id="f-art" onchange="dienstArtGeaendert()">
+            <option value="" ${!u?.art?'selected':''} disabled>– Bitte wählen –</option>
+            ${DIENST_ARTEN.map(a => `<option value="${a.wert}" ${u?.art===a.wert?'selected':''}>${a.label}${a.relevant?' (zählt zu den 40h)':''}</option>`).join('')}
+          </select>
+        </div>
         <div class="form-row"><label>Datum</label><input id="f-datum" type="date" value="${datumVal}"></div>
         <div class="form-row"><label>Beginn</label><input id="f-beginn" type="time" value="${u?.zeitBeginn||''}" oninput="berechneDauer()"></div>
         <div class="form-row"><label>Ende</label><input id="f-ende" type="time" value="${u?.zeitEnde||''}" oninput="berechneDauer()"></div>
@@ -1286,6 +1322,13 @@ registerPage('uebung-form', async (el, {id, typ: vorTyp, alarm: mitAlarm}) => {
   }
 });
 
+window.dienstArtGeaendert = () => {
+  const art = document.getElementById('f-art')?.value;
+  const relevantEl = document.getElementById('f-relevant');
+  if (!art || !relevantEl) return;
+  relevantEl.checked = dienstArtRelevant(art);
+};
+
 window.berechneDauer = () => {
   const b = document.getElementById('f-beginn')?.value;
   const e = document.getElementById('f-ende')?.value;
@@ -1317,6 +1360,9 @@ window.uebungSpeichern = async (id, forcTyp) => {
 
   if (!titel) { fw.toast('Stichwort erforderlich', true); return; }
 
+  const art = document.getElementById('f-art')?.value || null;
+  if (!isEinsatz && !art) { fw.toast('Bitte Dienst-Art auswählen', true); return; }
+
   const ort = document.getElementById('f-ort')?.value?.trim() || null;
   const relevantEl = document.getElementById('f-relevant');
   const relevant = isEinsatz ? true : (relevantEl ? relevantEl.checked : true);
@@ -1325,6 +1371,7 @@ window.uebungSpeichern = async (id, forcTyp) => {
   const ortswehrIds = wehrCheckboxen.length > 0 ? wehrCheckboxen
     : (fw.profil.ortswehrIds?.length ? fw.profil.ortswehrIds : (fw.profil.ortswehrId ? [fw.profil.ortswehrId] : []));
   const data = { titel, datum: new Date(datumStr), typ, dauer_h, beschreibung: beschr, zeitBeginn, zeitEnde, ort, relevant, ortswehrIds };
+  if (!isEinsatz) data.art = art;
   const isNeu = !id;
   try {
     let uebungId = id;
