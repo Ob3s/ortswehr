@@ -1,1 +1,1 @@
-[{"version": "20260810143114", "datum": "10.08.2026", "punkte": ["Fix (Ursache): L\u00f6schen eines Dienstes/Einsatzes entfernt jetzt auch alle zugeh\u00f6rigen Anwesenheiten \u2013 verhindert verwaiste Eintr\u00e4ge"]}]
+[{"version": "20260810144230", "datum": "10.08.2026", "punkte": ["Profil: Design der Dienste-/Eins\u00e4tze-\u00dcbersicht an Lehrg\u00e4nge angeglichen", "Profil: Reihenfolge ge\u00e4ndert (Meine Dienste -> Meine Eins\u00e4tze -> Dienstlich)", "Profil: Meine Dienste, Meine Eins\u00e4tze und Dienstlich sind jetzt einklappbar"]}]
