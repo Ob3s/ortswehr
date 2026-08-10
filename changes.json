@@ -1,1 +1,1 @@
-[{"version": "20260320165924", "datum": "20.03.2026", "punkte": ["Fix: Bestanden-Markierung l\u00f6scht Handlungsbedarf + Kommentar", "Fix: System-Status zeigt alle 4 Punkte immer an", "Fix: Benachrichtigungs-Status korrekt f\u00fcr native App und PWA"]}]
+[{"version": "20260810143114", "datum": "10.08.2026", "punkte": ["Fix (Ursache): L\u00f6schen eines Dienstes/Einsatzes entfernt jetzt auch alle zugeh\u00f6rigen Anwesenheiten \u2013 verhindert verwaiste Eintr\u00e4ge"]}]
