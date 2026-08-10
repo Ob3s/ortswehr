@@ -699,7 +699,7 @@ function renderEintrag(u, meineMap) {
     <div class="list-item-body">
       <div class="list-item-title">${istHeute ? '🚨 ' : ''}${istUnvollstaendig ? '⚠️ ' : ''}${u.titel}${nichtRelevantBadge}</div>
       ${u.ort ? `<div class="list-item-sub" style="margin-top:0.05rem">📍 ${u.ort}</div>` : ''}
-      <div class="list-item-sub">${datum(u.datum)}${zeitZeile(u) ? ' · '+zeitZeile(u) : ''}${artLabel ? ' · '+artLabel : ''}</div>
+      <div class="list-item-sub">${datum(u.datum)}${zeitZeile(u) ? ' · '+zeitZeile(u) : ''}${artLabel ? ' · '+artLabel : ''}${u.typ !== 'einsatz' && u.relevant !== false ? ' · <span style="color:#22c55e;font-weight:600">40h</span>' : ''}</div>
       ${istUnvollstaendig ? `<div class="list-item-sub" style="color:#f59e0b;margin-top:0.1rem">⚠️ Unvollständig (Daten prüfen)</div>` : ''}
     </div>
     <div class="list-item-right">${badge}</div>
@@ -1344,7 +1344,7 @@ registerPage('uebung-form', async (el, {id, typ: vorTyp, alarm: mitAlarm}) => {
           <input id="f-titel" value="${u?.titel||''}" placeholder="Monatsübung April…">
         </div>
         <div class="form-row"><label>Art</label>
-          <select id="f-art" onchange="dienstArtGeaendert()">
+          <select id="f-art">
             <option value="" ${!u?.art?'selected':''} disabled>– Bitte wählen –</option>
             ${_dienstarten.map(a => `<option value="${a.id}" ${u?.art===a.id?'selected':''}>${a.bezeichnung}${a.relevant?' (zählt zu den 40h)':''}</option>`).join('')}
           </select>
@@ -1375,11 +1375,6 @@ registerPage('uebung-form', async (el, {id, typ: vorTyp, alarm: mitAlarm}) => {
             </div>
           </div>`;
         })()}
-        ${fw.isWehrfuehrer() ? `
-        <div style="display:flex;align-items:center;gap:0.6rem;padding:0.4rem 0;border-top:1px solid var(--border);margin-top:0.2rem">
-          <input type="checkbox" id="f-relevant" style="width:1.2rem;height:1.2rem;accent-color:var(--red)" ${u?.relevant===false?'':'checked'}>
-          <label for="f-relevant" style="font-size:0.88rem;cursor:pointer">Zählt für 40-Stunden-Ziel</label>
-        </div>` : ''}
         <div class="btn-row">
           <button class="btn btn-primary" onclick="uebungSpeichern('${id||''}','dienst')">${u ? '💾 Speichern' : '💾 Speichern & Benachrichtigen'}</button>
           ${u ? `<button class="btn btn-danger" onclick="uebungLoeschen('${id}','dienst')">🗑 Löschen</button>` : ''}
@@ -1387,13 +1382,6 @@ registerPage('uebung-form', async (el, {id, typ: vorTyp, alarm: mitAlarm}) => {
       </div>`;
   }
 });
-
-window.dienstArtGeaendert = () => {
-  const art = document.getElementById('f-art')?.value;
-  const relevantEl = document.getElementById('f-relevant');
-  if (!art || !relevantEl) return;
-  relevantEl.checked = dienstArtRelevant(art);
-};
 
 window.berechneDauer = () => {
   const b = document.getElementById('f-beginn')?.value;
@@ -1430,8 +1418,8 @@ window.uebungSpeichern = async (id, forcTyp) => {
   if (!isEinsatz && !art) { fw.toast('Bitte Dienst-Art auswählen', true); return; }
 
   const ort = document.getElementById('f-ort')?.value?.trim() || null;
-  const relevantEl = document.getElementById('f-relevant');
-  const relevant = isEinsatz ? true : (relevantEl ? relevantEl.checked : true);
+  // 40h-Relevanz kommt jetzt ausschließlich aus der gewählten Dienst-Art, keine manuelle Checkbox mehr
+  const relevant = isEinsatz ? true : dienstArtRelevant(art);
   // Ortswehren: aus Checkboxen oder primäre Wehr des Nutzers
   const wehrCheckboxen = [...document.querySelectorAll('.f-wehr-cb:checked')].map(cb => cb.value);
   const ortswehrIds = wehrCheckboxen.length > 0 ? wehrCheckboxen
