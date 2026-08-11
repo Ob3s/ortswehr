@@ -1,1 +1,1 @@
-[{"version": "20260811094209", "datum": "11.08.2026", "punkte": ["Text: 'Du bist derzeit nicht versichert.' statt 'Du bist noch nicht versichert'", "NEU: Kamerad-Detailansicht zeigt jetzt auch Dienste (letzte 12 Monate) und Eins\u00e4tze (Jahr), wie im eigenen Profil", "Fix: 'Dienste (nicht relevant)' in der Kamerad-Detailansicht zeigte bisher immer 0h statt der echten Stunden"]}]
+[{"version": "20260811094550", "datum": "11.08.2026", "punkte": ["Text: 'Derzeit nicht versichert.' statt 'Du bist derzeit nicht versichert.'"]}]
