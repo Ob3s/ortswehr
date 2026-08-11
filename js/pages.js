@@ -1441,8 +1441,8 @@ window.uebungSpeichern = async (id, forcTyp) => {
       uebungId = ref.id;
     }
     const mitAlarmFlag = document.getElementById('f-alarm')?.value === '1';
-  if (isNeu && mitAlarmFlag) await benachrichtigeOrtswehr(typ, titel, datumStr, dauer_h, uebungId);
-  else if (isNeu && !mitAlarmFlag && typ === 'dienst') await benachrichtigeOrtswehr(typ, titel, datumStr, dauer_h, uebungId);
+  if (isNeu && mitAlarmFlag) await benachrichtigeOrtswehr(typ, titel, datumStr, dauer_h, uebungId, ortswehrIds);
+  else if (isNeu && !mitAlarmFlag && typ === 'dienst') await benachrichtigeOrtswehr(typ, titel, datumStr, dauer_h, uebungId, ortswehrIds);
     fw.toast('Gespeichert ✅');
     navigate(typ === 'einsatz' ? 'einsaetze' : 'dienste');
   } catch(e) { fw.toast(e.message, true); }
@@ -1511,15 +1511,20 @@ window.uebungLoeschen = async (id, typ) => {
 };
 
 // ── Push ──────────────────────────────────────────────────
-async function benachrichtigeOrtswehr(typ, titel, datumStr, dauer_h, uebungId) {
-  const ortswehrIds = fw.profil.ortswehrIds?.length ? fw.profil.ortswehrIds : (fw.profil.ortswehrId ? [fw.profil.ortswehrId] : []);
-  const ortswehrId = ortswehrIds[0] || null;
-  if (!ortswehrId) {
+async function benachrichtigeOrtswehr(typ, titel, datumStr, dauer_h, uebungId, zielOrtswehrIds) {
+  // Ziel = die für DIESEN Dienst/Einsatz ausgewählten Ortswehren (nicht die des Absenders!).
+  // Sonst werden bei Kameraden mit mehreren Ortswehren die falschen bzw. keine Empfänger benachrichtigt,
+  // weil bisher nur die erste Ortswehr des Absenders (ortswehrIds[0]) als Filter verwendet wurde.
+  let ortswehrIds = zielOrtswehrIds?.length ? zielOrtswehrIds : [];
+  if (!ortswehrIds.length) {
+    ortswehrIds = fw.profil.ortswehrIds?.length ? fw.profil.ortswehrIds : (fw.profil.ortswehrId ? [fw.profil.ortswehrId] : []);
+  }
+  if (!ortswehrIds.length) {
     fw.toast('⚠️ Keine Ortswehr zugeordnet – niemand wird benachrichtigt!', true);
     return;
   }
   // Alle User die mindestens eine der betroffenen Wehren haben
-  const usersSnap = await fw.getDocs('users', fw.where('ortswehrIds', 'array-contains', ortswehrId));
+  const usersSnap = await fw.getDocs('users', fw.where('ortswehrIds', 'array-contains-any', ortswehrIds.slice(0,10)));
   const isEinsatz = typ === 'einsatz';
   const tokens = [];
   for (const d of usersSnap.docs) {
@@ -1554,7 +1559,7 @@ window.einsatzNachbenachrichtigen = async (id) => {
   const snap = await fw.getDoc('einsaetze/'+id);
   if (!snap.exists()) { fw.toast('Einsatz nicht gefunden', true); return; }
   const u = snap.data();
-  await benachrichtigeOrtswehr('einsatz', u.titel, u.datum, u.dauer_h, id);
+  await benachrichtigeOrtswehr('einsatz', u.titel, u.datum, u.dauer_h, id, u.ortswehrIds);
 };
 
 // ── Deep Link ─────────────────────────────────────────────
