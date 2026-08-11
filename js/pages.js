@@ -3273,6 +3273,7 @@ function renderAgtFelder(u, id, qualis) {
 
 registerPage('kamerad-detail', async (el, {id}) => {
   await ladeLehrgangsarten();
+  await ladeDienstarten();
   const snap = await fw.getDoc('users/'+id);
   if (!snap.exists()) { el.innerHTML='<div class="empty">Nicht gefunden</div>'; return; }
   const u = {id,...snap.data()};
@@ -3280,13 +3281,19 @@ registerPage('kamerad-detail', async (el, {id}) => {
   fw.showBack(() => navigateBack());
   fw.showHeaderAction('✏️ Edit', () => navigate('kamerad-form',{id}));
 
-  const [aSnap, qSnap, ortSnap, planSnap] = await Promise.all([
+  const [aSnap, qSnap, ortSnap, planSnap, kDiensteSnap, kEinsaetzeSnap] = await Promise.all([
     fw.getDocs('anwesenheiten', fw.where('userId','==',id)),
     fw.getDocs('users/'+id+'/qualifikationen'),
     fw.getDocs('ortswehren'),
     fw.getDocs('lehrgangsplanung', fw.where('userId','==',id)),
+    fw.getDocs('dienste'),
+    fw.getDocs('einsaetze'),
   ]);
-  const stats    = getStats(aSnap.docs.map(d => d.data()));
+  const kDienstMap  = new Map(kDiensteSnap.docs.map(d => [d.id, d.data()]));
+  const kEinsatzMap = new Map(kEinsaetzeSnap.docs.map(d => [d.id, d.data()]));
+  const stats    = getStats(aSnap.docs.map(d => d.data()), kDienstMap, kEinsatzMap);
+  const { diensteListe: kDiensteListe, einsaetzeListe: kEinsaetzeListe } =
+    meineEintraegeListen(aSnap.docs.map(d => d.data()), kDienstMap, kEinsatzMap);
   const qualis   = qSnap.docs.map(d => ({id:d.id,...d.data()}));
   const planung  = planSnap.docs.map(d => ({id:d.id,...d.data()}));
   const owMap2 = new Map(ortSnap.docs.map(d => [d.id, d.data().name]));
@@ -3324,6 +3331,38 @@ registerPage('kamerad-detail', async (el, {id}) => {
       <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.gesamtEinsatz)}h</div><div class="stat-label">Einsatzstunden ${new Date().getFullYear()}</div></div>
       <div class="stat-card"><div class="stat-zahl">${stats.einsaetze}</div><div class="stat-label">${stats.einsaetze===1?'Einsatz':'Einsätze'} ${new Date().getFullYear()}</div></div>
     </div>
+    <details class="card" style="padding:0">
+      <summary class="section-header" style="margin:1.2rem 0 0;padding:0.6rem 1rem;cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between">
+        <span>Dienste (letzte 12 Monate)</span>
+        <span style="color:var(--muted);font-size:0.9rem">▾</span>
+      </summary>
+      <div style="padding:0 1rem 0.4rem">
+        ${kDiensteListe.length === 0 ? '<div class="empty" style="padding:0.6rem 0">Keine Dienste in den letzten 12 Monaten</div>' :
+          kDiensteListe.map(e => `
+            <div class="list-item" style="cursor:pointer" onclick="navigate('uebung-detail',{id:'${e.id}',typ:'dienst'})">
+              <div class="list-item-body">
+                <div class="list-item-title">${e.titel}</div>
+                <div class="list-item-sub">${datum(e.datum)}${e.art ? ' · '+dienstArtLabel(e.art) : ''}${e.relevant ? ' · <span style="color:#22c55e">40h</span>' : ''} · ${dauerFormat(e.dauer_h)}h</div>
+              </div>
+            </div>`).join('')}
+      </div>
+    </details>
+    <details class="card" style="padding:0">
+      <summary class="section-header" style="margin:1.2rem 0 0;padding:0.6rem 1rem;cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between">
+        <span>Einsätze ${new Date().getFullYear()}</span>
+        <span style="color:var(--muted);font-size:0.9rem">▾</span>
+      </summary>
+      <div style="padding:0 1rem 0.4rem">
+        ${kEinsaetzeListe.length === 0 ? `<div class="empty" style="padding:0.6rem 0">Keine Einsätze ${new Date().getFullYear()}</div>` :
+          kEinsaetzeListe.map(e => `
+            <div class="list-item" style="cursor:pointer" onclick="navigate('uebung-detail',{id:'${e.id}',typ:'einsatz'})">
+              <div class="list-item-body">
+                <div class="list-item-title">${e.titel}</div>
+                <div class="list-item-sub">${datum(e.datum)} · ${dauerFormat(e.dauer_h)}h</div>
+              </div>
+            </div>`).join('')}
+      </div>
+    </details>
     <div class="card">
       <div class="card-title">Stammdaten</div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.7rem">
