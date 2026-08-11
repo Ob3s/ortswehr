@@ -1597,12 +1597,12 @@ registerPage('profil', async (el) => {
     <div class="card" style="display:flex;align-items:center;gap:0.8rem;padding:0.9rem 1rem">
       <div style="font-size:1.4rem">${stats.ziel?'✅':'⚠️'}</div>
       <div>
-        <div style="font-weight:600;font-size:0.95rem">${stats.ziel?'40-Stunden-Ziel erreicht':'40-Stunden-Ziel nicht erreicht'}</div>
-        <div style="font-size:0.8rem;color:var(--muted);margin-top:0.1rem">${dauerFormat(stats.stunden12m)}h dieses Jahr · ${dauerFormat(stats.stunden12mZiel)}h / 40:00h (12 Mon.)</div>
+        <div style="font-weight:600;font-size:0.95rem">${stats.ziel?'Du bist versichert!':'Du bist noch nicht versichert'}</div>
+        <div style="font-size:0.8rem;color:var(--muted);margin-top:0.1rem">${dauerFormat(stats.stunden12mZiel)}h / 40:00h (12 Mon.)</div>
       </div>
     </div>
     <div class="stats-grid">
-      <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.gesamtDienst)}h</div><div class="stat-label">Dienststunden ${new Date().getFullYear()}</div></div>
+      <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.dienstRelevant)}h</div><div class="stat-label">Dienststunden ${new Date().getFullYear()}</div></div>
       <div class="stat-card"><div class="stat-zahl">${stats.dienste}</div><div class="stat-label">${stats.dienste===1?'Dienst':'Dienste'} ${new Date().getFullYear()}</div></div>
       <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.gesamtEinsatz)}h</div><div class="stat-label">Einsatzstunden ${new Date().getFullYear()}</div></div>
       <div class="stat-card"><div class="stat-zahl">${stats.einsaetze}</div><div class="stat-label">${stats.einsaetze===1?'Einsatz':'Einsätze'} ${new Date().getFullYear()}</div></div>
@@ -3314,8 +3314,8 @@ registerPage('kamerad-detail', async (el, {id}) => {
     <div class="card" style="display:flex;align-items:center;gap:0.8rem;padding:0.9rem 1rem">
       <div style="font-size:1.4rem">${stats.ziel?'✅':'⚠️'}</div>
       <div>
-        <div style="font-weight:600;font-size:0.95rem">${stats.ziel?'40-Stunden-Ziel erreicht':'40-Stunden-Ziel nicht erreicht'}</div>
-        <div style="font-size:0.8rem;color:var(--muted);margin-top:0.1rem">${dauerFormat(stats.stunden12m)}h dieses Jahr · ${dauerFormat(stats.stunden12mZiel)}h / 40:00h (12 Mon.)</div>
+        <div style="font-weight:600;font-size:0.95rem">${stats.ziel?'Versicherungsschutz erreicht':'Versicherungsschutz nicht erreicht'}</div>
+        <div style="font-size:0.8rem;color:var(--muted);margin-top:0.1rem">${dauerFormat(stats.stunden12mZiel)}h / 40:00h (12 Mon.)</div>
       </div>
     </div>
     <div class="stats-grid">
