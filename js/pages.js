@@ -66,9 +66,10 @@ function anwesenheitBadge(s) {
   if (s==='abgelehnt'  || s==='kommt_nicht') return '<span style="color:#dc2626;font-size:1.1rem">❌</span>';
   return '<span style="color:#f59e0b;font-size:1.1rem">⏳</span>'; // keine Reaktion
 }
-function getStats(anwesenheiten, dienstMap, einsatzMap) {
+function getStats(anwesenheiten, dienstMap, einsatzMap, jahr) {
   const jetzt   = new Date();
-  const jahrAkt = jetzt.getFullYear();
+  const jahrAkt = jahr || jetzt.getFullYear();
+  // Die rollierende 12-Monats-Zielgröße bezieht sich immer auf "heute", unabhängig vom jahr-Parameter
   const vor12m  = new Date(); vor12m.setFullYear(jetzt.getFullYear()-1); vor12m.setHours(0,0,0,0);
 
   let gesamtEinsatz=0, dienstRelevant=0, dienstIrrelevant=0, einsaetze=0, dienste=0;
@@ -1928,42 +1929,33 @@ registerPage('statistik', async (el) => {
   const dienstMap  = new Map(dienste.map(d  => [d.id, d]));
   const einsatzMap = new Map(einsaetze.map(e => [e.id, e]));
 
-  function stundenUndTyp(a) {
-    // typ+datum aus Quell-Collection ermitteln (anwesenheiten haben das evtl. nicht gesetzt)
-    const d = dienstMap.get(a.uebungId);
-    if (d) return { typ:'dienst',  datum: d.datum,  dauer_h: d.dauer_h||0 };
-    const e = einsatzMap.get(a.uebungId);
-    if (e) return { typ:'einsatz', datum: e.datum,  dauer_h: e.dauer_h||0 };
-    // Fallback auf gespeicherte Felder
-    return { typ: a.typ||'dienst', datum: a.datum, dauer_h: a.dauer_h||0 };
-  }
-  function stunden(userId, typ, jahr) {
-    return anw
-      .filter(a => a.userId===userId)
-      .reduce((s, a) => {
-        const {typ:t, datum:dat, dauer_h} = stundenUndTyp(a);
-        if (t !== typ) return s;
-        if (!jahrvon(dat, jahr)) return s;
-        return s + dauer_h;
-      }, 0);
-  }
-  function einsatzAnzahl(userId, jahr) {
-    return anw.filter(a => {
-      if (a.userId !== userId) return false;
-      const {typ, datum} = stundenUndTyp(a);
-      return typ==='einsatz' && jahrvon(datum, jahr);
-    }).length;
-  }
   function lehrgangStunden(userId, jahr) {
     return (qualiPerUser[userId]||[])
       .filter(q => q.datum && jahrvon(q.datum, jahr))
       .reduce((s, q) => s + (q.stunden || (q.tage || 1) * 8), 0);
   }
 
+  // Einheitliche Stunden-Berechnung: getStats() ist die einzige Quelle der Wahrheit
+  // (respektiert die relevant-Kennzeichnung; Einsatzstunden fließen hier bewusst NICHT ein,
+  // Dienststunden = nur relevante Dienste). Pro Nutzer/Jahr gecacht.
+  const anwByUser = new Map();
+  for (const a of anw) {
+    if (!anwByUser.has(a.userId)) anwByUser.set(a.userId, []);
+    anwByUser.get(a.userId).push(a);
+  }
+  const statsCache = new Map();
+  function statsFuer(userId, jahr) {
+    const key = userId + '|' + jahr;
+    if (!statsCache.has(key)) {
+      statsCache.set(key, getStats(anwByUser.get(userId) || [], dienstMap, einsatzMap, jahr));
+    }
+    return statsCache.get(key);
+  }
+
   // Jahresvergleich gesamt
   const gesamt = (jahr) => ({
     einsaetze: einsaetze.filter(e => jahrvon(e.datum, jahr)).length,
-    dienststunden: users.reduce((s,u) => s + stunden(u.id,'dienst',jahr), 0),
+    dienststunden: users.reduce((s,u) => s + statsFuer(u.id,jahr).dienstRelevant, 0),
     lehrgangsstunden: users.reduce((s,u) => s + lehrgangStunden(u.id,jahr), 0),
   });
   const gAkt = gesamt(jahrAkt);
@@ -1980,12 +1972,12 @@ registerPage('statistik', async (el) => {
   const kRows = users
     .sort((a,b) => (a.nachname||'').localeCompare(b.nachname||'', 'de') || (a.vorname||'').localeCompare(b.vorname||'', 'de'))
     .map(u => {
-      const dAkt = stunden(u.id,'dienst',jahrAkt);
-      const dVor = stunden(u.id,'dienst',jahrVor);
+      const dAkt = statsFuer(u.id,jahrAkt).dienstRelevant;
+      const dVor = statsFuer(u.id,jahrVor).dienstRelevant;
       const lAkt = lehrgangStunden(u.id,jahrAkt);
       const lVor = lehrgangStunden(u.id,jahrVor);
-      const eAkt = einsatzAnzahl(u.id,jahrAkt);
-      const eVor = einsatzAnzahl(u.id,jahrVor);
+      const eAkt = statsFuer(u.id,jahrAkt).einsaetze;
+      const eVor = statsFuer(u.id,jahrVor).einsaetze;
       return {u, dAkt, dVor, lAkt, lVor, eAkt, eVor};
     }); // nur aktive Kameraden, alphabetisch
 
@@ -2927,21 +2919,26 @@ registerPage('kameraden', async (el) => {
     });
   const aktiveUsers = users.filter(u => u.aktiv !== false);
 
-  // Anwesenheiten letzte 12 Monate laden
-  const vor12m = new Date(); vor12m.setFullYear(vor12m.getFullYear()-1);
-  const anwSnap = await fw.getDocs('anwesenheiten');
-  const stundenJahr = {};
+  // Anwesenheiten + Dienste/Einsätze laden, damit die Stunden wie überall sonst
+  // per getStats() berechnet werden (relevant-Flag beachten, Einsatzstunden nicht mit einrechnen)
+  const [anwSnap, kDiensteSnap, kEinsaetzeSnap] = await Promise.all([
+    fw.getDocs('anwesenheiten'),
+    fw.getDocs('dienste'),
+    fw.getDocs('einsaetze'),
+  ]);
+  const kDienstMap  = new Map(kDiensteSnap.docs.map(d => [d.id, d.data()]));
+  const kEinsatzMap = new Map(kEinsaetzeSnap.docs.map(d => [d.id, d.data()]));
+  const anwByUserKam = new Map();
   for (const d of anwSnap.docs) {
     const a = d.data();
-    if (a.status !== 'kommt') continue;
-    const dat = a.datum?.toDate ? a.datum.toDate() : new Date(a.datum);
-    if (dat < vor12m) continue;
-    stundenJahr[a.userId] = (stundenJahr[a.userId] || 0) + (a.dauer_h || 0);
+    if (!anwByUserKam.has(a.userId)) anwByUserKam.set(a.userId, []);
+    anwByUserKam.get(a.userId).push(a);
   }
 
   const ZIEL = 40;
   function stundenBadge(userId) {
-    const h = Math.round((stundenJahr[userId] || 0) * 10) / 10;
+    const stats = getStats(anwByUserKam.get(userId) || [], kDienstMap, kEinsatzMap);
+    const h = stats.stunden12mZiel;
     const pct = Math.min(100, Math.round(h / ZIEL * 100));
     const erreicht = h >= ZIEL;
     const farbe = erreicht ? '#22c55e' : h >= ZIEL * 0.75 ? '#f59e0b' : 'var(--muted)';
