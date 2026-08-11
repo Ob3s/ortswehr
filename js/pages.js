@@ -365,6 +365,7 @@ function renderNewsBeitrag(b, usersMap) {
     ${abstimmungHtml}
     <div style="font-size:0.72rem;color:var(--muted);margin-top:0.5rem">${datum(b.erstelltAm)}</div>
     ${fw.isWehrfuehrer() ? `<div style="margin-top:0.3rem;display:flex;gap:0.8rem">
+      <button onclick="navigate('news-form',{id:'${b.id}'})" style="background:none;border:none;color:#9ca3af;font-size:0.75rem;cursor:pointer;padding:0">Bearbeiten</button>
       <button onclick="newsLoeschen('${b.id}')" style="background:none;border:none;color:#9ca3af;font-size:0.75rem;cursor:pointer;padding:0">Löschen</button>
       <button onclick="newsArchivieren('${b.id}',${!b.archiviert})" style="background:none;border:none;color:#9ca3af;font-size:0.75rem;cursor:pointer;padding:0">${b.archiviert ? 'Wiederherstellen' : 'Archivieren'}</button>
     </div>` : ''}
@@ -2749,41 +2750,54 @@ registerPage('lehrgaenge', async (el) => {
 });
 
 // ── News erstellen ────────────────────────────────────────
-registerPage('news-form', async (el) => {
-  fw.setTitle('Beitrag erstellen');
+registerPage('news-form', async (el, {id} = {}) => {
+  if (!fw.isWehrfuehrer()) { navigate('dashboard'); return; }
+  let bestehend = null;
+  if (id) {
+    const snap = await fw.getDoc('news/'+id);
+    if (snap.exists()) bestehend = {id, ...snap.data()};
+  }
+  fw.setTitle(bestehend ? 'Beitrag bearbeiten' : 'Beitrag erstellen');
   fw.showBack(() => navigateBack());
-  let optionen = ['', ''];
+  let optionen = bestehend?.abstimmung?.optionen?.map(o => o.text) || ['', ''];
   let pdfFile = null;
+  let pdfEntfernen = false;
 
   // Ortswehren laden für Auswahl
   const owSnap = await fw.getDocs('ortswehren');
   const alleWehren = owSnap.docs.map(d => ({id:d.id,...d.data()}));
 
   const render = () => {
+    const abstCb = document.getElementById('nf-abstimmung-cb');
+    const abstOffen = abstCb ? abstCb.checked : !!bestehend?.abstimmung;
+    const pdfAnzeige = pdfFile ? '📎 '+pdfFile.name
+      : (bestehend?.pdf && !pdfEntfernen ? '📎 '+bestehend.pdf.name : 'Kein PDF ausgewählt');
     el.innerHTML = `
       <div class="card">
-        <div class="form-row"><label>Titel</label><input id="nf-titel" placeholder="Überschrift" value="${document.getElementById('nf-titel')?.value||''}"></div>
-        <div class="form-row"><label>Text</label><textarea id="nf-inhalt" rows="4" style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;font-size:0.9rem;resize:vertical">${document.getElementById('nf-inhalt')?.value||''}</textarea></div>
+        <div class="form-row"><label>Titel</label><input id="nf-titel" placeholder="Überschrift" value="${document.getElementById('nf-titel')?.value ?? bestehend?.titel ?? ''}"></div>
+        <div class="form-row"><label>Text</label><textarea id="nf-inhalt" rows="4" style="width:100%;padding:0.6rem;border:1px solid var(--border);border-radius:8px;font-size:0.9rem;resize:vertical">${document.getElementById('nf-inhalt')?.value ?? bestehend?.inhalt ?? ''}</textarea></div>
         <div class="form-row">
           <label>PDF anhängen (optional)</label>
           <input type="file" id="nf-pdf" accept="application/pdf" style="font-size:0.88rem">
-          <div id="nf-pdf-hint" style="font-size:0.75rem;color:var(--muted);margin-top:0.2rem">${pdfFile?'📎 '+pdfFile.name:'Kein PDF ausgewählt'}</div>
+          <div id="nf-pdf-hint" style="font-size:0.75rem;color:var(--muted);margin-top:0.2rem">${pdfAnzeige}</div>
+          ${bestehend?.pdf && !pdfFile && !pdfEntfernen ? `<button type="button" class="btn btn-secondary btn-sm" style="margin-top:0.3rem" onclick="nfPdfEntfernen()">PDF entfernen</button>` : ''}
         </div>
         <div style="display:flex;align-items:center;gap:0.5rem;margin:0.5rem 0">
-          <input type="checkbox" id="nf-abstimmung-cb" style="width:20px;height:20px" ${document.getElementById('nf-abstimmung-cb')?.checked?'checked':''}>
+          <input type="checkbox" id="nf-abstimmung-cb" style="width:20px;height:20px" ${abstOffen?'checked':''}>
           <label for="nf-abstimmung-cb" style="font-size:0.88rem">Abstimmung hinzufügen</label>
         </div>
-        <div id="nf-abstimmung-block" style="display:${document.getElementById('nf-abstimmung-cb')?.checked?'block':'none'}">
-          <div class="form-row"><label>Frage</label><input id="nf-frage" value="${document.getElementById('nf-frage')?.value||''}"></div>
+        <div id="nf-abstimmung-block" style="display:${abstOffen?'block':'none'}">
+          <div class="form-row"><label>Frage</label><input id="nf-frage" value="${document.getElementById('nf-frage')?.value ?? bestehend?.abstimmung?.frage ?? ''}"></div>
           ${optionen.map((o,i) => `<div class="form-row"><label>Option ${i+1}</label><input class="nf-opt" data-i="${i}" value="${o}"></div>`).join('')}
           <button class="btn btn-secondary btn-sm" onclick="nfAddOption()">+ Option</button>
+          ${bestehend?.abstimmung ? `<p class="muted" style="font-size:0.75rem;margin-top:0.3rem">Bereits abgegebene Stimmen bleiben erhalten, solange Reihenfolge und Anzahl der Optionen gleich bleiben.</p>` : ''}
         </div>
         <div class="form-row" id="nf-wehr-container">
           <label>Sichtbar für</label>
           <div id="nf-wehr-boxes" style="display:flex;flex-direction:column;gap:0.3rem;margin-top:0.2rem">⏳</div>
         </div>
         <div class="btn-row" style="margin-top:1rem">
-          <button class="btn btn-primary" onclick="newsSpeichern()" id="nf-save-btn">💾 Veröffentlichen</button>
+          <button class="btn btn-primary" onclick="newsSpeichern('${id||''}')" id="nf-save-btn">💾 ${bestehend?'Speichern':'Veröffentlichen'}</button>
         </div>
       </div>`;
     document.getElementById('nf-abstimmung-cb')?.addEventListener('change', e => {
@@ -2791,59 +2805,86 @@ registerPage('news-form', async (el) => {
     });
     document.getElementById('nf-pdf')?.addEventListener('change', e => {
       pdfFile = e.target.files[0] || null;
+      pdfEntfernen = false;
       document.getElementById('nf-pdf-hint').textContent = pdfFile ? '📎 '+pdfFile.name : 'Kein PDF ausgewählt';
     });
     document.querySelectorAll('.nf-opt').forEach(inp => {
       inp.addEventListener('input', e => { optionen[+e.target.dataset.i] = e.target.value; });
     });
+    // Wehr-Checkboxen nach jedem Render neu befüllen
+    const wehrBox = document.getElementById('nf-wehr-boxes');
+    if (wehrBox) {
+      if (alleWehren.length <= 1) {
+        document.getElementById('nf-wehr-container')?.remove();
+      } else {
+        const gespeicherteIds = bestehend?.ortswehrIds || [];
+        wehrBox.innerHTML = alleWehren.map(w => {
+          const checked = bestehend ? gespeicherteIds.includes(w.id) : true;
+          return `<label style="display:flex;align-items:center;gap:0.5rem;font-size:0.88rem;cursor:pointer">
+            <input type="checkbox" class="nf-wehr-cb" value="${w.id}" ${checked?'checked':''} style="width:1rem;height:1rem;accent-color:var(--red)">
+            ${w.name}
+          </label>`;
+        }).join('');
+      }
+    }
   };
   render();
 
-  // Wehr-Checkboxen befüllen
-  const wehrBox = document.getElementById('nf-wehr-boxes');
-  if (wehrBox) {
-    if (alleWehren.length <= 1) {
-      document.getElementById('nf-wehr-container')?.remove();
-    } else {
-      wehrBox.innerHTML = alleWehren.map(w => `
-        <label style="display:flex;align-items:center;gap:0.5rem;font-size:0.88rem;cursor:pointer">
-          <input type="checkbox" class="nf-wehr-cb" value="${w.id}" checked style="width:1rem;height:1rem;accent-color:var(--red)">
-          ${w.name}
-        </label>`).join('');
-    }
-  }
-
   window.nfAddOption = () => { optionen.push(''); render(); };
-  window.newsSpeichern = async () => {
+  window.nfPdfEntfernen = () => { pdfEntfernen = true; pdfFile = null; render(); };
+
+  window.newsSpeichern = async (newsId) => {
     const titel  = document.getElementById('nf-titel').value.trim();
     const inhalt = document.getElementById('nf-inhalt').value.trim();
     if (!titel) { fw.toast('Titel fehlt', true); return; }
     const btn = document.getElementById('nf-save-btn');
+    const btnLabelFertig = newsId ? '💾 Speichern' : '💾 Veröffentlichen';
     btn.disabled = true; btn.textContent = '⏳ Wird gespeichert...';
     const hatAbst = document.getElementById('nf-abstimmung-cb')?.checked;
     const newsWehrIds = [...document.querySelectorAll('.nf-wehr-cb:checked')].map(cb => cb.value);
-    const data = { titel, inhalt, erstelltAm: new Date(), erstelltVon: fw.user.uid, ortswehrIds: newsWehrIds };
+    const data = { titel, inhalt, ortswehrIds: newsWehrIds };
+    if (!newsId) { data.erstelltAm = new Date(); data.erstelltVon = fw.user.uid; }
     if (hatAbst) {
       const frage = document.getElementById('nf-frage').value.trim();
       const opts  = optionen.filter(o => o.trim());
-      if (!frage || opts.length < 2) { fw.toast('Frage und mind. 2 Optionen erforderlich', true); btn.disabled=false; btn.textContent='💾 Veröffentlichen'; return; }
-      data.abstimmung = { frage, optionen: opts.map(text => ({text, stimmen:[]})) };
+      if (!frage || opts.length < 2) { fw.toast('Frage und mind. 2 Optionen erforderlich', true); btn.disabled=false; btn.textContent=btnLabelFertig; return; }
+      // Bereits abgegebene Stimmen anhand der Options-Reihenfolge erhalten
+      const alteOptionen = bestehend?.abstimmung?.optionen || [];
+      data.abstimmung = {
+        frage,
+        optionen: opts.map((text,i) => ({ text, stimmen: alteOptionen[i]?.stimmen || [] })),
+        ...(bestehend?.abstimmung?.aenderungen ? { aenderungen: bestehend.abstimmung.aenderungen } : {}),
+      };
+    } else if (newsId && bestehend?.abstimmung) {
+      data.abstimmung = null; // Abstimmung beim Bearbeiten entfernt
     }
-    // PDF hochladen
+    // PDF hochladen / entfernen
     if (pdfFile) {
       try {
         btn.textContent = '⏳ PDF wird hochgeladen...';
+        if (bestehend?.pdf?.pfad) { try { await fw.deletePdf(bestehend.pdf.pfad); } catch(e) {} }
         const pfad = `news-pdfs/${Date.now()}_${pdfFile.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
         const url  = await fw.uploadPdf(pdfFile, pfad);
         data.pdf = { name: pdfFile.name, url, pfad };
       } catch(e) {
         fw.toast('PDF-Upload fehlgeschlagen: '+e.message, true);
-        btn.disabled=false; btn.textContent='💾 Veröffentlichen'; return;
+        btn.disabled=false; btn.textContent=btnLabelFertig; return;
       }
+    } else if (pdfEntfernen && bestehend?.pdf?.pfad) {
+      try { await fw.deletePdf(bestehend.pdf.pfad); } catch(e) {}
+      data.pdf = null;
     }
+
+    if (newsId) {
+      await fw.setDoc('news/'+newsId, data);
+      fw.toast('Gespeichert ✅');
+      navigate('dashboard');
+      return;
+    }
+
     await fw.addDoc('news', data);
 
-    // Push-Benachrichtigung direkt versenden (wie Alarm-Push)
+    // Push-Benachrichtigung direkt versenden (wie Alarm-Push) – nur bei neuen Beiträgen
     try {
       const usersSnap = await fw.getDocs('users');
       const tokens = usersSnap.docs
