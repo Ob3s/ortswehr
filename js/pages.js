@@ -1597,7 +1597,7 @@ registerPage('profil', async (el) => {
     <div class="card" style="display:flex;align-items:center;gap:0.8rem;padding:0.9rem 1rem">
       <div style="font-size:1.4rem">${stats.ziel?'✅':'⚠️'}</div>
       <div>
-        <div style="font-weight:600;font-size:0.95rem">${stats.ziel?'Du bist versichert!':'Du bist derzeit nicht versichert.'}</div>
+        <div style="font-weight:600;font-size:0.95rem">${stats.ziel?'Du bist versichert!':'Derzeit nicht versichert.'}</div>
         <div style="font-size:0.8rem;color:var(--muted);margin-top:0.1rem">${dauerFormat(stats.stunden12mZiel)}h / 40:00h (12 Mon.)</div>
       </div>
     </div>
