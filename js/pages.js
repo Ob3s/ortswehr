@@ -63,6 +63,7 @@ function kurzName(vorname, nachname) {
 }
 function anwesenheitBadge(s) {
   if (s==='bestaetigt' || s==='kommt')       return '<span style="color:#16a34a;font-size:1.1rem">✅</span>';
+  if (s==='bereitschaft')                    return '<span style="color:#2563eb;font-size:1.1rem">🏠</span>';
   if (s==='abgelehnt'  || s==='kommt_nicht') return '<span style="color:#dc2626;font-size:1.1rem">❌</span>';
   return '<span style="color:#f59e0b;font-size:1.1rem">⏳</span>'; // keine Reaktion
 }
@@ -75,7 +76,7 @@ function getStats(anwesenheiten, dienstMap, einsatzMap, jahr) {
   let gesamtEinsatz=0, dienstRelevant=0, dienstIrrelevant=0, einsaetze=0, dienste=0;
   let dienstStunden12m=0;
   for (const a of anwesenheiten) {
-    if (a.status !== 'bestaetigt' && a.status !== 'kommt') continue;
+    if (a.status !== 'bestaetigt' && a.status !== 'kommt' && a.status !== 'bereitschaft') continue;
     const dienstEintrag  = dienstMap?.get(a.uebungId)  || null;
     const einsatzEintrag = einsatzMap?.get(a.uebungId) || null;
     const eintrag   = dienstEintrag || einsatzEintrag || null;
@@ -119,7 +120,7 @@ function meineEintraegeListen(anwesenheiten, dienstMap, einsatzMap) {
 
   const diensteListe = [], einsaetzeListe = [];
   for (const a of anwesenheiten) {
-    if (a.status !== 'bestaetigt' && a.status !== 'kommt') continue;
+    if (a.status !== 'bestaetigt' && a.status !== 'kommt' && a.status !== 'bereitschaft') continue;
     const dienstEintrag  = dienstMap?.get(a.uebungId)  || null;
     const einsatzEintrag = einsatzMap?.get(a.uebungId) || null;
     const eintrag = dienstEintrag || einsatzEintrag || null;
@@ -1055,14 +1056,18 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
         </div>
       ` : ''}
     </div>
+    <div id="einsatz-ausrueck-warnung"></div>
     <div class="section-header"><span id="einsatz-zaehler" style="font-weight:400;font-size:0.85rem"></span></div>
     <div id="einsatz-reaktionen" class="card">⏳ Lade...</div>
-    <div class="card" style="display:flex;gap:0.8rem">
+    <div class="card" style="display:flex;gap:0.6rem;flex-wrap:wrap">
       <button class="btn btn-full" id="btn-kommt"
-        style="background:#16a34a;color:#fff;font-size:1rem;padding:0.6rem"
+        style="background:#16a34a;color:#fff;font-size:0.95rem;padding:0.6rem"
         onclick="einsatzReagieren('${id}','kommt')">👍 Ich komme</button>
+      ${isEinsatz ? `<button class="btn btn-full" id="btn-bereitschaft"
+        style="background:#2563eb;color:#fff;font-size:0.95rem;padding:0.6rem"
+        onclick="einsatzReagieren('${id}','bereitschaft')">🏠 Bereitschaft</button>` : ''}
       <button class="btn btn-full" id="btn-kommt-nicht"
-        style="background:#dc2626;color:#fff;font-size:1rem;padding:0.6rem"
+        style="background:#dc2626;color:#fff;font-size:0.95rem;padding:0.6rem"
         onclick="einsatzReagieren('${id}','kommt_nicht')">👎 Komme nicht</button>
     </div>
     ${fw.hatRecht(teilnRecht) ? `<div style="padding:0 0 0.5rem">${eintragBtn}</div>` : ''}
@@ -1133,32 +1138,54 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
           a.fuehrerschein = profil.fuehrerschein || a.fuehrerschein || '';
           return a;
         });
-        const kommen      = alle.filter(a => a.status === 'kommt' || a.status === 'bestaetigt');
-        const kommenNicht = alle.filter(a => a.status === 'kommt_nicht');
-        const meineR      = alle.find(a => a.userId === fw.user.uid);
+        // "Bereitschaft" = sagt zu, bleibt aber in der Wache und rückt nicht mit dem Fahrzeug aus.
+        const kommenAusruecken   = alle.filter(a => a.status === 'kommt' || a.status === 'bestaetigt');
+        const kommenBereitschaft = alle.filter(a => a.status === 'bereitschaft');
+        const kommenAlle         = [...kommenAusruecken, ...kommenBereitschaft];
+        const kommenNicht        = alle.filter(a => a.status === 'kommt_nicht');
+        const meineR             = alle.find(a => a.userId === fw.user.uid);
 
         const normRolle = r => [...(r||'').trim().toLowerCase()]
           .map(ch => ({'ü':'ue','ö':'oe','ä':'ae','ß':'ss'}[ch]||ch)).join('');
-        const zugf  = kommen.filter(a => normRolle(a.rolle) === 'zugfuehrer').length;
-        const gruf  = kommen.filter(a => normRolle(a.rolle) === 'gruppenfuehrer').length;
-        const kamf  = kommen.filter(a => normRolle(a.rolle) !== 'zugfuehrer' && normRolle(a.rolle) !== 'gruppenfuehrer').length;
-        const agtZ  = kommen.filter(a => agtMap.get(a.userId)).length;
+        const zugf  = kommenAlle.filter(a => normRolle(a.rolle) === 'zugfuehrer').length;
+        const gruf  = kommenAlle.filter(a => normRolle(a.rolle) === 'gruppenfuehrer').length;
+        const kamf  = kommenAlle.filter(a => normRolle(a.rolle) !== 'zugfuehrer' && normRolle(a.rolle) !== 'gruppenfuehrer').length;
+        const agtZ  = kommenAlle.filter(a => agtMap.get(a.userId)).length;
         const zaehler = document.getElementById('einsatz-zaehler');
         if (zaehler) zaehler.textContent = isEinsatz
-          ? `👍 ${kommen.length}  👎 ${kommenNicht.length}  ·  Stärke: ${zugf}/${gruf}/${kamf}  ·  AGT: ${agtZ}`
-          : `👍 ${kommen.length}  👎 ${kommenNicht.length}`;
+          ? `👍 ${kommenAusruecken.length}  🏠 ${kommenBereitschaft.length}  👎 ${kommenNicht.length}  ·  Stärke: ${zugf}/${gruf}/${kamf}  ·  AGT: ${agtZ}`
+          : `👍 ${kommenAusruecken.length}  👎 ${kommenNicht.length}`;
+
+        // Kein Ausrücken möglich: entweder sind alle Zusagen auf Bereitschaft,
+        // oder niemand unter den tatsächlich Ausrückenden hat einen LKW-Führerschein (C/CE).
+        let keinAusrueckenGrund = null;
+        if (isEinsatz) {
+          if (kommenAusruecken.length === 0 && kommenBereitschaft.length > 0) {
+            keinAusrueckenGrund = 'Alle Kameraden mit Zusage sind auf Bereitschaft – niemand rückt aus';
+          } else if (kommenAusruecken.length > 0 && !kommenAusruecken.some(a => hatLkwFs(a.fuehrerschein))) {
+            keinAusrueckenGrund = 'Kein Fahrer mit Führerschein C/CE unter den Zusagen – Fahrzeug kann nicht ausrücken';
+          }
+        }
+        const warnung = document.getElementById('einsatz-ausrueck-warnung');
+        if (warnung) {
+          warnung.innerHTML = keinAusrueckenGrund
+            ? `<div class="card" style="margin-top:0.6rem;padding:0.5rem 0.7rem;background:rgba(220,38,38,0.12);border:1px solid rgba(220,38,38,0.4);border-radius:8px;color:#dc2626;font-size:0.82rem;font-weight:600">🚫 ${keinAusrueckenGrund}</div>`
+            : '';
+        }
 
         const container = document.getElementById('einsatz-reaktionen');
         if (container) {
-          const rows = [...kommen, ...kommenNicht].map(a => {
+          const rows = [...kommenAlle, ...kommenNicht].map(a => {
+            const bereitschaft = a.status === 'bereitschaft';
             const kommt = a.status === 'kommt' || a.status === 'bestaetigt';
             const lkw = kommt && hatLkwFs(a.fuehrerschein);
-            const agt = isEinsatz && kommt && agtMap.get(a.userId);
+            const agt = isEinsatz && (kommt || bereitschaft) && agtMap.get(a.userId);
+            const icon = bereitschaft ? '🏠' : (kommt ? '👍' : '👎');
             const loeschBtn = fw.hatRecht(teilnRecht)
               ? `<button onclick="teilnehmerEntfernen('${a.id}','${id}','${u.typ}')" style="background:none;border:none;cursor:pointer;font-size:0.9rem;color:#9ca3af;padding:0.1rem 0.3rem" title="Entfernen">🗑</button>`
               : '';
             return `<div style="display:flex;align-items:center;gap:0.6rem;padding:0.4rem 0;border-bottom:1px solid var(--border)">
-              <span style="font-size:1.1rem">${kommt?'👍':'👎'}${lkw?'🚛':''}${agt?'💨':''}</span>
+              <span style="font-size:1.1rem">${icon}${lkw?'🚛':''}${agt?'💨':''}</span>
               <span style="flex:1;font-weight:${a.userId===fw.user.uid?'600':'400'}">${kurzName(usersMap.get(a.userId)?.vorname, usersMap.get(a.userId)?.nachname) || a.userName || 'Kamerad'}</span>
               ${loeschBtn}
             </div>`;
@@ -1167,11 +1194,11 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
         }
 
         const btnK  = document.getElementById('btn-kommt');
+        const btnB  = document.getElementById('btn-bereitschaft');
         const btnKN = document.getElementById('btn-kommt-nicht');
-        if (btnK && btnKN) {
-          btnK.style.opacity  = meineR?.status === 'kommt'       ? '1' : '0.5';
-          btnKN.style.opacity = meineR?.status === 'kommt_nicht' ? '1' : '0.5';
-        }
+        if (btnK)  btnK.style.opacity  = meineR?.status === 'kommt'       ? '1' : '0.5';
+        if (btnB)  btnB.style.opacity  = meineR?.status === 'bereitschaft' ? '1' : '0.5';
+        if (btnKN) btnKN.style.opacity = meineR?.status === 'kommt_nicht' ? '1' : '0.5';
       },
       fw.where('uebungId','==',id)
     );
@@ -2015,7 +2042,7 @@ registerPage('statistik', async (el) => {
   ]);
 
   const users     = usersSnap.docs.map(d => ({id:d.id,...d.data()})).filter(u => u.aktiv !== false && u.vorname);
-  const anw       = anwSnap.docs.map(d => d.data()).filter(a => a.status==='kommt' || a.status==='bestaetigt');
+  const anw       = anwSnap.docs.map(d => d.data()).filter(a => a.status==='kommt' || a.status==='bestaetigt' || a.status==='bereitschaft');
   const einsaetze = einsaetzeSnap.docs.map(d => ({id:d.id,...d.data()}));
   const dienste   = diensteSnap.docs.map(d => ({id:d.id,...d.data()}));
 
