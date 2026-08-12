@@ -128,6 +128,9 @@
     isWehrfuehrer()    { return this.profil?.rolle === 'wehrfuehrer'; },
     isGruppenfuehrer() { return ['gruppenführer','zugführer','wehrfuehrer'].includes(this.profil?.rolle); },
     isZugfuehrer()     { return ['zugführer','wehrfuehrer'].includes(this.profil?.rolle); },
+    // Granulares Rollen-/Rechtekonzept: Wehrführer hat immer alles,
+    // sonst zählen die Rechte des zugewiesenen Rangs (in fw.profil.rechte aufgelöst, siehe onAuthStateChanged)
+    hatRecht(recht)    { return this.isWehrfuehrer() || this.profil?.rechte?.[recht] === true; },
 
     toast(msg, isError = false) {
       const t = document.getElementById('toast');
@@ -323,6 +326,14 @@
         const t = fw.profil.theme;
         if (t === 'klassisch') document.body.setAttribute('data-theme', 'klassisch');
         else document.body.removeAttribute('data-theme');
+        // Rang auflösen: Rechte des zugewiesenen Rangs laden (Wehrführer braucht das nicht, hat eh alles)
+        fw.profil.rechte = {};
+        if (!fw.isWehrfuehrer() && fw.profil.rangId) {
+          try {
+            const rangSnap = await getDoc(doc(db, 'raenge', fw.profil.rangId));
+            if (rangSnap.exists()) fw.profil.rechte = rangSnap.data().rechte || {};
+          } catch(e) { console.warn('Rang konnte nicht geladen werden:', e); }
+        }
       } else {
         fw.profil = { id: user.uid, email: user.email, rolle: 'kamerad',
           vorname: '', nachname: '', dienstgrad: '',
@@ -331,7 +342,8 @@
         await setDoc(doc(db, 'users', user.uid), fw.profil);
         document.body.setAttribute('data-theme', 'klassisch');
       }
-      if (fw.isWehrfuehrer()) {
+      if (fw.isWehrfuehrer() || fw.hatRecht('kameraden_stammdaten') || fw.hatRecht('kameraden_aktiv_inaktiv')
+          || fw.hatRecht('kameraden_loeschen') || fw.hatRecht('kameraden_lehrgaenge_verwalten') || fw.hatRecht('kameraden_raenge_zuweisen')) {
         document.getElementById('nav-kameraden').classList.remove('hidden');
       }
       if (fw.profil.notif_einsatz || fw.profil.notif_uebung || fw.profil.notif_bestaetigung) {

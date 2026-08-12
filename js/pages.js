@@ -357,7 +357,7 @@ function renderNewsBeitrag(b, usersMap) {
         }
       }).join('')}
       <div style="font-size:0.75rem;color:var(--muted);margin-top:0.3rem">${gesamt} Stimme${gesamt!==1?'n':''}</div>
-      ${fw.isWehrfuehrer() && b.abstimmung.aenderungen?.length ? `<div style="font-size:0.72rem;color:#f59e0b;margin-top:0.3rem">⚠️ ${b.abstimmung.aenderungen.length} Stimme${b.abstimmung.aenderungen.length!==1?'n':''} geändert</div>` : ''}
+      ${fw.hatRecht('news_bearbeiten') && b.abstimmung.aenderungen?.length ? `<div style="font-size:0.72rem;color:#f59e0b;margin-top:0.3rem">⚠️ ${b.abstimmung.aenderungen.length} Stimme${b.abstimmung.aenderungen.length!==1?'n':''} geändert</div>` : ''}
     </div>` : '';
   return `<div class="card" style="margin-bottom:0.6rem">
     <div style="font-weight:600;margin-bottom:0.3rem">${b.titel||''}</div>
@@ -365,10 +365,10 @@ function renderNewsBeitrag(b, usersMap) {
     ${b.pdf ? `<a href="${b.pdf.url}" target="_blank" style="display:inline-flex;align-items:center;gap:0.4rem;margin-top:0.5rem;padding:0.4rem 0.8rem;background:var(--panel2);border:1px solid var(--border);border-radius:8px;font-size:0.82rem;color:var(--blue);text-decoration:none;max-width:100%;overflow:hidden">📄 <span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px">${b.pdf.name}</span></a>` : ''}
     ${abstimmungHtml}
     <div style="font-size:0.72rem;color:var(--muted);margin-top:0.5rem">${datum(b.erstelltAm)}</div>
-    ${fw.isWehrfuehrer() ? `<div style="margin-top:0.3rem;display:flex;gap:0.8rem">
-      <button onclick="navigate('news-form',{id:'${b.id}'})" style="background:none;border:none;color:#9ca3af;font-size:0.75rem;cursor:pointer;padding:0">Bearbeiten</button>
-      <button onclick="newsLoeschen('${b.id}')" style="background:none;border:none;color:#9ca3af;font-size:0.75rem;cursor:pointer;padding:0">Löschen</button>
-      <button onclick="newsArchivieren('${b.id}',${!b.archiviert})" style="background:none;border:none;color:#9ca3af;font-size:0.75rem;cursor:pointer;padding:0">${b.archiviert ? 'Wiederherstellen' : 'Archivieren'}</button>
+    ${(fw.hatRecht('news_bearbeiten') || fw.hatRecht('news_loeschen')) ? `<div style="margin-top:0.3rem;display:flex;gap:0.8rem">
+      ${fw.hatRecht('news_bearbeiten') ? `<button onclick="navigate('news-form',{id:'${b.id}'})" style="background:none;border:none;color:#9ca3af;font-size:0.75rem;cursor:pointer;padding:0">Bearbeiten</button>` : ''}
+      ${fw.hatRecht('news_loeschen') ? `<button onclick="newsLoeschen('${b.id}')" style="background:none;border:none;color:#9ca3af;font-size:0.75rem;cursor:pointer;padding:0">Löschen</button>
+      <button onclick="newsArchivieren('${b.id}',${!b.archiviert})" style="background:none;border:none;color:#9ca3af;font-size:0.75rem;cursor:pointer;padding:0">${b.archiviert ? 'Wiederherstellen' : 'Archivieren'}</button>` : ''}
     </div>` : ''}
     <div style="margin-top:0.7rem;border-top:1px solid var(--border);padding-top:0.6rem">
       <div id="kommentare-${b.id}" style="margin-bottom:0.4rem">
@@ -376,7 +376,7 @@ function renderNewsBeitrag(b, usersMap) {
           const u = usersMap?.get(k.userId);
           const name = u ? kurzName(u.vorname, u.nachname) : '?';
           const istEigener = k.userId === fw.user.uid;
-          const istAdmin = fw.isWehrfuehrer();
+          const istAdmin = fw.hatRecht('news_bearbeiten');
           return `<div style="display:flex;gap:0.5rem;margin-bottom:0.5rem;align-items:flex-start">
             <div style="width:26px;height:26px;border-radius:50%;background:var(--panel2);display:flex;align-items:center;justify-content:center;font-size:0.7rem;flex-shrink:0;font-weight:600">${(u?.vorname||'?')[0]}${(u?.nachname||'')[0]||''}</div>
             <div style="flex:1;background:var(--panel2);border-radius:10px;padding:0.4rem 0.6rem;font-size:0.82rem">
@@ -422,7 +422,7 @@ async function ladeNewsFeed() {
   // Alten Listener aufräumen
   if (_newsFeedListener) { _newsFeedListener(); _newsFeedListener = null; }
 
-  const beitragBtn = fw.isWehrfuehrer() ? `<button class="btn btn-secondary btn-sm" onclick="navigate('news-form')">📝 Beitrag</button>` : '';
+  const beitragBtn = fw.hatRecht('news_anlegen') ? `<button class="btn btn-secondary btn-sm" onclick="navigate('news-form')">📝 Beitrag</button>` : '';
   const header = `<div class="section-header" style="display:flex;align-items:center;justify-content:space-between">Neuigkeiten${beitragBtn}</div>`;
 
   // usersMap einmalig laden
@@ -436,7 +436,7 @@ async function ladeNewsFeed() {
     const meineWehrIds = fw.profil.ortswehrIds?.length ? fw.profil.ortswehrIds : (fw.profil.ortswehrId ? [fw.profil.ortswehrId] : []);
     const alle = snap.docs
       .map(d => ({id:d.id,...d.data()}))
-      .filter(d => !d.ortswehrIds?.length || d.ortswehrIds.some(id => meineWehrIds.includes(id)) || fw.isWehrfuehrer())
+      .filter(d => !d.ortswehrIds?.length || d.ortswehrIds.some(id => meineWehrIds.includes(id)) || fw.hatRecht('news_anlegen') || fw.hatRecht('news_bearbeiten') || fw.hatRecht('news_loeschen'))
       .sort((a,b) => (b.erstelltAm?.toMillis?.() || 0) - (a.erstelltAm?.toMillis?.() || 0));
 
     // Automatisch archivieren wenn älter als 30 Tage
@@ -693,8 +693,8 @@ function renderEintrag(u, meineMap) {
   const heute = new Date(); heute.setHours(0,0,0,0);
   const morgen = new Date(heute); morgen.setDate(heute.getDate()+1);
   const istHeute = u.typ === 'einsatz' && d >= heute && d < morgen;
-  // Unvollständige Dienste nur für Wehrführer hervorheben
-  const istUnvollstaendig = !istHeute && fw.isWehrfuehrer() && dienstUnvollstaendig(u);
+  // Unvollständige Dienste nur für Kameraden mit Bearbeiten-Recht hervorheben
+  const istUnvollstaendig = !istHeute && fw.hatRecht('dienste_bearbeiten') && dienstUnvollstaendig(u);
   let highlightStyle = '';
   if (istHeute) highlightStyle = 'border-left:3px solid var(--red);padding-left:0.5rem;background:rgba(220,38,38,0.08);';
   else if (istUnvollstaendig) highlightStyle = 'border-left:3px solid #f59e0b;padding-left:0.5rem;background:rgba(245,158,11,0.08);';
@@ -863,19 +863,19 @@ registerPage('dienste', async (el) => {
   fw.setTitle('Dienste');
   await ladeDienstFilter();
   await ladeDienstarten();
-  if (fw.isWehrfuehrer()) fw.showHeaderAction('+ Dienst', () => navigate('uebung-form', {typ:'dienst'}));
+  if (fw.hatRecht('dienste_anlegen')) fw.showHeaderAction('+ Dienst', () => navigate('uebung-form', {typ:'dienst'}));
   const [uSnap, aSnap, dQualiSnap] = await Promise.all([
     fw.getDocs('dienste', fw.orderBy('datum','desc')),
     fw.getDocs('anwesenheiten', fw.where('userId','==',fw.user.uid)),
     fw.getDocs('users/'+fw.user.uid+'/qualifikationen'),
   ]);
   const dQualis  = dQualiSnap.docs.map(d => d.data());
-  const istMaschinist = dQualis.some(q => (q.bezeichnung||'').toLowerCase().includes('maschinist'));
+  const zeigeFahrzeugpruefungen = fw.hatRecht('fahrzeuge_verwalten') || fw.hatRecht('fahrzeuge_pruefergebnisse');
   const liste    = uSnap.docs.map(d => ({id:d.id,...d.data()})).filter(d => dienstSichtbar(d, fw.profil, dQualis));
   const meineMap = new Map(aSnap.docs.map(d => [d.data().uebungId, d.data().status]));
   el.innerHTML = `
     <div class="card">${renderEintragListe(liste, meineMap)}</div>
-    ${(fw.isWehrfuehrer() || istMaschinist) ? `
+    ${zeigeFahrzeugpruefungen ? `
     <details id="fz-pruef-details" class="card" style="margin-top:0.8rem;padding:0">
       <summary style="font-weight:600;cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;padding:0.4rem 0.8rem;font-size:13px;border-radius:8px">
         <span>🔧 Fahrzeug- und Geräteprüfungen</span>
@@ -883,13 +883,13 @@ registerPage('dienste', async (el) => {
       </summary>
       <div id="pruef-inline" style="padding:0 0.8rem 0.8rem">⏳ Lade...</div>
     </details>` : ''}
-    ${fw.isWehrfuehrer() ? `
+    ${fw.hatRecht('dienste_anlegen') ? `
     <div style="margin-top:0.8rem">
       <button class="btn btn-secondary btn-sm btn-full" onclick="kalenderImportieren()" id="kal-btn">📅 Aus Google Kalender importieren</button>
       <div id="kal-status" class="muted" style="font-size:0.8rem;text-align:center;margin-top:0.4rem"></div>
     </div>` : ''}
   `;
-  if (fw.isWehrfuehrer() || istMaschinist) ladePruefaufgabenInline();
+  if (zeigeFahrzeugpruefungen) ladePruefaufgabenInline();
 });
 
 window.kalenderImportieren = async () => {
@@ -1017,14 +1017,14 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
   if (!isEinsatz) await ladeDienstarten();
   fw.setTitle(isEinsatz ? 'Einsatz' : 'Dienst');
   fw.showBack(() => navigate(isEinsatz ? 'einsaetze' : 'dienste'));
-  if (fw.isWehrfuehrer()) fw.showHeaderAction('✏️ Edit', () => navigate('uebung-form',{id, typ: u.typ}));
+  if (fw.hatRecht('dienste_bearbeiten')) fw.showHeaderAction('✏️ Edit', () => navigate('uebung-form',{id, typ: u.typ}));
 
   const aSnap = await fw.getDocs('anwesenheiten',
     fw.where('uebungId','==',id), fw.where('userId','==',fw.user.uid));
   const meineA = aSnap.docs[0] ? {id:aSnap.docs[0].id,...aSnap.docs[0].data()} : null;
 
   const eintragNavFn = `navigate('uebung-eintragen',{id:'${id}',titel:'${u.titel.replace(/'/g,"\'")}',dauer:${u.dauer_h||0},typ:'${u.typ}',datumStr:'${u.datum?.toDate?.().toISOString()||u.datum}'})`;
-  const eintragBtn = fw.isWehrfuehrer()
+  const eintragBtn = fw.hatRecht('dienste_teilnahme_verwalten')
     ? `<button class="btn btn-secondary btn-sm" onclick="${eintragNavFn}">+ Kamerad eintragen</button>`
     : '';
 
@@ -1032,7 +1032,7 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
     <div class="card">
       <div style="font-weight:600;font-size:1.1rem">${u.titel}</div>
       <div style="margin-top:0.3rem;color:var(--muted);font-size:0.85rem">${datum(u.datum)}${zeitZeile(u) ? ' · '+zeitZeile(u) : ''}${!isEinsatz && u.art ? ' · '+dienstArtLabel(u.art) : ''}${!isEinsatz && u.relevant !== false ? ' · <span style="color:#22c55e;font-weight:600">40h</span>' : ''}</div>
-      ${!isEinsatz && fw.isWehrfuehrer() && dienstUnvollstaendig(u) ? `<div style="margin-top:0.4rem;padding:0.4rem 0.6rem;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.4);border-radius:8px;color:#f59e0b;font-size:0.8rem;font-weight:600">⚠️ Unvollständig – bitte fehlende Angaben (z. B. Dienst-Art) nachtragen</div>` : ''}
+      ${!isEinsatz && fw.hatRecht('dienste_bearbeiten') && dienstUnvollstaendig(u) ? `<div style="margin-top:0.4rem;padding:0.4rem 0.6rem;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.4);border-radius:8px;color:#f59e0b;font-size:0.8rem;font-weight:600">⚠️ Unvollständig – bitte fehlende Angaben (z. B. Dienst-Art) nachtragen</div>` : ''}
       ${u.beschreibung ? `<p class="muted" style="margin-top:0.4rem;font-size:0.85rem">${u.beschreibung}</p>` : ''}
       ${u.ortswehrIds?.length > 1 ? `<div style="margin-top:0.4rem;font-size:0.78rem;color:var(--muted)">Beteiligte Wehren: ${u.ortswehrIds.map(id => owMap.get(id)||id).join(', ')}</div>` : ''}
       <div id="ort-anzeige">${u.ort ? `<div style="margin-top:0.5rem;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
@@ -1042,7 +1042,7 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
           🗺 Navigation
         </a>` : ''}
       </div>` : ''}</div>
-      ${isEinsatz && !u.zeitEnde && fw.isWehrfuehrer() ? `
+      ${isEinsatz && !u.zeitEnde && fw.hatRecht('dienste_bearbeiten') ? `
         <button class="btn btn-secondary btn-sm" style="margin-top:0.6rem" onclick="navigate('uebung-form',{id:'${u.id}',typ:'einsatz'})">⏱ Endzeit nachtragen</button>
       ` : ''}
       ${isEinsatz && !u.ort ? `
@@ -1062,7 +1062,7 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
         style="background:#dc2626;color:#fff;font-size:1rem;padding:0.6rem"
         onclick="einsatzReagieren('${id}','kommt_nicht')">👎 Komme nicht</button>
     </div>
-    ${fw.isWehrfuehrer() ? `<div style="padding:0 0 0.5rem">${eintragBtn}</div>` : ''}
+    ${fw.hatRecht('dienste_teilnahme_verwalten') ? `<div style="padding:0 0 0.5rem">${eintragBtn}</div>` : ''}
   `;
 
   // Autocomplete für inline Adress-Eingabe (Detail-Seite, kein <script> in innerHTML)
@@ -1151,7 +1151,7 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
             const kommt = a.status === 'kommt' || a.status === 'bestaetigt';
             const lkw = kommt && hatLkwFs(a.fuehrerschein);
             const agt = isEinsatz && kommt && agtMap.get(a.userId);
-            const loeschBtn = fw.isWehrfuehrer()
+            const loeschBtn = fw.hatRecht('dienste_teilnahme_verwalten')
               ? `<button onclick="teilnehmerEntfernen('${a.id}','${id}','${u.typ}')" style="background:none;border:none;cursor:pointer;font-size:0.9rem;color:#9ca3af;padding:0.1rem 0.3rem" title="Entfernen">🗑</button>`
               : '';
             return `<div style="display:flex;align-items:center;gap:0.6rem;padding:0.4rem 0;border-bottom:1px solid var(--border)">
@@ -1286,6 +1286,86 @@ function dienstUnvollstaendig(u) {
   if (!u.dauer_h || u.dauer_h <= 0) return true;
   if (!u.art) return true;
   return false;
+}
+
+// ── Rollen-/Rechtekonzept ──────────────────────────────────
+// Katalog aller granularen Einzelrechte, gruppiert nach Bereich (für die Rang-Verwaltung).
+// Wehrführer hat unabhängig davon immer alle Rechte (siehe fw.hatRecht()).
+const RECHTE_KATALOG = [
+  { bereich: 'Dienste & Einsätze', rechte: [
+    { key: 'dienste_anlegen',              label: 'Anlegen' },
+    { key: 'dienste_bearbeiten',           label: 'Bearbeiten' },
+    { key: 'dienste_loeschen',             label: 'Löschen' },
+    { key: 'dienste_teilnahme_verwalten',  label: 'Teilnahme anderer eintragen/löschen' },
+    { key: 'dienste_alarm_ausloesen',      label: 'Alarm auslösen' },
+  ]},
+  { bereich: 'Kameraden', rechte: [
+    { key: 'kameraden_stammdaten',            label: 'Stammdaten bearbeiten' },
+    { key: 'kameraden_aktiv_inaktiv',         label: 'Aktiv/Inaktiv setzen' },
+    { key: 'kameraden_loeschen',              label: 'Löschen' },
+    { key: 'kameraden_lehrgaenge_verwalten',  label: 'Lehrgänge/Qualifikationen anderer verwalten' },
+    { key: 'kameraden_raenge_zuweisen',       label: 'Ränge zuweisen' },
+  ]},
+  { bereich: 'Fahrzeuge & Prüfaufgaben', rechte: [
+    { key: 'fahrzeuge_pruefergebnisse', label: 'Prüfergebnisse eintragen' },
+    { key: 'fahrzeuge_verwalten',       label: 'Anlegen/Bearbeiten/Löschen' },
+  ]},
+  { bereich: 'News', rechte: [
+    { key: 'news_sehen',       label: 'Sehen' },
+    { key: 'news_anlegen',     label: 'Anlegen' },
+    { key: 'news_bearbeiten',  label: 'Bearbeiten' },
+    { key: 'news_loeschen',    label: 'Löschen/Archivieren' },
+  ]},
+  { bereich: 'Stammdaten & Einstellungen', rechte: [
+    { key: 'stammdaten_dienstarten',     label: 'Dienst-Arten' },
+    { key: 'stammdaten_lehrgangsarten',  label: 'Lehrgangsarten' },
+    { key: 'stammdaten_dienstgrade',     label: 'Dienstgrade' },
+    { key: 'stammdaten_ortswehren',      label: 'Ortswehren' },
+    { key: 'stammdaten_raenge',          label: 'Ränge selbst bearbeiten' },
+  ]},
+  { bereich: 'Statistik/Verwaltung', rechte: [
+    { key: 'statistik_sehen',    label: 'Statistik sehen' },
+    { key: 'verwaltung_sehen',   label: 'Verwaltungsseite sehen' },
+  ]},
+];
+
+let _raenge = [];
+let _raengeGeladen = false;
+async function ladeRaenge() {
+  if (_raengeGeladen) return _raenge;
+  try {
+    let snap = await fw.getDocs('raenge');
+    // Einmalige Migration: ein neutraler Basis-Rang ohne Rechte, damit die Verwaltung
+    // nie komplett leer ist. Nur Wehrführer dürfen laut Regeln in "raenge" schreiben.
+    if (snap.empty && fw.isWehrfuehrer()) {
+      try {
+        await fw.setDoc('raenge/1', { bezeichnung: 'Kamerad', rechte: {}, sortierung: 1 });
+        snap = await fw.getDocs('raenge');
+      } catch(e) { /* Regeln evtl. noch nicht deployed – ohne Absturz weitermachen */ }
+    }
+    _raenge = snap.docs
+      .map(d => ({id: d.id, ...d.data()}))
+      .sort((a,b) => (a.sortierung||99) - (b.sortierung||99));
+  } catch(e) {
+    _raenge = [];
+  }
+  _raengeGeladen = true;
+  return _raenge;
+}
+function rangLabel(id) {
+  return _raenge.find(r => r.id === id)?.bezeichnung || '';
+}
+
+let _standardRangId = null;
+let _standardRangGeladen = false;
+async function ladeStandardRang() {
+  if (_standardRangGeladen) return _standardRangId;
+  try {
+    const snap = await fw.getDoc('einstellungen/raenge');
+    _standardRangId = snap.exists() ? (snap.data().standardRangId || null) : null;
+  } catch(e) { _standardRangId = null; }
+  _standardRangGeladen = true;
+  return _standardRangId;
 }
 
 // ── Einsatz / Dienst Form ─────────────────────────────────
@@ -2161,7 +2241,7 @@ function berechneEndDatum(startDatumStr, tage, lehrgang) {
 // ── Lehrgangsarten verwalten ──────────────────────────────
 // ── Admin: Dienstgrade & Dienst-Filter ───────────────────
 registerPage('einstellungen-admin', async (el) => {
-  if (!fw.isWehrfuehrer()) { navigate('dashboard'); return; }
+  if (!fw.hatRecht('stammdaten_dienstgrade')) { navigate('dashboard'); return; }
   fw.setTitle('Dienstgrade & Filter');
   fw.showBack(() => navigateBack());
 
@@ -2210,7 +2290,7 @@ registerPage('einstellungen-admin', async (el) => {
 });
 
 registerPage('lehrgangsarten-verwalten', async (el) => {
-  if (!fw.isWehrfuehrer()) { navigate('dashboard'); return; }
+  if (!fw.hatRecht('stammdaten_lehrgangsarten')) { navigate('dashboard'); return; }
   fw.setTitle('Lehrgangsarten');
   fw.showBack(() => navigateBack());
   fw.showHeaderAction('+ Neu', () => navigate('lehrgangsart-form', {}));
@@ -2264,7 +2344,7 @@ registerPage('lehrgangsarten-verwalten', async (el) => {
 });
 
 registerPage('lehrgangsart-form', async (el, {id}) => {
-  if (!fw.isWehrfuehrer()) { navigate('dashboard'); return; }
+  if (!fw.hatRecht('stammdaten_lehrgangsarten')) { navigate('dashboard'); return; }
   await ladeLehrgangsarten();
   let art = null;
   if (id) {
@@ -2336,7 +2416,7 @@ registerPage('lehrgangsart-form', async (el, {id}) => {
 
 // ── Dienst-Arten verwalten ────────────────────────────────
 registerPage('dienstarten-verwalten', async (el) => {
-  if (!fw.isWehrfuehrer()) { navigate('dashboard'); return; }
+  if (!fw.hatRecht('stammdaten_dienstarten')) { navigate('dashboard'); return; }
   fw.setTitle('Dienst-Arten');
   fw.showBack(() => navigateBack());
   fw.showHeaderAction('+ Neu', () => navigate('dienstart-form', {}));
@@ -2390,7 +2470,7 @@ registerPage('dienstarten-verwalten', async (el) => {
 });
 
 registerPage('dienstart-form', async (el, {id}) => {
-  if (!fw.isWehrfuehrer()) { navigate('dashboard'); return; }
+  if (!fw.hatRecht('stammdaten_dienstarten')) { navigate('dashboard'); return; }
   await ladeDienstarten();
   let art = id ? _dienstarten.find(a => a.id === id) : null;
   fw.setTitle(art ? 'Dienst-Art bearbeiten' : 'Neue Dienst-Art');
@@ -2441,10 +2521,145 @@ registerPage('dienstart-form', async (el, {id}) => {
   };
 });
 
+registerPage('raenge-verwalten', async (el) => {
+  if (!fw.hatRecht('stammdaten_raenge')) { navigate('dashboard'); return; }
+  fw.setTitle('Ränge');
+  fw.showBack(() => navigateBack());
+  fw.showHeaderAction('+ Neu', () => navigate('rang-form', {}));
+
+  _raengeGeladen = false;
+  const raenge = await ladeRaenge();
+  const standardId = await ladeStandardRang();
+
+  const anzahlRechte = (r) => Object.values(r.rechte || {}).filter(Boolean).length;
+
+  const renderListe = () => {
+    el.innerHTML = `
+      <div style="color:var(--muted);font-size:0.8rem;margin-bottom:0.6rem">
+        Der Standard-Rang wird bei neuen Kameraden automatisch vorausgewählt.
+      </div>
+      <div class="card" style="padding:0">
+        ${raenge.length === 0 ? '<div class="empty" style="padding:1rem">Noch keine Ränge</div>' :
+          raenge.map((r, i) => `
+            <div class="list-item">
+              <div class="list-item-body" onclick="navigate('rang-form',{id:'${r.id}'})" style="cursor:pointer">
+                <div class="list-item-title">${r.bezeichnung}${r.id === standardId ? ' <span style="color:#22c55e;font-size:0.75rem">★ Standard</span>' : ''}</div>
+                <div class="list-item-sub">${anzahlRechte(r)} von ${RECHTE_KATALOG.reduce((s,g)=>s+g.rechte.length,0)} Rechten</div>
+              </div>
+              <div style="display:flex;flex-direction:column;gap:0.2rem;align-items:center">
+                <button onclick="rangStandardSetzen('${r.id}')" title="Als Standard festlegen" style="background:none;border:none;color:${r.id===standardId?'#22c55e':'var(--text)'};cursor:pointer;padding:0.1rem 0.4rem;font-size:1rem">★</button>
+                <div style="display:flex;gap:0.1rem">
+                  <button onclick="rangHoch('${r.id}')" ${i===0?'disabled':''} style="background:none;border:none;color:${i===0?'#ccc':'var(--text)'};cursor:pointer;padding:0.1rem 0.3rem;font-size:0.9rem">▲</button>
+                  <button onclick="rangRunter('${r.id}')" ${i===raenge.length-1?'disabled':''} style="background:none;border:none;color:${i===raenge.length-1?'#ccc':'var(--text)'};cursor:pointer;padding:0.1rem 0.3rem;font-size:0.9rem">▼</button>
+                </div>
+              </div>
+            </div>`).join('')}
+      </div>`;
+  };
+
+  renderListe();
+
+  window.rangHoch = async (id) => {
+    const idx = raenge.findIndex(r => r.id === id);
+    if (idx <= 0) return;
+    [raenge[idx-1], raenge[idx]] = [raenge[idx], raenge[idx-1]];
+    await speicherRangSortierung(raenge);
+    renderListe();
+  };
+
+  window.rangRunter = async (id) => {
+    const idx = raenge.findIndex(r => r.id === id);
+    if (idx >= raenge.length-1) return;
+    [raenge[idx], raenge[idx+1]] = [raenge[idx+1], raenge[idx]];
+    await speicherRangSortierung(raenge);
+    renderListe();
+  };
+
+  window.rangStandardSetzen = async (id) => {
+    await fw.setDoc('einstellungen/raenge', { standardRangId: id });
+    _standardRangGeladen = false;
+    await ladeStandardRang();
+    fw.toast('Standard-Rang gesetzt ✅');
+    navigate('raenge-verwalten');
+  };
+
+  async function speicherRangSortierung(liste) {
+    await Promise.all(liste.map((r, i) =>
+      fw.updateDoc('raenge/'+r.id, { sortierung: i+1 })
+    ));
+    _raengeGeladen = false;
+    await ladeRaenge();
+  }
+});
+
+registerPage('rang-form', async (el, {id}) => {
+  if (!fw.hatRecht('stammdaten_raenge')) { navigate('dashboard'); return; }
+  await ladeRaenge();
+  let rang = id ? _raenge.find(r => r.id === id) : null;
+  fw.setTitle(rang ? 'Rang bearbeiten' : 'Neuer Rang');
+  fw.showBack(() => navigateBack());
+
+  el.innerHTML = `
+    <div class="card">
+      <div class="form-row"><label>Bezeichnung</label>
+        <input id="rg-bez" value="${rang?.bezeichnung||''}" placeholder="z.B. Ausbilder">
+      </div>
+    </div>
+    ${RECHTE_KATALOG.map((gruppe, gi) => `
+      <details class="card" style="padding:0" ${gi===0?'open':''}>
+        <summary class="section-header" style="margin:0;padding:0.6rem 1rem;cursor:pointer;list-style:none">${gruppe.bereich}</summary>
+        <div style="padding:0.2rem 1rem 0.8rem;display:flex;flex-direction:column;gap:0.5rem">
+          ${gruppe.rechte.map(r => `
+            <label style="display:flex;align-items:center;gap:0.6rem;cursor:pointer">
+              <input type="checkbox" class="rg-recht" value="${r.key}" style="width:1.2rem;height:1.2rem;accent-color:var(--red)" ${rang?.rechte?.[r.key]?'checked':''}>
+              <span style="font-size:0.88rem">${r.label}</span>
+            </label>`).join('')}
+        </div>
+      </details>`).join('')}
+    <div class="btn-row">
+      <button class="btn btn-primary btn-full" onclick="rangSpeichern('${id||''}')">💾 Speichern</button>
+      ${rang ? `<button class="btn btn-danger" onclick="rangLoeschen('${id}')">🗑 Löschen</button>` : ''}
+    </div>`;
+
+  window.rangSpeichern = async (rangId) => {
+    const bez = document.getElementById('rg-bez').value.trim();
+    if (!bez) { fw.toast('Bezeichnung erforderlich', true); return; }
+    const doppelt = _raenge.some(r => r.id !== rangId && r.bezeichnung.toLowerCase() === bez.toLowerCase());
+    if (doppelt) { fw.toast('Diese Bezeichnung gibt es bereits', true); return; }
+    const rechte = {};
+    document.querySelectorAll('.rg-recht:checked').forEach(cb => { rechte[cb.value] = true; });
+    if (rangId) {
+      await fw.updateDoc('raenge/'+rangId, { bezeichnung: bez, rechte });
+    } else {
+      // Fortlaufende numerische ID vergeben, unabhängig von der Bezeichnung
+      const maxId = _raenge.reduce((max, r) => Math.max(max, parseInt(r.id) || 0), 0);
+      const neueId = String(maxId + 1);
+      await fw.setDoc('raenge/'+neueId, { bezeichnung: bez, rechte, sortierung: _raenge.length + 1 });
+    }
+    _raengeGeladen = false;
+    await ladeRaenge();
+    fw.toast('Gespeichert ✅');
+    navigate('raenge-verwalten');
+  };
+
+  window.rangLoeschen = async (rangId) => {
+    const zugewieseneSnap = await fw.getDocs('users', fw.where('rangId', '==', rangId));
+    const hinweis = zugewieseneSnap.docs.length > 0
+      ? `\n\nAchtung: ${zugewieseneSnap.docs.length} Kamerad${zugewieseneSnap.docs.length!==1?'en sind':' ist'} aktuell dieser Rang zugewiesen und würde(n) dadurch alle darüber vergebenen Rechte verlieren.`
+      : '';
+    if (!confirm('Rang wirklich löschen?' + hinweis)) return;
+    await fw.deleteDoc('raenge/'+rangId);
+    _raengeGeladen = false;
+    await ladeRaenge();
+    fw.toast('Gelöscht');
+    navigate('raenge-verwalten');
+  };
+});
+
 registerPage('lehrgaenge', async (el) => {
   await ladeLehrgangsarten();
   fw.setTitle('Lehrgänge');
-  if (fw.isWehrfuehrer()) fw.showHeaderAction('⚙️ Verwalten', () => navigate('lehrgangsarten-verwalten'));
+  if (fw.hatRecht('stammdaten_lehrgangsarten')) fw.showHeaderAction('⚙️ Verwalten', () => navigate('lehrgangsarten-verwalten'));
   fw.showBack(() => navigateBack());
 
   const jahrAkt = new Date().getFullYear();
@@ -2748,7 +2963,7 @@ registerPage('lehrgaenge', async (el) => {
 
 // ── News erstellen ────────────────────────────────────────
 registerPage('news-form', async (el, {id} = {}) => {
-  if (!fw.isWehrfuehrer()) { navigate('dashboard'); return; }
+  if (!fw.hatRecht(id ? 'news_bearbeiten' : 'news_anlegen')) { navigate('dashboard'); return; }
   let bestehend = null;
   if (id) {
     const snap = await fw.getDoc('news/'+id);
@@ -2955,76 +3170,87 @@ registerPage('kameraden', async (el) => {
     </div>`;
   }
 
-  // Aufgaben für Wehrführer berechnen
+  // Aufgaben für Kameraden mit passendem Recht berechnen (jede Teilliste einzeln gated,
+  // weil hier Kameraden-, Fahrzeug- und sicherheitsrelevante Passwort-Themen zusammenlaufen)
   let aufgabenHtml = '';
-  if (fw.isWehrfuehrer()) {
-    // Alle Qualifikationen aktiver Kameraden laden
-    const qualiPromises = aktiveUsers.map(u =>
-      fw.getDocs('users/'+u.id+'/qualifikationen').then(s => ({
-        user: u,
-        qualis: s.docs.map(d => ({id:d.id,...d.data()}))
-      }))
-    );
-    const alleQualis = await Promise.all(qualiPromises);
-    const heute = new Date();
-    const j3 = new Date(); j3.setFullYear(heute.getFullYear()-3);
-    const j1 = new Date(); j1.setFullYear(heute.getFullYear()-1);
+  const kannKameradenAufgaben = fw.hatRecht('kameraden_stammdaten') || fw.hatRecht('kameraden_lehrgaenge_verwalten');
+  const kannFahrzeugAufgaben  = fw.hatRecht('fahrzeuge_verwalten');
+  const kannPwResetAufgaben   = fw.isWehrfuehrer(); // Passwort-Resets bleiben bewusst WF-exklusiv
+  if (kannKameradenAufgaben || kannFahrzeugAufgaben || kannPwResetAufgaben) {
     const aufgaben = [];
 
-    for (const {user, qualis} of alleQualis) {
-      const name = `${user.vorname||''} ${user.nachname||''}`.trim();
-      // Lehrgänge ohne Datum
-      for (const q of qualis) {
-        if (!q.datum) {
-          aufgaben.push({ typ: 'kein-datum', text: `${name}: „${q.bezeichnung}" hat kein Datum`, userId: user.id });
+    if (kannKameradenAufgaben) {
+      // Alle Qualifikationen aktiver Kameraden laden
+      const qualiPromises = aktiveUsers.map(u =>
+        fw.getDocs('users/'+u.id+'/qualifikationen').then(s => ({
+          user: u,
+          qualis: s.docs.map(d => ({id:d.id,...d.data()}))
+        }))
+      );
+      const alleQualis = await Promise.all(qualiPromises);
+      const heute = new Date();
+      const j3 = new Date(); j3.setFullYear(heute.getFullYear()-3);
+      const j1 = new Date(); j1.setFullYear(heute.getFullYear()-1);
+
+      for (const {user, qualis} of alleQualis) {
+        const name = `${user.vorname||''} ${user.nachname||''}`.trim();
+        // Lehrgänge ohne Datum
+        for (const q of qualis) {
+          if (!q.datum) {
+            aufgaben.push({ typ: 'kein-datum', text: `${name}: „${q.bezeichnung}" hat kein Datum`, userId: user.id });
+          }
         }
-      }
-      // Fehlender Dienstgrad
-      if (!user.dienstgrad) {
-        aufgaben.push({ typ: 'dienstgrad', text: `${name}: Kein Dienstgrad eingetragen`, userId: user.id });
-      }
-      // AGT: Gültigkeit prüfen
-      const hatAgt = qualis.some(q => (q.bezeichnung||'').trim().toLowerCase() === 'agt');
-      if (hatAgt) {
-        const unt  = user.agt_untersuchung ? new Date(user.agt_untersuchung) : null;
-        const waer = user.agt_waermeuebung ? new Date(user.agt_waermeuebung) : null;
-        const bel  = user.agt_belastung    ? new Date(user.agt_belastung)    : null;
-        const fehlt = [];
-        if (!unt  || unt  < j3) fehlt.push('G26 ' + (unt  ? `(${datum(unt)})` : 'fehlt'));
-        if (!waer || waer < j1) fehlt.push('Wärmeübung ' + (waer ? `(${datum(waer)})` : 'fehlt'));
-        if (!bel  || bel  < j1) fehlt.push('Belastung ' + (bel  ? `(${datum(bel)})` : 'fehlt'));
-        if (fehlt.length) {
-          aufgaben.push({ typ: 'agt', text: `${name} (AGT): ${fehlt.join(', ')}`, userId: user.id });
+        // Fehlender Dienstgrad
+        if (!user.dienstgrad) {
+          aufgaben.push({ typ: 'dienstgrad', text: `${name}: Kein Dienstgrad eingetragen`, userId: user.id });
         }
-      }
-      // Erste-Hilfe abgelaufen
-      const eh = qualis.find(q => (q.bezeichnung||'').trim().toLowerCase() === 'erste-hilfe');
-      if (eh?.datum) {
-        const ablauf = new Date(eh.datum?.toDate ? eh.datum.toDate() : eh.datum);
-        ablauf.setFullYear(ablauf.getFullYear() + 2);
-        if (ablauf < heute) {
-          aufgaben.push({ typ: 'eh', text: `${name}: Erste-Hilfe abgelaufen (${datum(ablauf)})`, userId: user.id });
+        // AGT: Gültigkeit prüfen
+        const hatAgt = qualis.some(q => (q.bezeichnung||'').trim().toLowerCase() === 'agt');
+        if (hatAgt) {
+          const unt  = user.agt_untersuchung ? new Date(user.agt_untersuchung) : null;
+          const waer = user.agt_waermeuebung ? new Date(user.agt_waermeuebung) : null;
+          const bel  = user.agt_belastung    ? new Date(user.agt_belastung)    : null;
+          const fehlt = [];
+          if (!unt  || unt  < j3) fehlt.push('G26 ' + (unt  ? `(${datum(unt)})` : 'fehlt'));
+          if (!waer || waer < j1) fehlt.push('Wärmeübung ' + (waer ? `(${datum(waer)})` : 'fehlt'));
+          if (!bel  || bel  < j1) fehlt.push('Belastung ' + (bel  ? `(${datum(bel)})` : 'fehlt'));
+          if (fehlt.length) {
+            aufgaben.push({ typ: 'agt', text: `${name} (AGT): ${fehlt.join(', ')}`, userId: user.id });
+          }
+        }
+        // Erste-Hilfe abgelaufen
+        const eh = qualis.find(q => (q.bezeichnung||'').trim().toLowerCase() === 'erste-hilfe');
+        if (eh?.datum) {
+          const ablauf = new Date(eh.datum?.toDate ? eh.datum.toDate() : eh.datum);
+          ablauf.setFullYear(ablauf.getFullYear() + 2);
+          if (ablauf < heute) {
+            aufgaben.push({ typ: 'eh', text: `${name}: Erste-Hilfe abgelaufen (${datum(ablauf)})`, userId: user.id });
+          }
         }
       }
     }
 
-    // Passwort-Reset-Anfragen laden
-    const pwResetSnap = await fw.getDocs('pw_reset_requests', fw.where('erledigt','==',false));
-    for (const d of pwResetSnap.docs) {
-      const r = d.data();
-      aufgaben.push({ typ: 'pw-reset', text: `Passwort zurücksetzen: ${r.userName||r.loginName}`, resetId: d.id, userId: r.userId });
+    if (kannPwResetAufgaben) {
+      // Passwort-Reset-Anfragen laden
+      const pwResetSnap = await fw.getDocs('pw_reset_requests', fw.where('erledigt','==',false));
+      for (const d of pwResetSnap.docs) {
+        const r = d.data();
+        aufgaben.push({ typ: 'pw-reset', text: `Passwort zurücksetzen: ${r.userName||r.loginName}`, resetId: d.id, userId: r.userId });
+      }
     }
 
-    // Geräteprüfungen: nicht bestandene + kommentierte laden
-    const pruefSnap = await fw.getDocs('pruefaufgaben');
-    const pruefIssues = pruefSnap.docs
-      .map(d => ({id: d.id, ...d.data()}))
-      .filter(p => p.id !== 'allgemeine-notiz' && !p.ausgeblendet && (p.bestanden === false || p.kommentar));
-    for (const p of pruefIssues) {
-      if (p.bestanden === false) {
-        aufgaben.push({ typ: 'pruef-fail', text: `${p.bezeichnung}`, pruefId: p.id });
-      } else if (p.kommentar) {
-        aufgaben.push({ typ: 'pruef-kommentar', text: `Prüfung Kommentar: ${p.bezeichnung} – ${p.kommentar}`, pruefId: p.id });
+    if (kannFahrzeugAufgaben) {
+      // Geräteprüfungen: nicht bestandene + kommentierte laden
+      const pruefSnap = await fw.getDocs('pruefaufgaben');
+      const pruefIssues = pruefSnap.docs
+        .map(d => ({id: d.id, ...d.data()}))
+        .filter(p => p.id !== 'allgemeine-notiz' && !p.ausgeblendet && (p.bestanden === false || p.kommentar));
+      for (const p of pruefIssues) {
+        if (p.bestanden === false) {
+          aufgaben.push({ typ: 'pruef-fail', text: `${p.bezeichnung}`, pruefId: p.id });
+        } else if (p.kommentar) {
+          aufgaben.push({ typ: 'pruef-kommentar', text: `Prüfung Kommentar: ${p.bezeichnung} – ${p.kommentar}`, pruefId: p.id });
+        }
       }
     }
 
@@ -3137,7 +3363,7 @@ window.aufgabeEinblenden = async (key) => {
           <div class="list-chevron">›</div>
         </div>`).join('')}
     </div>
-    ${fw.isWehrfuehrer() ? `
+    ${fw.hatRecht('stammdaten_ortswehren') ? `
     <details style="background:var(--card);border-radius:10px;padding:0.8rem;margin-top:0.8rem">
       <summary style="font-weight:600;cursor:pointer;list-style:none;display:flex;align-items:center;gap:0.5rem">🏘️ Ortswehren verwalten</summary>
       <div id="ortswehr-inline" style="margin-top:0.8rem">⏳ Lade...</div>
@@ -3147,11 +3373,12 @@ window.aufgabeEinblenden = async (key) => {
         <button class="btn btn-secondary btn-sm btn-full" onclick="navigate('lehrgaenge')">Lehrgänge</button>
         <button class="btn btn-secondary btn-sm btn-full" onclick="navigate('statistik')">Statistiken</button>
       </div>
-      ${fw.isWehrfuehrer() ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('einstellungen-admin')">Dienstgrade & Filter</button>` : ''}
-      ${fw.isWehrfuehrer() ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('dienstarten-verwalten')">Dienst-Arten</button>` : ''}
+      ${fw.hatRecht('stammdaten_dienstgrade') ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('einstellungen-admin')">Dienstgrade & Filter</button>` : ''}
+      ${fw.hatRecht('stammdaten_dienstarten') ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('dienstarten-verwalten')">Dienst-Arten</button>` : ''}
+      ${fw.hatRecht('stammdaten_raenge') ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('raenge-verwalten')">Ränge</button>` : ''}
     </div>
   `;
-  if (fw.isWehrfuehrer()) ladeOrtswehrenInline();
+  if (fw.hatRecht('stammdaten_ortswehren')) ladeOrtswehrenInline();
 });
 
 async function ladeOrtswehrenInline() {
@@ -3276,12 +3503,15 @@ function renderAgtFelder(u, id, qualis) {
 registerPage('kamerad-detail', async (el, {id}) => {
   await ladeLehrgangsarten();
   await ladeDienstarten();
+  await ladeRaenge();
   const snap = await fw.getDoc('users/'+id);
   if (!snap.exists()) { el.innerHTML='<div class="empty">Nicht gefunden</div>'; return; }
   const u = {id,...snap.data()};
   fw.setTitle(u.vorname+' '+u.nachname);
   fw.showBack(() => navigateBack());
-  fw.showHeaderAction('✏️ Edit', () => navigate('kamerad-form',{id}));
+  if (fw.hatRecht('kameraden_stammdaten') || fw.hatRecht('kameraden_raenge_zuweisen')) {
+    fw.showHeaderAction('✏️ Edit', () => navigate('kamerad-form',{id}));
+  }
 
   const [aSnap, qSnap, ortSnap, planSnap, kDiensteSnap, kEinsaetzeSnap] = await Promise.all([
     fw.getDocs('anwesenheiten', fw.where('userId','==',id)),
@@ -3371,6 +3601,7 @@ registerPage('kamerad-detail', async (el, {id}) => {
         ${[['Dienstgrad',u.dienstgrad],['Ortswehr',wehrName],
            ['Eingetreten',datum(u.eintrittsdatum)],
            ['Führerschein',u.fuehrerschein],
+           ['Rang',rangLabel(u.rangId)],
         ].map(([l,v]) => `<div><div class="muted" style="font-size:0.72rem">${l}</div><div style="font-size:0.88rem">${v||'–'}</div></div>`).join('')}
       </div>
     </div>
@@ -3445,10 +3676,6 @@ window.qualiHinzufuegen = async (userId) => {
     stunden: (tage && stundenProTag) ? Math.round(tage * stundenProTag * 100) / 100 : null,
     bemerkung: document.getElementById('q-bem').value || '',
   });
-  // Maschinist-Flag auf User setzen wenn Lehrgang "Maschinist" hinzugefügt
-  if (bez.toLowerCase().includes('maschinist')) {
-    await fw.updateDoc('users/'+userId, { istMaschinist: true });
-  }
   fw.toast('Hinzugefügt'); navigate('kamerad-detail',{id:userId});
 };
 window.qualiLoeschen = async (userId, qualiId) => {
@@ -3468,6 +3695,8 @@ window.agtSpeichern = async (userId) => {
 registerPage('kamerad-form', async (el, {id}) => {
   await ladeLehrgangsarten();
   const dienstgradeLoaded = await ladeDienstgrade();
+  await ladeRaenge();
+  const standardRangId = await ladeStandardRang();
   let u = null;
   if (id) { const s=await fw.getDoc('users/'+id); if(s.exists()) u={id,...s.data()}; }
   fw.setTitle(u ? 'Bearbeiten' : 'Neuer Kamerad');
@@ -3498,6 +3727,7 @@ registerPage('kamerad-form', async (el, {id}) => {
           </label>`).join('')}
         </div>
       </div>
+      ${fw.isWehrfuehrer() ? `
       <div class="form-row"><label>Rolle</label>
         <select id="k-rolle" onchange="rolleGeaendert(this.value)">
           <option value="kamerad" ${u?.rolle==='kamerad'?'selected':''}>Kamerad</option>
@@ -3513,7 +3743,14 @@ registerPage('kamerad-form', async (el, {id}) => {
             <option value="zugfuehrer" ${u?.staerkeRolle==='zugfuehrer'?'selected':''}>Zugführer</option>
           </select>
         </div>
-      </div>
+      </div>` : ''}
+      ${fw.hatRecht('kameraden_raenge_zuweisen') ? `
+      <div class="form-row"><label>Rang</label>
+        <select id="k-rang">
+          <option value="">– kein Rang –</option>
+          ${_raenge.map(r => `<option value="${r.id}" ${(u ? u.rangId : standardRangId)===r.id?'selected':''}>${r.bezeichnung}</option>`).join('')}
+        </select>
+      </div>` : ''}
       <div class="form-row"><label>Führerscheinklassen</label><input id="k-fs" value="${u?.fuehrerschein||''}"></div>
       <div class="btn-row">
         <button class="btn btn-primary" onclick="kameradSpeichern('${id||''}')">💾 Speichern</button>
@@ -3554,12 +3791,26 @@ window.kameradSpeichern = async (id) => {
     eintrittsdatum: document.getElementById('k-ed').value || null,
     ortswehrIds: [...document.querySelectorAll('.k-ow-cb:checked')].map(cb => cb.value),
     ortswehrId: document.querySelector('.k-ow-cb:checked')?.value || null, // Kompatibilität
-    rolle: document.getElementById('k-rolle').value,
-    staerkeRolle: document.getElementById('k-rolle').value === 'wehrfuehrer'
-      ? (document.getElementById('k-staerke-rolle')?.value || 'kamerad')
-      : document.getElementById('k-rolle').value,
     fuehrerschein: document.getElementById('k-fs').value,
   };
+  // Rolle nur anfassen, wenn das Feld überhaupt angezeigt wurde (nur Wehrführer sehen/dürfen das ändern)
+  const rolleEl = document.getElementById('k-rolle');
+  if (rolleEl) {
+    data.rolle = rolleEl.value;
+    data.staerkeRolle = rolleEl.value === 'wehrfuehrer'
+      ? (document.getElementById('k-staerke-rolle')?.value || 'kamerad')
+      : rolleEl.value;
+  } else if (!id) {
+    data.rolle = 'kamerad'; // Neuanlage ohne Rolle-Feld (kein WF) -> sicherer Standard
+    data.staerkeRolle = 'kamerad';
+  }
+  // Rang nur anfassen, wenn das Feld angezeigt wurde (Recht 'Ränge zuweisen')
+  const rangEl = document.getElementById('k-rang');
+  if (rangEl) {
+    data.rangId = rangEl.value || null;
+  } else if (!id && _standardRangId) {
+    data.rangId = _standardRangId; // Neuanlage ohne Rang-Feld -> Standard-Rang setzen
+  }
   try {
     if (id) {
       await fw.setDoc('users/'+id, data);
@@ -3641,15 +3892,11 @@ async function ladePruefaufgabenInline() {
   const el = document.getElementById('pruef-inline');
   if (!el) return;
 
-  const istWF = fw.isWehrfuehrer();
+  const istWF = fw.hatRecht('fahrzeuge_verwalten'); // volles Anlegen/Bearbeiten/Löschen
+  const kannPruefen = istWF || fw.hatRecht('fahrzeuge_pruefergebnisse'); // Prüfergebnisse eintragen reicht
   const ortswehrId = fw.profil?.ortswehrIds?.[0] || fw.profil?.ortswehrId || null;
 
-  // Fahrzeuge laden – WF sieht alle, Maschinist nur eigene Ortswehr
-  // Maschinist-Check
-  const myQualiSnap = await fw.getDocs('users/'+fw.user.uid+'/qualifikationen');
-  const myQualis = myQualiSnap.docs.map(d => d.data());
-  const istMaschinist = myQualis.some(q => (q.bezeichnung||'').toLowerCase().includes('maschinist'));
-
+  // Fahrzeuge laden – volles Verwalten-Recht sieht alle, sonst nur eigene Ortswehr
   const fahrzeugSnap = await fw.getDocs('fahrzeuge', fw.orderBy('name','asc'));
   const meineWehrIdsFz = fw.profil.ortswehrIds?.length ? fw.profil.ortswehrIds : (fw.profil.ortswehrId ? [fw.profil.ortswehrId] : []);
   const fahrzeuge = fahrzeugSnap.docs
@@ -3715,6 +3962,7 @@ async function ladePruefaufgabenInline() {
             ${a.kommentar ? `<div style="font-size:0.73rem;color:var(--muted);margin-top:0.15rem">💬 ${a.kommentar}</div>` : ''}
           </div>
           <div style="display:flex;flex-direction:column;gap:0.2rem;flex-shrink:0;align-items:flex-end">
+            ${kannPruefen ? `
             <div style="display:flex;gap:0.2rem">
               <button class="btn btn-sm btn-success" style="font-size:0.7rem;padding:0.15rem 0.35rem" onclick="pruefBestanden('${a.id}',true)" title="Bestanden">✅</button>
               <button class="btn btn-sm btn-danger" style="font-size:0.7rem;padding:0.15rem 0.35rem" onclick="pruefBestanden('${a.id}',false)" title="Nicht bestanden">❌</button>
@@ -3722,7 +3970,7 @@ async function ladePruefaufgabenInline() {
             <div style="display:flex;gap:0.2rem">
               <button class="btn btn-sm btn-secondary" style="font-size:0.7rem;padding:0.15rem 0.35rem" onclick="pruefKommentar('${a.id}')" title="Kommentar">💬</button>
               ${istWF ? `<button class="btn btn-sm btn-secondary" style="font-size:0.7rem;padding:0.15rem 0.35rem" onclick="navigate('pruefaufgabe-form',{id:'${a.id}'})">✏️</button>` : ''}
-            </div>
+            </div>` : ''}
           </div>
         </div>
       </div>`).join('');
@@ -3736,7 +3984,7 @@ async function ladePruefaufgabenInline() {
 
   // Dashboard-Hinweis: nicht bestandene oder kommentierte Aufgaben
   const offene = alleAufgaben.filter(a => !a.ausgeblendet && (a.bestanden === false || a.kommentar));
-  const dashHtml = (istWF || istMaschinist) && offene.length ? `
+  const dashHtml = kannPruefen && offene.length ? `
     <div class="card" style="border-left:3px solid #ef4444;margin-bottom:0.5rem">
       <div style="font-weight:600;font-size:0.88rem;color:#ef4444;margin-bottom:0.4rem">⚠️ ${offene.length} Aufgabe${offene.length!==1?'n':''} mit Handlungsbedarf</div>
       ${offene.map(a => `<div style="font-size:0.82rem;padding:0.3rem 0;border-bottom:1px solid var(--border);cursor:pointer" onclick="navigiereZuFahrzeug('${a.fahrzeugId||''}')"><div style="display:flex;align-items:center;gap:0.4rem"><span style="flex:1;font-weight:600">${a.bezeichnung}</span><button onclick="event.stopPropagation();pruefKommentar('${a.id}')" style="background:none;border:none;color:#9ca3af;cursor:pointer;font-size:0.8rem;padding:0;flex-shrink:0">💬</button></div>${a.kommentar?`<div style="font-size:0.75rem;color:var(--muted);margin-top:0.1rem">${a.kommentar}</div>`:''}</div>`).join('')}
@@ -3818,7 +4066,7 @@ window.pruefAusblenden = async (id) => {
 
 // ── Fahrzeug Form ─────────────────────────────────────────
 registerPage('fahrzeug-form', async (el, {id}) => {
-  if (!fw.isWehrfuehrer()) { el.innerHTML = '<div class="empty">Keine Berechtigung</div>'; return; }
+  if (!fw.hatRecht('fahrzeuge_verwalten')) { el.innerHTML = '<div class="empty">Keine Berechtigung</div>'; return; }
   fw.setTitle(id ? 'Fahrzeug bearbeiten' : 'Neues Fahrzeug');
   fw.showBack(() => navigateBack());
 
@@ -3878,7 +4126,7 @@ window.fahrzeugLoeschen = async (id) => {
 
 // ── Prüfaufgabe Form ──────────────────────────────────────
 registerPage('pruefaufgabe-form', async (el, {id, fahrzeugId: vorFahrzeugId}) => {
-  if (!fw.isWehrfuehrer()) { el.innerHTML = '<div class="empty">Keine Berechtigung</div>'; return; }
+  if (!fw.hatRecht('fahrzeuge_verwalten')) { el.innerHTML = '<div class="empty">Keine Berechtigung</div>'; return; }
   fw.setTitle(id ? 'Aufgabe bearbeiten' : 'Neue Aufgabe');
   fw.showBack(() => navigateBack());
 
