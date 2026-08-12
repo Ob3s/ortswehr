@@ -1065,7 +1065,6 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
         </div>
       ` : ''}
     </div>
-    <div id="einsatz-ausrueck-warnung"></div>
     <div class="section-header"><span id="einsatz-zaehler" style="font-weight:400;font-size:0.85rem"></span></div>
     <div id="einsatz-reaktionen" class="card">⏳ Lade...</div>
     <div class="card" style="display:flex;gap:0.8rem">
@@ -1161,23 +1160,6 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
         if (zaehler) zaehler.textContent = isEinsatz
           ? `👍 ${kommenAusruecken.length}  🏠 ${kommenBereitschaft.length}  👎 ${kommenNicht.length}  ·  Stärke: ${zugf}/${gruf}/${kamf}  ·  AGT: ${agtZ}`
           : `👍 ${kommenAusruecken.length}  👎 ${kommenNicht.length}`;
-
-        // Kein Ausrücken möglich: entweder sind alle Zusagen auf Bereitschaft,
-        // oder niemand unter den tatsächlich Ausrückenden hat einen LKW-Führerschein (C/CE).
-        let keinAusrueckenGrund = null;
-        if (isEinsatz) {
-          if (kommenAusruecken.length === 0 && kommenBereitschaft.length > 0) {
-            keinAusrueckenGrund = 'Alle Kameraden mit Zusage sind auf Bereitschaft – niemand rückt aus';
-          } else if (kommenAusruecken.length > 0 && !kommenAusruecken.some(a => hatLkwFs(a.fuehrerschein))) {
-            keinAusrueckenGrund = 'Kein Fahrer mit Führerschein C/CE unter den Zusagen – Fahrzeug kann nicht ausrücken';
-          }
-        }
-        const warnung = document.getElementById('einsatz-ausrueck-warnung');
-        if (warnung) {
-          warnung.innerHTML = keinAusrueckenGrund
-            ? `<div class="card" style="margin-top:0.6rem;padding:0.5rem 0.7rem;background:rgba(220,38,38,0.12);border:1px solid rgba(220,38,38,0.4);border-radius:8px;color:#dc2626;font-size:0.82rem;font-weight:600">🚫 ${keinAusrueckenGrund}</div>`
-            : '';
-        }
 
         const container = document.getElementById('einsatz-reaktionen');
         if (container) {
