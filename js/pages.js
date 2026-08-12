@@ -717,8 +717,11 @@ function renderEintrag(u, meineMap) {
   const heute = new Date(); heute.setHours(0,0,0,0);
   const morgen = new Date(heute); morgen.setDate(heute.getDate()+1);
   const istHeute = u.typ === 'einsatz' && d >= heute && d < morgen;
-  // Unvollständige Dienste nur für Kameraden mit Bearbeiten-Recht hervorheben
-  const istUnvollstaendig = !istHeute && fw.hatRecht('dienste_bearbeiten') && dienstUnvollstaendig(u);
+  // Unvollständige Dienste/Einsätze nur für Kameraden mit dem jeweiligen Bearbeiten-Recht hervorheben
+  const istUnvollstaendig = !istHeute && (
+    (fw.hatRecht('dienste_bearbeiten') && dienstUnvollstaendig(u)) ||
+    (fw.hatRecht('einsaetze_bearbeiten') && einsatzUnvollstaendig(u))
+  );
   let highlightStyle = '';
   if (istHeute) highlightStyle = 'border-left:3px solid var(--red);padding-left:0.5rem;background:rgba(220,38,38,0.08);';
   else if (istUnvollstaendig) highlightStyle = 'border-left:3px solid #f59e0b;padding-left:0.5rem;background:rgba(245,158,11,0.08);';
@@ -1062,6 +1065,7 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
       <div style="font-weight:600;font-size:1.1rem">${u.titel}</div>
       <div style="margin-top:0.3rem;color:var(--muted);font-size:0.85rem">${datum(u.datum)}${zeitZeile(u) ? ' · '+zeitZeile(u) : ''}${!isEinsatz && u.art ? ' · '+dienstArtLabel(u.art) : ''}${!isEinsatz && u.relevant !== false ? ' · <span style="color:#22c55e;font-weight:600">40h</span>' : ''}</div>
       ${!isEinsatz && fw.hatRecht(bearbRecht) && dienstUnvollstaendig(u) ? `<div style="margin-top:0.4rem;padding:0.4rem 0.6rem;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.4);border-radius:8px;color:#f59e0b;font-size:0.8rem;font-weight:600">⚠️ Unvollständig – bitte fehlende Angaben (z. B. Dienst-Art) nachtragen</div>` : ''}
+      ${isEinsatz && fw.hatRecht(bearbRecht) && einsatzUnvollstaendig(u) ? `<div style="margin-top:0.4rem;padding:0.4rem 0.6rem;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.4);border-radius:8px;color:#f59e0b;font-size:0.8rem;font-weight:600">⚠️ Unvollständig – bitte fehlende Angaben (z. B. Endzeit oder Ort) nachtragen</div>` : ''}
       ${u.beschreibung ? `<p class="muted" style="margin-top:0.4rem;font-size:0.85rem">${u.beschreibung}</p>` : ''}
       ${u.ortswehrIds?.length > 1 ? `<div style="margin-top:0.4rem;font-size:0.78rem;color:var(--muted)">Beteiligte Wehren: ${u.ortswehrIds.map(id => owMap.get(id)||id).join(', ')}</div>` : ''}
       <div id="ort-anzeige">${u.ort ? `<div style="margin-top:0.5rem;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
@@ -1353,6 +1357,16 @@ function dienstUnvollstaendig(u) {
   if (!u.art) return true;
   return false;
 }
+// Pflichtfelder für einen vollständigen Einsatz (nicht Dienst) – ohne Endzeit lässt sich
+// keine Dauer berechnen (relevant für die Stunden-Anrechnung), ohne Ort fehlt der Einsatzort.
+function einsatzUnvollstaendig(u) {
+  if (u.typ !== 'einsatz') return false;
+  if (!u.titel) return true;
+  if (!u.datum) return true;
+  if (!u.zeitEnde) return true;
+  if (!u.ort) return true;
+  return false;
+}
 
 // ── Rollen-/Rechtekonzept ──────────────────────────────────
 // Katalog aller granularen Einzelrechte, gruppiert nach Bereich (für die Rang-Verwaltung).
@@ -1398,6 +1412,12 @@ const RECHTE_KATALOG = [
     { key: 'news_anlegen',     label: 'Anlegen' },
     { key: 'news_bearbeiten',  label: 'Bearbeiten' },
     { key: 'news_loeschen',    label: 'Löschen/Archivieren' },
+  ]},
+  { bereich: 'Offene Aufgaben', rechte: [
+    { key: 'aufgaben_kameraden',  label: 'Kameraden-Aufgaben sehen (fehlende Angaben, Lehrgänge, AGT, Erste-Hilfe)' },
+    { key: 'aufgaben_dienste',    label: 'Unvollständige Dienste/Einsätze sehen' },
+    { key: 'aufgaben_fahrzeuge',  label: 'Fahrzeug-/Prüfaufgaben-Probleme sehen' },
+    // Passwort-Reset-Aufgaben bleiben bewusst WF-exklusiv, kein eigenes Recht (siehe kannPwResetAufgaben)
   ]},
   { bereich: 'Stammdaten & Einstellungen', rechte: [
     { key: 'stammdaten_dienstarten',     label: 'Dienst-Arten' },
@@ -3258,14 +3278,14 @@ registerPage('kameraden', async (el) => {
     </div>`;
   }
 
-  // Aufgaben für Kameraden mit passendem Recht berechnen (jede Teilliste einzeln gated,
-  // weil hier Kameraden-, Fahrzeug- und sicherheitsrelevante Passwort-Themen zusammenlaufen)
+  // Aufgaben für Kameraden mit passendem Recht berechnen (jede Teilliste einzeln über ein
+  // eigenes "Offene Aufgaben"-Recht gated, unabhängig von den sonstigen Verwaltungsrechten)
   let aufgabenHtml = '';
-  const kannKameradenAufgaben = fw.hatRecht('kameraden_stammdaten') || fw.hatRecht('kameraden_lehrgaenge_verwalten');
-  const kannFahrzeugAufgaben  = fw.hatRecht('pruefaufgaben_ergebnisse') || fw.hatRecht('pruefaufgaben_bearbeiten')
-    || fw.hatRecht('pruefaufgaben_anlegen') || fw.hatRecht('pruefaufgaben_loeschen');
+  const kannKameradenAufgaben = fw.hatRecht('aufgaben_kameraden');
+  const kannDienstAufgaben    = fw.hatRecht('aufgaben_dienste');
+  const kannFahrzeugAufgaben  = fw.hatRecht('aufgaben_fahrzeuge');
   const kannPwResetAufgaben   = fw.isWehrfuehrer(); // Passwort-Resets bleiben bewusst WF-exklusiv
-  if (kannKameradenAufgaben || kannFahrzeugAufgaben || kannPwResetAufgaben) {
+  if (kannKameradenAufgaben || kannDienstAufgaben || kannFahrzeugAufgaben || kannPwResetAufgaben) {
     const aufgaben = [];
 
     if (kannKameradenAufgaben) {
@@ -3319,6 +3339,26 @@ registerPage('kameraden', async (el) => {
       }
     }
 
+    if (kannDienstAufgaben) {
+      // Unvollständige Dienste/Einsätze laden (fehlende Pflichtangaben)
+      const [dSnap, eSnap] = await Promise.all([
+        fw.getDocs('dienste'),
+        fw.getDocs('einsaetze'),
+      ]);
+      for (const d of dSnap.docs) {
+        const dienst = {id:d.id,...d.data()};
+        if (dienstUnvollstaendig(dienst)) {
+          aufgaben.push({ typ: 'dienst-unvollstaendig', text: `Dienst „${dienst.titel}" unvollständig`, uebungId: dienst.id, uebungTyp: 'dienst' });
+        }
+      }
+      for (const d of eSnap.docs) {
+        const einsatz = {id:d.id,...d.data()};
+        if (einsatzUnvollstaendig(einsatz)) {
+          aufgaben.push({ typ: 'einsatz-unvollstaendig', text: `Einsatz „${einsatz.titel}" unvollständig`, uebungId: einsatz.id, uebungTyp: 'einsatz' });
+        }
+      }
+    }
+
     if (kannPwResetAufgaben) {
       // Passwort-Reset-Anfragen laden
       const pwResetSnap = await fw.getDocs('pw_reset_requests', fw.where('erledigt','==',false));
@@ -3344,19 +3384,22 @@ registerPage('kameraden', async (el) => {
     }
 
     // Ausgeblendete Aufgaben aus Firestore laden
+    const aufgabeKey = a => a.typ + (a.userId||'') + (a.pruefId||'') + (a.uebungId||'');
     const ausgeblendetSnap = await fw.getDoc('users/'+fw.user.uid+'/settings/aufgaben_ausgeblendet').catch(() => null);
     const ausgeblendet = new Set((ausgeblendetSnap?.data()?.ids) || []);
-    const ausgeblendetAufgaben = aufgaben.filter(a => ausgeblendet.has(a.typ + (a.userId||'') + (a.pruefId||'')));
-    const sichtbareAufgaben = aufgaben.filter(a => !ausgeblendet.has(a.typ + (a.userId||'') + (a.pruefId||'')));
+    const ausgeblendetAufgaben = aufgaben.filter(a => ausgeblendet.has(aufgabeKey(a)));
+    const sichtbareAufgaben = aufgaben.filter(a => !ausgeblendet.has(aufgabeKey(a)));
 
-    const icons = { 'kein-datum': '📅', 'agt': '🔴', 'eh': '⚠️', 'dienstgrad': '🪖', 'pruef-fail': '❌', 'pruef-kommentar': '💬' };
+    const icons = { 'kein-datum': '📅', 'agt': '🔴', 'eh': '⚠️', 'dienstgrad': '🪖', 'pruef-fail': '❌', 'pruef-kommentar': '💬', 'dienst-unvollstaendig': '📋', 'einsatz-unvollstaendig': '📋' };
 
     const aufgabeZeile = (a, mitAusblenden) => {
-      const key = a.typ + (a.userId||'') + (a.pruefId||'');
+      const key = aufgabeKey(a);
       const ziel = a.typ === 'pw-reset'
         ? `pwResetDurchfuehren('${a.resetId}','${a.userId}')`
         : (a.typ === 'pruef-fail' || a.typ === 'pruef-kommentar')
         ? `navigiereZuFahrzeug('${a.fahrzeugId||''}')`
+        : (a.typ === 'dienst-unvollstaendig' || a.typ === 'einsatz-unvollstaendig')
+        ? `navigate('uebung-detail',{id:'${a.uebungId}',typ:'${a.uebungTyp}'})`
         : a.userId ? `navigate('kamerad-detail',{id:'${a.userId}'})`
         : `navigate('dienste')`;
       return `
