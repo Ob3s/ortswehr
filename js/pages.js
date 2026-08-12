@@ -3690,7 +3690,6 @@ registerPage('kamerad-detail', async (el, {id}) => {
         ${[['Dienstgrad',u.dienstgrad],['Ortswehr',wehrName],
            ['Eingetreten',datum(u.eintrittsdatum)],
            ['Führerschein',u.fuehrerschein],
-           ['Rang',rangLabel(u.rangId)],
         ].map(([l,v]) => `<div><div class="muted" style="font-size:0.72rem">${l}</div><div style="font-size:0.88rem">${v||'–'}</div></div>`).join('')}
       </div>
     </div>
