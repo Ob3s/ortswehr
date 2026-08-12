@@ -295,7 +295,7 @@ registerPage('dashboard', async (el) => {
       <span id="status-lampe" style="width:12px;height:12px;border-radius:50%;background:#ccc;display:inline-block;flex-shrink:0;cursor:pointer" title="Status wird geprüft..." onclick="zeigeStatusDetail()"></span>
     </div>
 
-    <button class="alarm-btn" onclick="navigate('uebung-form',{typ:'einsatz',alarm:true})">🚨 Einsatz</button>
+    ${(fw.hatRecht('einsaetze_alarm_ausloesen') || fw.hatRecht('einsaetze_anlegen')) ? `<button class="alarm-btn" onclick="navigate('uebung-form',{typ:'einsatz',alarm:true})">🚨 Einsatz</button>` : ''}
 
 ${renderNaechsteDienste(naechster, zweiter)}
 
@@ -848,7 +848,7 @@ function col(typ) { return typ === 'einsatz' ? 'einsaetze' : 'dienste'; }
 // ── Einsätze ──────────────────────────────────────────────
 registerPage('einsaetze', async (el) => {
   fw.setTitle('Einsätze');
-  fw.showHeaderAction('+ Einsatz', () => navigate('uebung-form', {typ:'einsatz', alarm:false}));
+  if (fw.hatRecht('einsaetze_anlegen')) fw.showHeaderAction('+ Einsatz', () => navigate('uebung-form', {typ:'einsatz', alarm:false}));
   const [uSnap, aSnap] = await Promise.all([
     fw.getDocs('einsaetze', fw.orderBy('datum','desc')),
     fw.getDocs('anwesenheiten', fw.where('userId','==',fw.user.uid)),
@@ -1014,17 +1014,19 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
   const u = {id,...snap.data()};
   const owMap = new Map(owSnap.docs.map(d => [d.id, d.data().name]));
   const isEinsatz = u.typ === 'einsatz';
+  const bearbRecht = isEinsatz ? 'einsaetze_bearbeiten' : 'dienste_bearbeiten';
+  const teilnRecht = isEinsatz ? 'einsaetze_teilnahme_verwalten' : 'dienste_teilnahme_verwalten';
   if (!isEinsatz) await ladeDienstarten();
   fw.setTitle(isEinsatz ? 'Einsatz' : 'Dienst');
   fw.showBack(() => navigate(isEinsatz ? 'einsaetze' : 'dienste'));
-  if (fw.hatRecht('dienste_bearbeiten')) fw.showHeaderAction('✏️ Edit', () => navigate('uebung-form',{id, typ: u.typ}));
+  if (fw.hatRecht(bearbRecht)) fw.showHeaderAction('✏️ Edit', () => navigate('uebung-form',{id, typ: u.typ}));
 
   const aSnap = await fw.getDocs('anwesenheiten',
     fw.where('uebungId','==',id), fw.where('userId','==',fw.user.uid));
   const meineA = aSnap.docs[0] ? {id:aSnap.docs[0].id,...aSnap.docs[0].data()} : null;
 
   const eintragNavFn = `navigate('uebung-eintragen',{id:'${id}',titel:'${u.titel.replace(/'/g,"\'")}',dauer:${u.dauer_h||0},typ:'${u.typ}',datumStr:'${u.datum?.toDate?.().toISOString()||u.datum}'})`;
-  const eintragBtn = fw.hatRecht('dienste_teilnahme_verwalten')
+  const eintragBtn = fw.hatRecht(teilnRecht)
     ? `<button class="btn btn-secondary btn-sm" onclick="${eintragNavFn}">+ Kamerad eintragen</button>`
     : '';
 
@@ -1032,7 +1034,7 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
     <div class="card">
       <div style="font-weight:600;font-size:1.1rem">${u.titel}</div>
       <div style="margin-top:0.3rem;color:var(--muted);font-size:0.85rem">${datum(u.datum)}${zeitZeile(u) ? ' · '+zeitZeile(u) : ''}${!isEinsatz && u.art ? ' · '+dienstArtLabel(u.art) : ''}${!isEinsatz && u.relevant !== false ? ' · <span style="color:#22c55e;font-weight:600">40h</span>' : ''}</div>
-      ${!isEinsatz && fw.hatRecht('dienste_bearbeiten') && dienstUnvollstaendig(u) ? `<div style="margin-top:0.4rem;padding:0.4rem 0.6rem;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.4);border-radius:8px;color:#f59e0b;font-size:0.8rem;font-weight:600">⚠️ Unvollständig – bitte fehlende Angaben (z. B. Dienst-Art) nachtragen</div>` : ''}
+      ${!isEinsatz && fw.hatRecht(bearbRecht) && dienstUnvollstaendig(u) ? `<div style="margin-top:0.4rem;padding:0.4rem 0.6rem;background:rgba(245,158,11,0.12);border:1px solid rgba(245,158,11,0.4);border-radius:8px;color:#f59e0b;font-size:0.8rem;font-weight:600">⚠️ Unvollständig – bitte fehlende Angaben (z. B. Dienst-Art) nachtragen</div>` : ''}
       ${u.beschreibung ? `<p class="muted" style="margin-top:0.4rem;font-size:0.85rem">${u.beschreibung}</p>` : ''}
       ${u.ortswehrIds?.length > 1 ? `<div style="margin-top:0.4rem;font-size:0.78rem;color:var(--muted)">Beteiligte Wehren: ${u.ortswehrIds.map(id => owMap.get(id)||id).join(', ')}</div>` : ''}
       <div id="ort-anzeige">${u.ort ? `<div style="margin-top:0.5rem;display:flex;align-items:center;gap:0.5rem;flex-wrap:wrap">
@@ -1042,7 +1044,7 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
           🗺 Navigation
         </a>` : ''}
       </div>` : ''}</div>
-      ${isEinsatz && !u.zeitEnde && fw.hatRecht('dienste_bearbeiten') ? `
+      ${isEinsatz && !u.zeitEnde && fw.hatRecht(bearbRecht) ? `
         <button class="btn btn-secondary btn-sm" style="margin-top:0.6rem" onclick="navigate('uebung-form',{id:'${u.id}',typ:'einsatz'})">⏱ Endzeit nachtragen</button>
       ` : ''}
       ${isEinsatz && !u.ort ? `
@@ -1062,7 +1064,7 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
         style="background:#dc2626;color:#fff;font-size:1rem;padding:0.6rem"
         onclick="einsatzReagieren('${id}','kommt_nicht')">👎 Komme nicht</button>
     </div>
-    ${fw.hatRecht('dienste_teilnahme_verwalten') ? `<div style="padding:0 0 0.5rem">${eintragBtn}</div>` : ''}
+    ${fw.hatRecht(teilnRecht) ? `<div style="padding:0 0 0.5rem">${eintragBtn}</div>` : ''}
   `;
 
   // Autocomplete für inline Adress-Eingabe (Detail-Seite, kein <script> in innerHTML)
@@ -1151,7 +1153,7 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
             const kommt = a.status === 'kommt' || a.status === 'bestaetigt';
             const lkw = kommt && hatLkwFs(a.fuehrerschein);
             const agt = isEinsatz && kommt && agtMap.get(a.userId);
-            const loeschBtn = fw.hatRecht('dienste_teilnahme_verwalten')
+            const loeschBtn = fw.hatRecht(teilnRecht)
               ? `<button onclick="teilnehmerEntfernen('${a.id}','${id}','${u.typ}')" style="background:none;border:none;cursor:pointer;font-size:0.9rem;color:#9ca3af;padding:0.1rem 0.3rem" title="Entfernen">🗑</button>`
               : '';
             return `<div style="display:flex;align-items:center;gap:0.6rem;padding:0.4rem 0;border-bottom:1px solid var(--border)">
@@ -1292,12 +1294,18 @@ function dienstUnvollstaendig(u) {
 // Katalog aller granularen Einzelrechte, gruppiert nach Bereich (für die Rang-Verwaltung).
 // Wehrführer hat unabhängig davon immer alle Rechte (siehe fw.hatRecht()).
 const RECHTE_KATALOG = [
-  { bereich: 'Dienste & Einsätze', rechte: [
+  { bereich: 'Dienste', rechte: [
     { key: 'dienste_anlegen',              label: 'Anlegen' },
     { key: 'dienste_bearbeiten',           label: 'Bearbeiten' },
     { key: 'dienste_loeschen',             label: 'Löschen' },
     { key: 'dienste_teilnahme_verwalten',  label: 'Teilnahme anderer eintragen/löschen' },
-    { key: 'dienste_alarm_ausloesen',      label: 'Alarm auslösen' },
+  ]},
+  { bereich: 'Einsätze', rechte: [
+    { key: 'einsaetze_anlegen',              label: 'Anlegen' },
+    { key: 'einsaetze_bearbeiten',           label: 'Bearbeiten' },
+    { key: 'einsaetze_loeschen',             label: 'Löschen' },
+    { key: 'einsaetze_teilnahme_verwalten',  label: 'Teilnahme anderer eintragen/löschen' },
+    { key: 'einsaetze_alarm_ausloesen',      label: 'Alarm auslösen' },
   ]},
   { bereich: 'Kameraden', rechte: [
     { key: 'kameraden_ansehen',               label: 'Namensliste ansehen' },
@@ -1376,6 +1384,10 @@ registerPage('uebung-form', async (el, {id, typ: vorTyp, alarm: mitAlarm}) => {
   if (id) { const s = await fw.getDoc(col(vorTyp||'dienst')+'/'+id); if (!s.exists()) { const s2 = await fw.getDoc(col('einsatz')+'/'+id); if(s2.exists()) u={id,...s2.data()}; } else { u={id,...s.data()}; } }
   const selTyp = u?.typ || vorTyp || 'dienst';
   const isEinsatz = selTyp === 'einsatz';
+  const anlegenOk    = isEinsatz ? (fw.hatRecht('einsaetze_anlegen') || fw.hatRecht('einsaetze_alarm_ausloesen')) : fw.hatRecht('dienste_anlegen');
+  const bearbeitenOk = fw.hatRecht(isEinsatz ? 'einsaetze_bearbeiten' : 'dienste_bearbeiten');
+  const loeschenRecht = isEinsatz ? 'einsaetze_loeschen' : 'dienste_loeschen';
+  if (!(u ? bearbeitenOk : anlegenOk)) { navigate('dashboard'); return; }
   fw.setTitle(u ? 'Bearbeiten' : (isEinsatz ? 'Einsatz melden' : 'Neuer Dienst'));
   fw.showBack(() => navigateBack());
 
@@ -1394,9 +1406,9 @@ registerPage('uebung-form', async (el, {id, typ: vorTyp, alarm: mitAlarm}) => {
         <input type="hidden" id="f-alarm" value="${mitAlarm ? '1' : '0'}">
         <div class="btn-row" style="margin-top:0;margin-bottom:0.75rem">
           <button class="btn btn-primary btn-full" onclick="uebungSpeichern('${id||''}','einsatz')">${u ? '💾 Speichern' : mitAlarm ? '🚨 Einsatz melden & Alarm senden' : '💾 Einsatz speichern'}</button>
-          ${u ? `<button class="btn btn-danger" onclick="uebungLoeschen('${id}','einsatz')">🗑 Löschen</button>` : ''}
+          ${u && fw.hatRecht(loeschenRecht) ? `<button class="btn btn-danger" onclick="uebungLoeschen('${id}','einsatz')">🗑 Löschen</button>` : ''}
         </div>
-        ${u ? `<button class="btn btn-secondary btn-full" style="margin-bottom:0.75rem" onclick="einsatzNachbenachrichtigen('${id}')">🔔 Benachrichtigung erneut senden</button>` : ''}
+        ${u && fw.hatRecht('einsaetze_alarm_ausloesen') ? `<button class="btn btn-secondary btn-full" style="margin-bottom:0.75rem" onclick="einsatzNachbenachrichtigen('${id}')">🔔 Benachrichtigung erneut senden</button>` : ''}
         <input id="f-titel" value="${u?.titel||''}" placeholder="Einsatzstichwort" style="margin-bottom:0.5rem" autofocus>
         ${u ? `<div class="form-row" style="margin-bottom:0.5rem"><label>Datum</label><input id="f-datum" type="date" value="${datumVal}"></div>` : ''}
         <div class="ac-wrapper" style="position:relative;margin-bottom:0.5rem">
@@ -1464,7 +1476,7 @@ registerPage('uebung-form', async (el, {id, typ: vorTyp, alarm: mitAlarm}) => {
         })()}
         <div class="btn-row">
           <button class="btn btn-primary" onclick="uebungSpeichern('${id||''}','dienst')">${u ? '💾 Speichern' : '💾 Speichern & Benachrichtigen'}</button>
-          ${u ? `<button class="btn btn-danger" onclick="uebungLoeschen('${id}','dienst')">🗑 Löschen</button>` : ''}
+          ${u && fw.hatRecht(loeschenRecht) ? `<button class="btn btn-danger" onclick="uebungLoeschen('${id}','dienst')">🗑 Löschen</button>` : ''}
         </div>
       </div>`;
   }
