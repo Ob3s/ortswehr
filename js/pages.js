@@ -1042,14 +1042,16 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
   const bearbRecht = isEinsatz ? 'einsaetze_bearbeiten' : 'dienste_bearbeiten';
   const teilnRecht = isEinsatz ? 'einsaetze_teilnahme_verwalten' : 'dienste_teilnahme_verwalten';
   const mpRecht    = isEinsatz ? 'einsaetze_mp_pruefen' : 'dienste_mp_pruefen';
+  const bemerkungRecht = isEinsatz ? 'einsaetze_bemerkungen' : 'dienste_bemerkungen';
   if (!isEinsatz) await ladeDienstarten();
   fw.setTitle(isEinsatz ? 'Einsatz' : 'Dienst');
   fw.showBack(() => navigate(isEinsatz ? 'einsaetze' : 'dienste'));
   if (fw.hatRecht(bearbRecht)) fw.showHeaderAction('✏️ Edit', () => navigate('uebung-form',{id, typ: u.typ}));
 
-  // MP-Feuer-Haken: ganz normales Recht (wie News sehen) – nur für Berechtigte sichtbar.
+  // MP-Feuer-Haken und Bemerkung: ganz normale Rechte (wie News sehen) – nur für Berechtigte sichtbar.
   const darfMp = fw.hatRecht(mpRecht);
   const mpGeprueft = darfMp && u.mpGeprueft === true;
+  const darfBemerkung = fw.hatRecht(bemerkungRecht);
 
   const aSnap = await fw.getDocs('anwesenheiten',
     fw.where('uebungId','==',id), fw.where('userId','==',fw.user.uid));
@@ -1089,6 +1091,13 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
           <input type="checkbox" id="mp-checkbox" ${mpGeprueft ? 'checked' : ''} onchange="mpUmschalten('${u.typ}','${id}',this.checked)">
           In MP-Feuer überprüft
         </label>
+      ` : ''}
+      ${darfBemerkung ? `
+        <div style="margin-top:0.6rem">
+          <label style="font-size:0.82rem;color:var(--muted)">Bemerkung (nur für Berechtigte sichtbar)</label>
+          <textarea id="bemerkung-feld" rows="3" style="width:100%;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:0.5rem;font-size:0.85rem;color:var(--text);resize:vertical;margin-top:0.3rem">${u.bemerkung||''}</textarea>
+          <button class="btn btn-secondary btn-sm" style="margin-top:0.3rem" onclick="bemerkungSpeichern('${u.typ}','${id}')">💾 Bemerkung speichern</button>
+        </div>
       ` : ''}
     </div>
     <div class="section-header"><span id="einsatz-zaehler" style="font-weight:400;font-size:0.85rem"></span></div>
@@ -1244,6 +1253,14 @@ window.mpUmschalten = async (typ, id, geprueft) => {
   fw.toast(geprueft ? 'In MP-Feuer überprüft ✅' : 'Haken entfernt');
 };
 
+// Bemerkung: Feld direkt auf dienste/einsaetze, wie ein ganz normales Recht – nur wer
+// dienste_bemerkungen/einsaetze_bemerkungen hat, bekommt Feld und Aufgaben-Eintrag zu sehen.
+window.bemerkungSpeichern = async (typ, id) => {
+  const text = document.getElementById('bemerkung-feld')?.value || '';
+  await fw.updateDoc(col(typ)+'/'+id, { bemerkung: text, bemerkungAm: new Date(), bemerkungVon: fw.user.uid });
+  fw.toast('Bemerkung gespeichert ✅');
+};
+
 window.teilnahmeMelden = async (uebungId, titel, dauer_h, typ, datumStr) => {
   const name = kurzName(fw.profil.vorname, fw.profil.nachname);
   await fw.addDoc('anwesenheiten', {
@@ -1378,6 +1395,7 @@ const RECHTE_KATALOG = [
     { key: 'dienste_loeschen',             label: 'Löschen' },
     { key: 'dienste_teilnahme_verwalten',  label: 'Teilnahme anderer eintragen/löschen' },
     { key: 'dienste_mp_pruefen',           label: 'MP-Feuer-Haken setzen (nur für Berechtigte sichtbar)' },
+    { key: 'dienste_bemerkungen',          label: 'Bemerkung sehen/bearbeiten (nur für Berechtigte sichtbar)' },
   ]},
   { bereich: 'Einsätze', rechte: [
     { key: 'einsaetze_anlegen',              label: 'Anlegen' },
@@ -1386,6 +1404,7 @@ const RECHTE_KATALOG = [
     { key: 'einsaetze_teilnahme_verwalten',  label: 'Teilnahme anderer eintragen/löschen' },
     { key: 'einsaetze_alarm_ausloesen',      label: 'Alarm auslösen' },
     { key: 'einsaetze_mp_pruefen',           label: 'MP-Feuer-Haken setzen (nur für Berechtigte sichtbar)' },
+    { key: 'einsaetze_bemerkungen',          label: 'Bemerkung sehen/bearbeiten (nur für Berechtigte sichtbar)' },
   ]},
   { bereich: 'Kameraden', rechte: [
     { key: 'kameraden_ansehen',               label: 'Namensliste ansehen' },
@@ -3281,11 +3300,16 @@ registerPage('kameraden', async (el) => {
   // Aufgaben für Kameraden mit passendem Recht berechnen (jede Teilliste einzeln über ein
   // eigenes "Offene Aufgaben"-Recht gated, unabhängig von den sonstigen Verwaltungsrechten)
   let aufgabenHtml = '';
-  const kannKameradenAufgaben = fw.hatRecht('aufgaben_kameraden');
-  const kannDienstAufgaben    = fw.hatRecht('aufgaben_dienste');
-  const kannFahrzeugAufgaben  = fw.hatRecht('aufgaben_fahrzeuge');
-  const kannPwResetAufgaben   = fw.isWehrfuehrer(); // Passwort-Resets bleiben bewusst WF-exklusiv
-  if (kannKameradenAufgaben || kannDienstAufgaben || kannFahrzeugAufgaben || kannPwResetAufgaben) {
+  const kannKameradenAufgaben  = fw.hatRecht('aufgaben_kameraden');
+  const kannDienstAufgaben     = fw.hatRecht('aufgaben_dienste');
+  const kannFahrzeugAufgaben   = fw.hatRecht('aufgaben_fahrzeuge');
+  const kannPwResetAufgaben    = fw.isWehrfuehrer(); // Passwort-Resets bleiben bewusst WF-exklusiv
+  // Bemerkungen sind separat rechtebeschränkt (dienste_bemerkungen/einsaetze_bemerkungen) –
+  // unabhängig vom "Unvollständig"-Aufgaben-Recht, dieselbe Berechtigung wie am Dienst/Einsatz selbst.
+  const kannDienstBemerkungen  = fw.hatRecht('dienste_bemerkungen');
+  const kannEinsatzBemerkungen = fw.hatRecht('einsaetze_bemerkungen');
+  if (kannKameradenAufgaben || kannDienstAufgaben || kannFahrzeugAufgaben || kannPwResetAufgaben
+      || kannDienstBemerkungen || kannEinsatzBemerkungen) {
     const aufgaben = [];
 
     if (kannKameradenAufgaben) {
@@ -3339,22 +3363,29 @@ registerPage('kameraden', async (el) => {
       }
     }
 
-    if (kannDienstAufgaben) {
-      // Unvollständige Dienste/Einsätze laden (fehlende Pflichtangaben)
+    if (kannDienstAufgaben || kannDienstBemerkungen || kannEinsatzBemerkungen) {
+      // Unvollständige Dienste/Einsätze sowie gefüllte Bemerkungen laden – ein Fetch für beide
+      // Zwecke, da nur pro Recht entschieden wird, was tatsächlich in die Liste aufgenommen wird.
       const [dSnap, eSnap] = await Promise.all([
-        fw.getDocs('dienste'),
-        fw.getDocs('einsaetze'),
+        (kannDienstAufgaben || kannDienstBemerkungen)  ? fw.getDocs('dienste')  : Promise.resolve({docs:[]}),
+        (kannDienstAufgaben || kannEinsatzBemerkungen) ? fw.getDocs('einsaetze') : Promise.resolve({docs:[]}),
       ]);
       for (const d of dSnap.docs) {
         const dienst = {id:d.id,...d.data()};
-        if (dienstUnvollstaendig(dienst)) {
+        if (kannDienstAufgaben && dienstUnvollstaendig(dienst)) {
           aufgaben.push({ typ: 'dienst-unvollstaendig', text: `Dienst „${dienst.titel}" unvollständig`, uebungId: dienst.id, uebungTyp: 'dienst' });
+        }
+        if (kannDienstBemerkungen && dienst.bemerkung) {
+          aufgaben.push({ typ: 'dienst-bemerkung', text: `Dienst „${dienst.titel}": ${dienst.bemerkung}`, uebungId: dienst.id, uebungTyp: 'dienst' });
         }
       }
       for (const d of eSnap.docs) {
         const einsatz = {id:d.id,...d.data()};
-        if (einsatzUnvollstaendig(einsatz)) {
+        if (kannDienstAufgaben && einsatzUnvollstaendig(einsatz)) {
           aufgaben.push({ typ: 'einsatz-unvollstaendig', text: `Einsatz „${einsatz.titel}" unvollständig`, uebungId: einsatz.id, uebungTyp: 'einsatz' });
+        }
+        if (kannEinsatzBemerkungen && einsatz.bemerkung) {
+          aufgaben.push({ typ: 'einsatz-bemerkung', text: `Einsatz „${einsatz.titel}": ${einsatz.bemerkung}`, uebungId: einsatz.id, uebungTyp: 'einsatz' });
         }
       }
     }
@@ -3390,7 +3421,8 @@ registerPage('kameraden', async (el) => {
     const ausgeblendetAufgaben = aufgaben.filter(a => ausgeblendet.has(aufgabeKey(a)));
     const sichtbareAufgaben = aufgaben.filter(a => !ausgeblendet.has(aufgabeKey(a)));
 
-    const icons = { 'kein-datum': '📅', 'agt': '🔴', 'eh': '⚠️', 'dienstgrad': '🪖', 'pruef-fail': '❌', 'pruef-kommentar': '💬', 'dienst-unvollstaendig': '📋', 'einsatz-unvollstaendig': '📋' };
+    const icons = { 'kein-datum': '📅', 'agt': '🔴', 'eh': '⚠️', 'dienstgrad': '🪖', 'pruef-fail': '❌', 'pruef-kommentar': '💬', 'dienst-unvollstaendig': '📋', 'einsatz-unvollstaendig': '📋', 'dienst-bemerkung': '📝', 'einsatz-bemerkung': '📝' };
+    const uebungTypen = ['dienst-unvollstaendig', 'einsatz-unvollstaendig', 'dienst-bemerkung', 'einsatz-bemerkung'];
 
     const aufgabeZeile = (a, mitAusblenden) => {
       const key = aufgabeKey(a);
@@ -3398,7 +3430,7 @@ registerPage('kameraden', async (el) => {
         ? `pwResetDurchfuehren('${a.resetId}','${a.userId}')`
         : (a.typ === 'pruef-fail' || a.typ === 'pruef-kommentar')
         ? `navigiereZuFahrzeug('${a.fahrzeugId||''}')`
-        : (a.typ === 'dienst-unvollstaendig' || a.typ === 'einsatz-unvollstaendig')
+        : uebungTypen.includes(a.typ)
         ? `navigate('uebung-detail',{id:'${a.uebungId}',typ:'${a.uebungTyp}'})`
         : a.userId ? `navigate('kamerad-detail',{id:'${a.userId}'})`
         : `navigate('dienste')`;
