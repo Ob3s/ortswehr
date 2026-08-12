@@ -1158,8 +1158,8 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
         const agtZ  = kommenAlle.filter(a => agtMap.get(a.userId)).length;
         const zaehler = document.getElementById('einsatz-zaehler');
         if (zaehler) zaehler.textContent = isEinsatz
-          ? `👍 ${kommenAusruecken.length}  🏠 ${kommenBereitschaft.length}  👎 ${kommenNicht.length}  ·  Stärke: ${zugf}/${gruf}/${kamf}  ·  AGT: ${agtZ}`
-          : `👍 ${kommenAusruecken.length}  👎 ${kommenNicht.length}`;
+          ? `👍 ${kommenAlle.length}  👎 ${kommenNicht.length}  ·  Stärke: ${zugf}/${gruf}/${kamf}  ·  AGT: ${agtZ}`
+          : `👍 ${kommenAlle.length}  👎 ${kommenNicht.length}`;
 
         const container = document.getElementById('einsatz-reaktionen');
         if (container) {
@@ -1168,7 +1168,7 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
             const kommt = a.status === 'kommt' || a.status === 'bestaetigt';
             const lkw = kommt && hatLkwFs(a.fuehrerschein);
             const agt = isEinsatz && (kommt || bereitschaft) && agtMap.get(a.userId);
-            const icon = bereitschaft ? '🏠' : (kommt ? '👍' : '👎');
+            const icon = (kommt || bereitschaft) ? `👍${bereitschaft ? '🏠' : ''}` : '👎';
             // Bereitschaft wird erst am Gerätehaus entschieden – daher erst nachträglich
             // umschaltbar, nicht als Erstreaktion. Eigene Zeile oder Teilnahme-Verwalter.
             const darfUmschalten = isEinsatz && (kommt || bereitschaft) && (a.userId === fw.user.uid || fw.hatRecht(teilnRecht));
