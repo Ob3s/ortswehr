@@ -697,7 +697,7 @@ function startStatusPruefung() {
 }
 
 // ── Hilfsfunktion: Liste rendern ─────────────────────────
-function renderEintrag(u, meineMap) {
+function renderEintrag(u, meineMap, mpMap) {
   const badge = anwesenheitBadge(meineMap.get(u.id));
   const d = u.datum?.toDate ? u.datum.toDate() : new Date(u.datum);
   const heute = new Date(); heute.setHours(0,0,0,0);
@@ -710,11 +710,14 @@ function renderEintrag(u, meineMap) {
   else if (istUnvollstaendig) highlightStyle = 'border-left:3px solid #f59e0b;padding-left:0.5rem;background:rgba(245,158,11,0.08);';
   const nichtRelevantBadge = ''; // nicht relevant wird nicht in der Liste angezeigt
   const artLabel = u.art ? dienstArtLabel(u.art) : '';
+  // MP-Feuer-Haken: mpMap ist nur befüllt, wenn der aktuelle Kamerad das Recht dazu hat –
+  // ohne Recht bleibt die Map leer und der Haken taucht in der Liste gar nicht erst auf.
+  const mpGeprueft = mpMap?.get(u.id) === true;
   return `<div class="list-item" onclick="navigate('uebung-detail',{id:'${u.id}',typ:'${u.typ}'})" style="${highlightStyle}">
     <div class="list-item-body">
       <div class="list-item-title">${istHeute ? '🚨 ' : ''}${istUnvollstaendig ? '⚠️ ' : ''}${u.titel}${nichtRelevantBadge}</div>
       ${u.ort ? `<div class="list-item-sub" style="margin-top:0.05rem">📍 ${u.ort}</div>` : ''}
-      <div class="list-item-sub">${datum(u.datum)}${zeitZeile(u) ? ' · '+zeitZeile(u) : ''}${artLabel ? ' · '+artLabel : ''}${u.typ !== 'einsatz' && u.relevant !== false ? ' · <span style="color:#22c55e;font-weight:600">40h</span>' : ''}</div>
+      <div class="list-item-sub">${datum(u.datum)}${zeitZeile(u) ? ' · '+zeitZeile(u) : ''}${artLabel ? ' · '+artLabel : ''}${u.typ !== 'einsatz' && u.relevant !== false ? ' · <span style="color:#22c55e;font-weight:600">40h</span>' : ''}${mpGeprueft ? ' · <span style="color:#16a34a;font-weight:600">✔ MP</span>' : ''}</div>
       ${istUnvollstaendig ? `<div class="list-item-sub" style="color:#f59e0b;margin-top:0.1rem">⚠️ Unvollständig (Daten prüfen)</div>` : ''}
     </div>
     <div class="list-item-right">${badge}</div>
@@ -722,7 +725,7 @@ function renderEintrag(u, meineMap) {
   </div>`;
 }
 
-function renderEintragListe(liste, meineMap) {
+function renderEintragListe(liste, meineMap, mpMap) {
   if (!liste.length) return '<div class="empty">Keine Einträge</div>';
   const heute = new Date(); heute.setHours(0,0,0,0);
 
@@ -762,7 +765,7 @@ function renderEintragListe(liste, meineMap) {
 
   // Sichtbare zukünftige Dienste
   if (sichtbar.length) {
-    html += sichtbar.map(u => renderEintrag(u, meineMap)).join('');
+    html += sichtbar.map(u => renderEintrag(u, meineMap, mpMap)).join('');
   } else {
     html += '<div class="empty">Keine kommenden Dienste</div>';
   }
@@ -773,7 +776,7 @@ function renderEintragListe(liste, meineMap) {
       <summary style="padding:0.6rem 0;cursor:pointer;color:var(--muted);font-size:0.85rem;list-style:none;display:flex;align-items:center;gap:0.4rem">
         <span>▸</span> Weitere Dienste (${weitereZukunft.length})
       </summary>
-      ${weitereZukunft.map(u => renderEintrag(u, meineMap)).join('')}
+      ${weitereZukunft.map(u => renderEintrag(u, meineMap, mpMap)).join('')}
     </details>`;
   }
 
@@ -784,7 +787,7 @@ function renderEintragListe(liste, meineMap) {
         <summary style="padding:0.5rem 0;cursor:pointer;color:var(--muted);font-size:0.8rem;list-style:none;display:flex;align-items:center;gap:0.4rem;padding-left:0.5rem">
           <span>▸</span> ${jahr} (${archivJahre[jahr].length})
         </summary>
-        ${archivJahre[jahr].map(u => renderEintrag(u, meineMap)).join('')}
+        ${archivJahre[jahr].map(u => renderEintrag(u, meineMap, mpMap)).join('')}
       </details>`).join('');
     html += `<details style="margin-top:0.2rem">
       <summary style="padding:0.6rem 0;cursor:pointer;color:var(--muted);font-size:0.85rem;list-style:none;display:flex;align-items:center;gap:0.4rem">
@@ -799,7 +802,7 @@ function renderEintragListe(liste, meineMap) {
 
 
 // ── Einsatz-Liste: aktuelles Jahr oben, Archiv nach Jahr ──
-function renderEinsatzListe(liste, meineMap) {
+function renderEinsatzListe(liste, meineMap, mpMap) {
   if (!liste.length) {
     const jahrAkt = new Date().getFullYear();
     return `<div class="empty">${jahrAkt} noch kein Einsatz</div>`;
@@ -825,7 +828,7 @@ function renderEinsatzListe(liste, meineMap) {
     html += `<div class="empty">${jahrAkt} noch kein Einsatz</div>`;
   } else {
     html += `<div style="font-size:0.78rem;color:var(--muted);padding:0.5rem 0 0.2rem;font-weight:600">${jahrAkt} · ${aktEintraege.length===1?'1 Einsatz':aktEintraege.length+' Einträge'}</div>`;
-    html += aktEintraege.map(u => renderEintrag(u, meineMap)).join('');
+    html += aktEintraege.map(u => renderEintrag(u, meineMap, mpMap)).join('');
   }
 
   // Vergangene Jahre → alle unter "Archiv" als eigene Dropdowns
@@ -838,7 +841,7 @@ function renderEinsatzListe(liste, meineMap) {
         <summary style="padding:0.5rem 0;cursor:pointer;color:var(--muted);font-size:0.8rem;list-style:none;display:flex;align-items:center;gap:0.4rem;padding-left:0.5rem">
           <span>▸</span> ${jahr} (${eintraege.length===1?'1 Einsatz':eintraege.length+' Einträge'})
         </summary>
-        ${eintraege.map(u => renderEintrag(u, meineMap)).join('')}
+        ${eintraege.map(u => renderEintrag(u, meineMap, mpMap)).join('')}
       </details>`;
     }).join('');
     html += `<details style="margin-top:0.2rem">
@@ -854,6 +857,8 @@ function renderEinsatzListe(liste, meineMap) {
 
 // Collection je nach Typ
 function col(typ) { return typ === 'einsatz' ? 'einsaetze' : 'dienste'; }
+// Eigene Collection für den MP-Feuer-Haken (siehe uebung-detail) – docId == uebungId.
+function colMp(typ) { return typ === 'einsatz' ? 'einsaetze_mp' : 'dienste_mp'; }
 
 // ── Einsätze ──────────────────────────────────────────────
 registerPage('einsaetze', async (el) => {
@@ -865,7 +870,14 @@ registerPage('einsaetze', async (el) => {
   ]);
   const liste    = uSnap.docs.map(d => ({id:d.id,...d.data()}));
   const meineMap = new Map(aSnap.docs.map(d => [d.data().uebungId, d.data().status]));
-  el.innerHTML = `<div class="card">${renderEinsatzListe(liste, meineMap)}</div>`;
+  // MP-Feuer-Haken nur laden (und anzeigen), wenn überhaupt berechtigt – Firestore-Regeln
+  // würden den Zugriff sonst ohnehin verweigern.
+  let mpMap = new Map();
+  if (fw.hatRecht('einsaetze_mp_pruefen')) {
+    const mpSnap = await fw.getDocs('einsaetze_mp');
+    mpMap = new Map(mpSnap.docs.map(d => [d.id, d.data().geprueft === true]));
+  }
+  el.innerHTML = `<div class="card">${renderEinsatzListe(liste, meineMap, mpMap)}</div>`;
 });
 
 // ── Dienste ───────────────────────────────────────────────
@@ -884,8 +896,13 @@ registerPage('dienste', async (el) => {
     || fw.hatRecht('pruefaufgaben_anlegen') || fw.hatRecht('pruefaufgaben_bearbeiten') || fw.hatRecht('pruefaufgaben_loeschen') || fw.hatRecht('pruefaufgaben_ergebnisse');
   const liste    = uSnap.docs.map(d => ({id:d.id,...d.data()})).filter(d => dienstSichtbar(d, fw.profil, dQualis));
   const meineMap = new Map(aSnap.docs.map(d => [d.data().uebungId, d.data().status]));
+  let mpMap = new Map();
+  if (fw.hatRecht('dienste_mp_pruefen')) {
+    const mpSnap = await fw.getDocs('dienste_mp');
+    mpMap = new Map(mpSnap.docs.map(d => [d.id, d.data().geprueft === true]));
+  }
   el.innerHTML = `
-    <div class="card">${renderEintragListe(liste, meineMap)}</div>
+    <div class="card">${renderEintragListe(liste, meineMap, mpMap)}</div>
     ${zeigeFahrzeugpruefungen ? `
     <details id="fz-pruef-details" class="card" style="margin-top:0.8rem;padding:0">
       <summary style="font-weight:600;cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;padding:0.4rem 0.8rem;font-size:13px;border-radius:8px">
@@ -1027,10 +1044,18 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
   const isEinsatz = u.typ === 'einsatz';
   const bearbRecht = isEinsatz ? 'einsaetze_bearbeiten' : 'dienste_bearbeiten';
   const teilnRecht = isEinsatz ? 'einsaetze_teilnahme_verwalten' : 'dienste_teilnahme_verwalten';
+  const mpRecht    = isEinsatz ? 'einsaetze_mp_pruefen' : 'dienste_mp_pruefen';
   if (!isEinsatz) await ladeDienstarten();
   fw.setTitle(isEinsatz ? 'Einsatz' : 'Dienst');
   fw.showBack(() => navigate(isEinsatz ? 'einsaetze' : 'dienste'));
   if (fw.hatRecht(bearbRecht)) fw.showHeaderAction('✏️ Edit', () => navigate('uebung-form',{id, typ: u.typ}));
+
+  // MP-Feuer-Haken: eigene Collection mit eigenen Firestore-Regeln, damit wirklich nur
+  // Berechtigte den Wert überhaupt lesen können (nicht nur UI-verborgen).
+  const darfMp = fw.hatRecht(mpRecht);
+  const mpGeprueft = darfMp
+    ? (await fw.getDoc(colMp(u.typ)+'/'+id)).data()?.geprueft === true
+    : false;
 
   const aSnap = await fw.getDocs('anwesenheiten',
     fw.where('uebungId','==',id), fw.where('userId','==',fw.user.uid));
@@ -1063,6 +1088,12 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
           <input id="ort-inline" placeholder="Adresse eintragen…" style="flex:1;font-size:0.85rem">
           <button class="btn btn-secondary btn-sm" onclick="ortSpeichern('${u.id}')">📍 Speichern</button>
         </div>
+      ` : ''}
+      ${darfMp ? `
+        <label style="display:flex;align-items:center;gap:0.5rem;margin-top:0.6rem;cursor:pointer;font-size:0.85rem">
+          <input type="checkbox" id="mp-checkbox" ${mpGeprueft ? 'checked' : ''} onchange="mpUmschalten('${u.typ}','${id}',this.checked)">
+          In MP-Feuer überprüft
+        </label>
       ` : ''}
     </div>
     <div class="section-header"><span id="einsatz-zaehler" style="font-weight:400;font-size:0.85rem"></span></div>
@@ -1207,6 +1238,13 @@ window.bereitschaftUmschalten = async (aId, neuerStatus) => {
   fw.toast(neuerStatus === 'bereitschaft' ? 'Auf Bereitschaft gesetzt 🏠' : 'Auf Ausrücken gesetzt 🚛');
 };
 
+// MP-Feuer-Haken: eigene Collection (einsaetze_mp/dienste_mp), per Firestore-Regel nur für
+// Kameraden mit dem jeweiligen *_mp_pruefen-Recht überhaupt lesbar – nicht nur UI-verborgen.
+window.mpUmschalten = async (typ, id, geprueft) => {
+  await fw.setDoc(colMp(typ)+'/'+id, { geprueft, geprueftAm: new Date(), geprueftVon: fw.user.uid });
+  fw.toast(geprueft ? 'In MP-Feuer überprüft ✅' : 'Haken entfernt');
+};
+
 window.teilnahmeMelden = async (uebungId, titel, dauer_h, typ, datumStr) => {
   const name = kurzName(fw.profil.vorname, fw.profil.nachname);
   await fw.addDoc('anwesenheiten', {
@@ -1327,6 +1365,7 @@ const RECHTE_KATALOG = [
     { key: 'dienste_bearbeiten',           label: 'Bearbeiten' },
     { key: 'dienste_loeschen',             label: 'Löschen' },
     { key: 'dienste_teilnahme_verwalten',  label: 'Teilnahme anderer eintragen/löschen' },
+    { key: 'dienste_mp_pruefen',           label: 'MP-Feuer-Haken setzen (nur für Berechtigte sichtbar)' },
   ]},
   { bereich: 'Einsätze', rechte: [
     { key: 'einsaetze_anlegen',              label: 'Anlegen' },
@@ -1334,6 +1373,7 @@ const RECHTE_KATALOG = [
     { key: 'einsaetze_loeschen',             label: 'Löschen' },
     { key: 'einsaetze_teilnahme_verwalten',  label: 'Teilnahme anderer eintragen/löschen' },
     { key: 'einsaetze_alarm_ausloesen',      label: 'Alarm auslösen' },
+    { key: 'einsaetze_mp_pruefen',           label: 'MP-Feuer-Haken setzen (nur für Berechtigte sichtbar)' },
   ]},
   { bereich: 'Kameraden', rechte: [
     { key: 'kameraden_ansehen',               label: 'Namensliste ansehen' },
