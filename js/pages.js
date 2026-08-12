@@ -67,6 +67,15 @@ function anwesenheitBadge(s) {
   if (s==='abgelehnt'  || s==='kommt_nicht') return '<span style="color:#dc2626;font-size:1.1rem">❌</span>';
   return '<span style="color:#f59e0b;font-size:1.1rem">⏳</span>'; // keine Reaktion
 }
+// Stunden-Anrechnung für eine Anwesenheit: bei Diensten immer die hinterlegte Dauer.
+// Bei Einsätzen gilt die pauschale 15-Minuten-Regel für "Bereitschaft" (in der Wache
+// geblieben, nicht ausgerückt) sowie für Einsätze ohne Endzeit (Fahrzeug ist gar nicht
+// ausgerückt – dann bekommen alle Zusagen pauschal 15 Minuten, nicht nur die, die
+// explizit auf Bereitschaft gesetzt wurden).
+function einsatzStunden(a, eintrag, istEinsatz) {
+  if (istEinsatz && (a.status === 'bereitschaft' || (eintrag && !eintrag.zeitEnde))) return 0.25;
+  return eintrag?.dauer_h ?? a.dauer_h ?? 0;
+}
 function getStats(anwesenheiten, dienstMap, einsatzMap, jahr) {
   const jetzt   = new Date();
   const jahrAkt = jahr || jetzt.getFullYear();
@@ -82,7 +91,7 @@ function getStats(anwesenheiten, dienstMap, einsatzMap, jahr) {
     const eintrag   = dienstEintrag || einsatzEintrag || null;
     const typNorm   = a.typ === 'einsaetze' ? 'einsatz' : a.typ === 'dienste' ? 'dienst' : a.typ;
     const istEinsatz = typNorm === 'einsatz' || (!a.typ && !!einsatzEintrag && !dienstEintrag);
-    const h = eintrag?.dauer_h ?? a.dauer_h ?? 0;
+    const h = einsatzStunden(a, eintrag, istEinsatz);
     const d = a.datum?.toDate ? a.datum.toDate() : (eintrag?.datum?.toDate?.()  || new Date(a.datum));
     // relevant: default true, explizit false nur wenn gesetzt
     const istRelevant = eintrag?.relevant !== false;
@@ -130,7 +139,7 @@ function meineEintraegeListen(anwesenheiten, dienstMap, einsatzMap) {
     const typNorm    = a.typ === 'einsaetze' ? 'einsatz' : a.typ === 'dienste' ? 'dienst' : a.typ;
     const istEinsatz  = typNorm === 'einsatz' || (!a.typ && !!einsatzEintrag && !dienstEintrag);
     const d = a.datum?.toDate ? a.datum.toDate() : (eintrag?.datum?.toDate?.() || new Date(a.datum));
-    const h = eintrag?.dauer_h ?? a.dauer_h ?? 0;
+    const h = einsatzStunden(a, eintrag, istEinsatz);
     const titel = eintrag?.titel || a.uebungTitel || '(Details nicht mehr verfügbar)';
     const eintragObj = {
       id: a.uebungId, titel, datum: d, dauer_h: h,
@@ -1059,15 +1068,12 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
     <div id="einsatz-ausrueck-warnung"></div>
     <div class="section-header"><span id="einsatz-zaehler" style="font-weight:400;font-size:0.85rem"></span></div>
     <div id="einsatz-reaktionen" class="card">⏳ Lade...</div>
-    <div class="card" style="display:flex;gap:0.6rem;flex-wrap:wrap">
+    <div class="card" style="display:flex;gap:0.8rem">
       <button class="btn btn-full" id="btn-kommt"
-        style="background:#16a34a;color:#fff;font-size:0.95rem;padding:0.6rem"
+        style="background:#16a34a;color:#fff;font-size:1rem;padding:0.6rem"
         onclick="einsatzReagieren('${id}','kommt')">👍 Ich komme</button>
-      ${isEinsatz ? `<button class="btn btn-full" id="btn-bereitschaft"
-        style="background:#2563eb;color:#fff;font-size:0.95rem;padding:0.6rem"
-        onclick="einsatzReagieren('${id}','bereitschaft')">🏠 Bereitschaft</button>` : ''}
       <button class="btn btn-full" id="btn-kommt-nicht"
-        style="background:#dc2626;color:#fff;font-size:0.95rem;padding:0.6rem"
+        style="background:#dc2626;color:#fff;font-size:1rem;padding:0.6rem"
         onclick="einsatzReagieren('${id}','kommt_nicht')">👎 Komme nicht</button>
     </div>
     ${fw.hatRecht(teilnRecht) ? `<div style="padding:0 0 0.5rem">${eintragBtn}</div>` : ''}
@@ -1181,12 +1187,19 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
             const lkw = kommt && hatLkwFs(a.fuehrerschein);
             const agt = isEinsatz && (kommt || bereitschaft) && agtMap.get(a.userId);
             const icon = bereitschaft ? '🏠' : (kommt ? '👍' : '👎');
+            // Bereitschaft wird erst am Gerätehaus entschieden – daher erst nachträglich
+            // umschaltbar, nicht als Erstreaktion. Eigene Zeile oder Teilnahme-Verwalter.
+            const darfUmschalten = isEinsatz && (kommt || bereitschaft) && (a.userId === fw.user.uid || fw.hatRecht(teilnRecht));
+            const umschaltBtn = !darfUmschalten ? '' : bereitschaft
+              ? `<button onclick="bereitschaftUmschalten('${a.id}','kommt')" style="background:none;cursor:pointer;font-size:0.72rem;padding:0.15rem 0.4rem;color:var(--blue);border:1px solid var(--border);border-radius:6px" title="Zurück auf Ausrücken">🚛 Ausrücken</button>`
+              : `<button onclick="bereitschaftUmschalten('${a.id}','bereitschaft')" style="background:none;cursor:pointer;font-size:0.72rem;padding:0.15rem 0.4rem;color:var(--blue);border:1px solid var(--border);border-radius:6px" title="Auf Bereitschaft setzen">🏠 Bereitschaft</button>`;
             const loeschBtn = fw.hatRecht(teilnRecht)
               ? `<button onclick="teilnehmerEntfernen('${a.id}','${id}','${u.typ}')" style="background:none;border:none;cursor:pointer;font-size:0.9rem;color:#9ca3af;padding:0.1rem 0.3rem" title="Entfernen">🗑</button>`
               : '';
             return `<div style="display:flex;align-items:center;gap:0.6rem;padding:0.4rem 0;border-bottom:1px solid var(--border)">
               <span style="font-size:1.1rem">${icon}${lkw?'🚛':''}${agt?'💨':''}</span>
               <span style="flex:1;font-weight:${a.userId===fw.user.uid?'600':'400'}">${kurzName(usersMap.get(a.userId)?.vorname, usersMap.get(a.userId)?.nachname) || a.userName || 'Kamerad'}</span>
+              ${umschaltBtn}
               ${loeschBtn}
             </div>`;
           }).join('');
@@ -1194,10 +1207,8 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
         }
 
         const btnK  = document.getElementById('btn-kommt');
-        const btnB  = document.getElementById('btn-bereitschaft');
         const btnKN = document.getElementById('btn-kommt-nicht');
-        if (btnK)  btnK.style.opacity  = meineR?.status === 'kommt'       ? '1' : '0.5';
-        if (btnB)  btnB.style.opacity  = meineR?.status === 'bereitschaft' ? '1' : '0.5';
+        if (btnK)  btnK.style.opacity  = (meineR?.status === 'kommt' || meineR?.status === 'bereitschaft') ? '1' : '0.5';
         if (btnKN) btnKN.style.opacity = meineR?.status === 'kommt_nicht' ? '1' : '0.5';
       },
       fw.where('uebungId','==',id)
@@ -1206,6 +1217,13 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
     window._einsatzListener = _einsatzListener;
   }
 });
+
+// Nachträgliches Umschalten zwischen "rückt aus" und "Bereitschaft" (bleibt in der Wache).
+// Wird erst am Gerätehaus entschieden, daher kein Teil der Erstreaktion.
+window.bereitschaftUmschalten = async (aId, neuerStatus) => {
+  await fw.updateDoc('anwesenheiten/'+aId, { status: neuerStatus });
+  fw.toast(neuerStatus === 'bereitschaft' ? 'Auf Bereitschaft gesetzt 🏠' : 'Auf Ausrücken gesetzt 🚛');
+};
 
 window.teilnahmeMelden = async (uebungId, titel, dauer_h, typ, datumStr) => {
   const name = kurzName(fw.profil.vorname, fw.profil.nachname);
