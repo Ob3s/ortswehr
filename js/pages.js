@@ -1300,6 +1300,8 @@ const RECHTE_KATALOG = [
     { key: 'dienste_alarm_ausloesen',      label: 'Alarm auslösen' },
   ]},
   { bereich: 'Kameraden', rechte: [
+    { key: 'kameraden_ansehen',               label: 'Namensliste ansehen' },
+    { key: 'kameraden_anlegen',               label: 'Neu anlegen' },
     { key: 'kameraden_stammdaten',            label: 'Stammdaten bearbeiten' },
     { key: 'kameraden_aktiv_inaktiv',         label: 'Aktiv/Inaktiv setzen' },
     { key: 'kameraden_loeschen',              label: 'Löschen' },
@@ -3122,8 +3124,9 @@ registerPage('news-form', async (el, {id} = {}) => {
 
 // ── Kameraden ─────────────────────────────────────────────
 registerPage('kameraden', async (el) => {
+  if (!fw.hatRecht('kameraden_ansehen')) { navigate('dashboard'); return; }
   fw.setTitle('Kameraden');
-  fw.showHeaderAction('+ Neu', () => navigate('kamerad-form', {}));
+  if (fw.hatRecht('kameraden_anlegen')) fw.showHeaderAction('+ Neu', () => navigate('kamerad-form', {}));
 
   const [snap, owSnapKam] = await Promise.all([
     fw.getDocs('users'),
@@ -3693,6 +3696,8 @@ window.agtSpeichern = async (userId) => {
 };
 
 registerPage('kamerad-form', async (el, {id}) => {
+  const erforderlichesRecht = id ? (fw.hatRecht('kameraden_stammdaten') || fw.hatRecht('kameraden_raenge_zuweisen')) : fw.hatRecht('kameraden_anlegen');
+  if (!erforderlichesRecht) { navigate('dashboard'); return; }
   await ladeLehrgangsarten();
   const dienstgradeLoaded = await ladeDienstgrade();
   await ladeRaenge();

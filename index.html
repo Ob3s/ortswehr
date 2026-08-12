@@ -342,8 +342,7 @@
         await setDoc(doc(db, 'users', user.uid), fw.profil);
         document.body.setAttribute('data-theme', 'klassisch');
       }
-      if (fw.isWehrfuehrer() || fw.hatRecht('kameraden_stammdaten') || fw.hatRecht('kameraden_aktiv_inaktiv')
-          || fw.hatRecht('kameraden_loeschen') || fw.hatRecht('kameraden_lehrgaenge_verwalten') || fw.hatRecht('kameraden_raenge_zuweisen')) {
+      if (fw.hatRecht('kameraden_ansehen')) {
         document.getElementById('nav-kameraden').classList.remove('hidden');
       }
       if (fw.profil.notif_einsatz || fw.profil.notif_uebung || fw.profil.notif_bestaetigung) {
