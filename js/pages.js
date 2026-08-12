@@ -697,7 +697,7 @@ function startStatusPruefung() {
 }
 
 // ── Hilfsfunktion: Liste rendern ─────────────────────────
-function renderEintrag(u, meineMap, mpMap) {
+function renderEintrag(u, meineMap) {
   const badge = anwesenheitBadge(meineMap.get(u.id));
   const d = u.datum?.toDate ? u.datum.toDate() : new Date(u.datum);
   const heute = new Date(); heute.setHours(0,0,0,0);
@@ -710,9 +710,9 @@ function renderEintrag(u, meineMap, mpMap) {
   else if (istUnvollstaendig) highlightStyle = 'border-left:3px solid #f59e0b;padding-left:0.5rem;background:rgba(245,158,11,0.08);';
   const nichtRelevantBadge = ''; // nicht relevant wird nicht in der Liste angezeigt
   const artLabel = u.art ? dienstArtLabel(u.art) : '';
-  // MP-Feuer-Haken: mpMap ist nur befüllt, wenn der aktuelle Kamerad das Recht dazu hat –
-  // ohne Recht bleibt die Map leer und der Haken taucht in der Liste gar nicht erst auf.
-  const mpGeprueft = mpMap?.get(u.id) === true;
+  // MP-Feuer-Haken: ganz normales Recht (wie News sehen) – wer's nicht hat, sieht das Badge nicht.
+  const mpRecht = u.typ === 'einsatz' ? 'einsaetze_mp_pruefen' : 'dienste_mp_pruefen';
+  const mpGeprueft = u.mpGeprueft === true && fw.hatRecht(mpRecht);
   return `<div class="list-item" onclick="navigate('uebung-detail',{id:'${u.id}',typ:'${u.typ}'})" style="${highlightStyle}">
     <div class="list-item-body">
       <div class="list-item-title">${istHeute ? '🚨 ' : ''}${istUnvollstaendig ? '⚠️ ' : ''}${u.titel}${nichtRelevantBadge}</div>
@@ -725,7 +725,7 @@ function renderEintrag(u, meineMap, mpMap) {
   </div>`;
 }
 
-function renderEintragListe(liste, meineMap, mpMap) {
+function renderEintragListe(liste, meineMap) {
   if (!liste.length) return '<div class="empty">Keine Einträge</div>';
   const heute = new Date(); heute.setHours(0,0,0,0);
 
@@ -765,7 +765,7 @@ function renderEintragListe(liste, meineMap, mpMap) {
 
   // Sichtbare zukünftige Dienste
   if (sichtbar.length) {
-    html += sichtbar.map(u => renderEintrag(u, meineMap, mpMap)).join('');
+    html += sichtbar.map(u => renderEintrag(u, meineMap)).join('');
   } else {
     html += '<div class="empty">Keine kommenden Dienste</div>';
   }
@@ -776,7 +776,7 @@ function renderEintragListe(liste, meineMap, mpMap) {
       <summary style="padding:0.6rem 0;cursor:pointer;color:var(--muted);font-size:0.85rem;list-style:none;display:flex;align-items:center;gap:0.4rem">
         <span>▸</span> Weitere Dienste (${weitereZukunft.length})
       </summary>
-      ${weitereZukunft.map(u => renderEintrag(u, meineMap, mpMap)).join('')}
+      ${weitereZukunft.map(u => renderEintrag(u, meineMap)).join('')}
     </details>`;
   }
 
@@ -787,7 +787,7 @@ function renderEintragListe(liste, meineMap, mpMap) {
         <summary style="padding:0.5rem 0;cursor:pointer;color:var(--muted);font-size:0.8rem;list-style:none;display:flex;align-items:center;gap:0.4rem;padding-left:0.5rem">
           <span>▸</span> ${jahr} (${archivJahre[jahr].length})
         </summary>
-        ${archivJahre[jahr].map(u => renderEintrag(u, meineMap, mpMap)).join('')}
+        ${archivJahre[jahr].map(u => renderEintrag(u, meineMap)).join('')}
       </details>`).join('');
     html += `<details style="margin-top:0.2rem">
       <summary style="padding:0.6rem 0;cursor:pointer;color:var(--muted);font-size:0.85rem;list-style:none;display:flex;align-items:center;gap:0.4rem">
@@ -802,7 +802,7 @@ function renderEintragListe(liste, meineMap, mpMap) {
 
 
 // ── Einsatz-Liste: aktuelles Jahr oben, Archiv nach Jahr ──
-function renderEinsatzListe(liste, meineMap, mpMap) {
+function renderEinsatzListe(liste, meineMap) {
   if (!liste.length) {
     const jahrAkt = new Date().getFullYear();
     return `<div class="empty">${jahrAkt} noch kein Einsatz</div>`;
@@ -828,7 +828,7 @@ function renderEinsatzListe(liste, meineMap, mpMap) {
     html += `<div class="empty">${jahrAkt} noch kein Einsatz</div>`;
   } else {
     html += `<div style="font-size:0.78rem;color:var(--muted);padding:0.5rem 0 0.2rem;font-weight:600">${jahrAkt} · ${aktEintraege.length===1?'1 Einsatz':aktEintraege.length+' Einträge'}</div>`;
-    html += aktEintraege.map(u => renderEintrag(u, meineMap, mpMap)).join('');
+    html += aktEintraege.map(u => renderEintrag(u, meineMap)).join('');
   }
 
   // Vergangene Jahre → alle unter "Archiv" als eigene Dropdowns
@@ -841,7 +841,7 @@ function renderEinsatzListe(liste, meineMap, mpMap) {
         <summary style="padding:0.5rem 0;cursor:pointer;color:var(--muted);font-size:0.8rem;list-style:none;display:flex;align-items:center;gap:0.4rem;padding-left:0.5rem">
           <span>▸</span> ${jahr} (${eintraege.length===1?'1 Einsatz':eintraege.length+' Einträge'})
         </summary>
-        ${eintraege.map(u => renderEintrag(u, meineMap, mpMap)).join('')}
+        ${eintraege.map(u => renderEintrag(u, meineMap)).join('')}
       </details>`;
     }).join('');
     html += `<details style="margin-top:0.2rem">
@@ -857,8 +857,6 @@ function renderEinsatzListe(liste, meineMap, mpMap) {
 
 // Collection je nach Typ
 function col(typ) { return typ === 'einsatz' ? 'einsaetze' : 'dienste'; }
-// Eigene Collection für den MP-Feuer-Haken (siehe uebung-detail) – docId == uebungId.
-function colMp(typ) { return typ === 'einsatz' ? 'einsaetze_mp' : 'dienste_mp'; }
 
 // ── Einsätze ──────────────────────────────────────────────
 registerPage('einsaetze', async (el) => {
@@ -870,14 +868,7 @@ registerPage('einsaetze', async (el) => {
   ]);
   const liste    = uSnap.docs.map(d => ({id:d.id,...d.data()}));
   const meineMap = new Map(aSnap.docs.map(d => [d.data().uebungId, d.data().status]));
-  // MP-Feuer-Haken nur laden (und anzeigen), wenn überhaupt berechtigt – Firestore-Regeln
-  // würden den Zugriff sonst ohnehin verweigern.
-  let mpMap = new Map();
-  if (fw.hatRecht('einsaetze_mp_pruefen')) {
-    const mpSnap = await fw.getDocs('einsaetze_mp');
-    mpMap = new Map(mpSnap.docs.map(d => [d.id, d.data().geprueft === true]));
-  }
-  el.innerHTML = `<div class="card">${renderEinsatzListe(liste, meineMap, mpMap)}</div>`;
+  el.innerHTML = `<div class="card">${renderEinsatzListe(liste, meineMap)}</div>`;
 });
 
 // ── Dienste ───────────────────────────────────────────────
@@ -896,13 +887,8 @@ registerPage('dienste', async (el) => {
     || fw.hatRecht('pruefaufgaben_anlegen') || fw.hatRecht('pruefaufgaben_bearbeiten') || fw.hatRecht('pruefaufgaben_loeschen') || fw.hatRecht('pruefaufgaben_ergebnisse');
   const liste    = uSnap.docs.map(d => ({id:d.id,...d.data()})).filter(d => dienstSichtbar(d, fw.profil, dQualis));
   const meineMap = new Map(aSnap.docs.map(d => [d.data().uebungId, d.data().status]));
-  let mpMap = new Map();
-  if (fw.hatRecht('dienste_mp_pruefen')) {
-    const mpSnap = await fw.getDocs('dienste_mp');
-    mpMap = new Map(mpSnap.docs.map(d => [d.id, d.data().geprueft === true]));
-  }
   el.innerHTML = `
-    <div class="card">${renderEintragListe(liste, meineMap, mpMap)}</div>
+    <div class="card">${renderEintragListe(liste, meineMap)}</div>
     ${zeigeFahrzeugpruefungen ? `
     <details id="fz-pruef-details" class="card" style="margin-top:0.8rem;padding:0">
       <summary style="font-weight:600;cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;padding:0.4rem 0.8rem;font-size:13px;border-radius:8px">
@@ -1050,12 +1036,9 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
   fw.showBack(() => navigate(isEinsatz ? 'einsaetze' : 'dienste'));
   if (fw.hatRecht(bearbRecht)) fw.showHeaderAction('✏️ Edit', () => navigate('uebung-form',{id, typ: u.typ}));
 
-  // MP-Feuer-Haken: eigene Collection mit eigenen Firestore-Regeln, damit wirklich nur
-  // Berechtigte den Wert überhaupt lesen können (nicht nur UI-verborgen).
+  // MP-Feuer-Haken: ganz normales Recht (wie News sehen) – nur für Berechtigte sichtbar.
   const darfMp = fw.hatRecht(mpRecht);
-  const mpGeprueft = darfMp
-    ? (await fw.getDoc(colMp(u.typ)+'/'+id)).data()?.geprueft === true
-    : false;
+  const mpGeprueft = darfMp && u.mpGeprueft === true;
 
   const aSnap = await fw.getDocs('anwesenheiten',
     fw.where('uebungId','==',id), fw.where('userId','==',fw.user.uid));
@@ -1238,10 +1221,10 @@ window.bereitschaftUmschalten = async (aId, neuerStatus) => {
   fw.toast(neuerStatus === 'bereitschaft' ? 'Auf Bereitschaft gesetzt 🏠' : 'Auf Ausrücken gesetzt 🚛');
 };
 
-// MP-Feuer-Haken: eigene Collection (einsaetze_mp/dienste_mp), per Firestore-Regel nur für
-// Kameraden mit dem jeweiligen *_mp_pruefen-Recht überhaupt lesbar – nicht nur UI-verborgen.
+// MP-Feuer-Haken: Feld direkt auf dienste/einsaetze, wie ein ganz normales Recht (z. B. News
+// sehen) – nur wer dienste_mp_pruefen/einsaetze_mp_pruefen hat, bekommt Checkbox und Badge zu sehen.
 window.mpUmschalten = async (typ, id, geprueft) => {
-  await fw.setDoc(colMp(typ)+'/'+id, { geprueft, geprueftAm: new Date(), geprueftVon: fw.user.uid });
+  await fw.updateDoc(col(typ)+'/'+id, { mpGeprueft: geprueft, mpGeprueftAm: new Date(), mpGeprueftVon: fw.user.uid });
   fw.toast(geprueft ? 'In MP-Feuer überprüft ✅' : 'Haken entfernt');
 };
 
