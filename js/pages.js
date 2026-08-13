@@ -2992,12 +2992,19 @@ registerPage('uebungen-backend', async (el) => {
   fw.setTitle('Dienste & Einsätze');
   fw.showBack(() => navigateBack());
   await ladeDienstarten();
+  // MP-Feuer-Haken auch hier direkt umschaltbar machen (analog zum Knopf in der normalen
+  // Übersicht) – eigenes Recht, unabhängig von dienste_bearbeiten/einsaetze_bearbeiten.
+  const darfMpDienste   = fw.hatRecht('dienste_mp_pruefen');
+  const darfMpEinsaetze = fw.hatRecht('einsaetze_mp_pruefen');
 
   const heute = new Date(); heute.setHours(0,0,0,0);
   const toDate = d => d?.toDate ? d.toDate() : new Date(d);
   const esc = s => (s||'').replace(/&/g,'&amp;').replace(/"/g,'&quot;');
   const datumVal = d => { const x = toDate(d); return isNaN(x) ? '' : x.toISOString().slice(0,10); };
   const inputStyle = 'background:var(--panel2);border:1px solid var(--border);border-radius:6px;padding:0.25rem 0.4rem;font-size:0.8rem;color:var(--text)';
+  const mpZelle = (typ, u, darf) => darf
+    ? `<td style="padding:0.3rem 0.3rem;text-align:center"><input type="checkbox" ${u.mpGeprueft?'checked':''} onchange="mpUmschalten('${typ}','${u.id}',this.checked)" title="In MP-Feuer überprüft"></td>`
+    : '';
 
   const [dSnap, eSnap] = await Promise.all([
     darfDienste  ? fw.getDocs('dienste')   : Promise.resolve({docs:[]}),
@@ -3019,6 +3026,7 @@ registerPage('uebungen-backend', async (el) => {
       <td style="padding:0.3rem 0.3rem"><input type="time" class="bt-beginn" value="${u.zeitBeginn||''}" oninput="backendDirty(this)" style="${inputStyle}"></td>
       <td style="padding:0.3rem 0.3rem"><input type="time" class="bt-ende" value="${u.zeitEnde||''}" oninput="backendDirty(this)" style="${inputStyle}"></td>
       <td style="padding:0.3rem 0.3rem"><input class="bt-ort" value="${esc(u.ort||'')}" oninput="backendDirty(this)" style="width:130px;${inputStyle}"></td>
+      ${mpZelle('einsatz', u, darfMpEinsaetze)}
       <td style="padding:0.3rem 0.3rem"><button class="btn btn-sm btn-success bt-save" style="display:none" onclick="backendZeileSpeichern(this)">💾</button></td>
     </tr>`;
   }).join('');
@@ -3034,12 +3042,15 @@ registerPage('uebungen-backend', async (el) => {
         <option value="">–</option>
         ${_dienstarten.map(a => `<option value="${a.id}" ${u.art===a.id?'selected':''}>${esc(a.bezeichnung)}</option>`).join('')}
       </select></td>
+      ${mpZelle('dienst', u, darfMpDienste)}
       <td style="padding:0.3rem 0.3rem"><button class="btn btn-sm btn-success bt-save" style="display:none" onclick="backendZeileSpeichern(this)">💾</button></td>
     </tr>`;
   }).join('');
 
   const zeigeTabs = darfDienste && darfEinsaetze;
   const startTyp = darfEinsaetze ? 'einsatz' : 'dienst';
+  const einsatzColspan = 7 + (darfMpEinsaetze ? 1 : 0);
+  const dienstColspan  = 6 + (darfMpDienste ? 1 : 0);
 
   el.innerHTML = `
     <div class="card" style="padding:0.6rem 0.8rem">
@@ -3056,15 +3067,15 @@ registerPage('uebungen-backend', async (el) => {
       <div style="overflow-x:auto">
         <table style="width:100%;border-collapse:collapse;font-size:0.8rem${startTyp!=='einsatz'?';display:none':''}" id="bt-table-einsatz">
           <thead><tr style="text-align:left;border-bottom:2px solid var(--border)">
-            <th></th><th style="padding:0.3rem">Titel</th><th style="padding:0.3rem">Datum</th><th style="padding:0.3rem">Beginn</th><th style="padding:0.3rem">Ende</th><th style="padding:0.3rem">Ort</th><th></th>
+            <th></th><th style="padding:0.3rem">Titel</th><th style="padding:0.3rem">Datum</th><th style="padding:0.3rem">Beginn</th><th style="padding:0.3rem">Ende</th><th style="padding:0.3rem">Ort</th>${darfMpEinsaetze?'<th style="padding:0.3rem">MP</th>':''}<th></th>
           </tr></thead>
-          <tbody>${einsatzRows || '<tr><td colspan="7" style="padding:0.6rem;color:var(--muted)">Keine Einträge</td></tr>'}</tbody>
+          <tbody>${einsatzRows || `<tr><td colspan="${einsatzColspan}" style="padding:0.6rem;color:var(--muted)">Keine Einträge</td></tr>`}</tbody>
         </table>
         <table style="width:100%;border-collapse:collapse;font-size:0.8rem${startTyp!=='dienst'?';display:none':''}" id="bt-table-dienst">
           <thead><tr style="text-align:left;border-bottom:2px solid var(--border)">
-            <th></th><th style="padding:0.3rem">Titel</th><th style="padding:0.3rem">Datum</th><th style="padding:0.3rem">Dauer (h)</th><th style="padding:0.3rem">Art</th><th></th>
+            <th></th><th style="padding:0.3rem">Titel</th><th style="padding:0.3rem">Datum</th><th style="padding:0.3rem">Dauer (h)</th><th style="padding:0.3rem">Art</th>${darfMpDienste?'<th style="padding:0.3rem">MP</th>':''}<th></th>
           </tr></thead>
-          <tbody>${dienstRows || '<tr><td colspan="6" style="padding:0.6rem;color:var(--muted)">Keine Einträge</td></tr>'}</tbody>
+          <tbody>${dienstRows || `<tr><td colspan="${dienstColspan}" style="padding:0.6rem;color:var(--muted)">Keine Einträge</td></tr>`}</tbody>
         </table>
       </div>
     </div>
