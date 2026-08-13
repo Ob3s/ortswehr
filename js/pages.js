@@ -1269,12 +1269,12 @@ window.teilnahmeMelden = async (uebungId, titel, dauer_h, typ, datumStr) => {
     dauer_h, typ, datum: new Date(datumStr), vorgeschlagenAm: new Date(),
   });
   fw.toast('Teilnahme gemeldet ⏳');
-  navigate('uebung-detail', {id: uebungId, typ});
+  navigateReplace('uebung-detail', {id: uebungId, typ});
 };
 window.teilnehmerEntfernen = async (aId, uebungId, typ) => {
   if (!confirm('Anwesenheit entfernen?')) return;
   await fw.deleteDoc('anwesenheiten/'+aId);
-  fw.toast('Entfernt'); navigate('uebung-detail', {id: uebungId, typ});
+  fw.toast('Entfernt'); navigateReplace('uebung-detail', {id: uebungId, typ});
 };
 
 // ── Kamerad direkt eintragen ──────────────────────────────
@@ -1319,8 +1319,10 @@ window.direktEintragen = async (uebungId, userId, name, dauer_h, typ, datumStr) 
     fuehrerschein: profil.fuehrerschein || '',
   });
   fw.toast(name+' eingetragen ✅');
-  // Seite neu laden damit neue Anwesenheit sofort sichtbar
-  navigate('uebung-eintragen', {id: uebungId, titel: '', dauer: dauer_h, typ, datumStr});
+  // Seite neu laden damit neue Anwesenheit sofort sichtbar - navigateReplace() statt navigate(),
+  // sonst legt sich bei jedem eingetragenen Kameraden ein weiterer History-Eintrag drauf und der
+  // Zurück-Pfeil "hängt" (springt erst nach mehreren Klicks wirklich zum Einsatz zurück).
+  navigateReplace('uebung-eintragen', {id: uebungId, titel: '', dauer: dauer_h, typ, datumStr});
 };
 
 // ── Dienst-Arten (dynamisch aus Firestore, Collection "dienstarten") ──
@@ -1993,7 +1995,7 @@ window.planungLoeschenDirekt = async (id) => {
   if (!confirm('Eintrag löschen?')) return;
   await fw.deleteDoc('lehrgangsplanung/'+id);
   fw.toast('Gelöscht');
-  navigate(window._currentPage, window._currentParams);
+  navigateReplace(window._currentPage, window._currentParams);
 };
 
 window.abmelden = async () => {
@@ -3795,13 +3797,13 @@ registerPage('kamerad-detail', async (el, {id}) => {
 
 window.kameradAktiv = async (id) => {
   await fw.updateDoc('users/'+id, { aktiv: true });
-  fw.toast('Kamerad aktiv gesetzt ✅'); navigate('kamerad-detail', {id});
+  fw.toast('Kamerad aktiv gesetzt ✅'); navigateReplace('kamerad-detail', {id});
 };
 
 window.kameradInaktiv = async (id) => {
   if (!confirm('Kamerad auf inaktiv setzen?')) return;
   await fw.updateDoc('users/'+id, { aktiv: false });
-  fw.toast('Kamerad inaktiv gesetzt ✅'); navigate('kamerad-detail', {id});
+  fw.toast('Kamerad inaktiv gesetzt ✅'); navigateReplace('kamerad-detail', {id});
 };
 
 window.kameradLoeschen = async (id) => {
@@ -3839,11 +3841,11 @@ window.qualiHinzufuegen = async (userId) => {
     stunden: (tage && stundenProTag) ? Math.round(tage * stundenProTag * 100) / 100 : null,
     bemerkung: document.getElementById('q-bem').value || '',
   });
-  fw.toast('Hinzugefügt'); navigate('kamerad-detail',{id:userId});
+  fw.toast('Hinzugefügt'); navigateReplace('kamerad-detail',{id:userId});
 };
 window.qualiLoeschen = async (userId, qualiId) => {
   await fw.deleteDoc('users/'+userId+'/qualifikationen/'+qualiId);
-  fw.toast('Gelöscht'); navigate('kamerad-detail',{id:userId});
+  fw.toast('Gelöscht'); navigateReplace('kamerad-detail',{id:userId});
 };
 
 window.agtSpeichern = async (userId) => {
@@ -3852,7 +3854,7 @@ window.agtSpeichern = async (userId) => {
     agt_waermeuebung: document.getElementById('agt-waer').value || null,
     agt_belastung:    document.getElementById('agt-bel').value || null,
   });
-  fw.toast('AGT-Daten gespeichert ✅'); navigate('kamerad-detail',{id:userId});
+  fw.toast('AGT-Daten gespeichert ✅'); navigateReplace('kamerad-detail',{id:userId});
 };
 
 registerPage('kamerad-form', async (el, {id}) => {
