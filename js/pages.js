@@ -60,10 +60,12 @@ function zeitZeile(u) {
   if (u.zeitBeginn && u.zeitEnde) {
     const [bh, bm] = u.zeitBeginn.split(':').map(Number);
     const [eh, em] = u.zeitEnde.split(':').map(Number);
-    // Über Mitternacht hinaus: Ende numerisch vor Beginn -> Hinweis "(+1 Tag)" dranhängen,
-    // damit "22:00 – 02:00 Uhr" nicht wie eine falsch herum eingetragene Zeit aussieht.
+    // Über Mitternacht hinaus: Ende numerisch vor Beginn -> "(Folgetag)" dranhängen, damit
+    // "22:00 – 02:00 Uhr" nicht wie eine falsch herum eingetragene Zeit aussieht. Bewusst nicht
+    // "(+1 Tag)": das las sich leicht (fälschlich) so, als würde die Dauer um einen Tag verlängert,
+    // statt nur klarzustellen, auf welchen Kalendertag sich die Ende-Uhrzeit bezieht.
     const ueberMitternacht = !isNaN(bh) && !isNaN(eh) && (eh*60+em) < (bh*60+bm);
-    z = `${u.zeitBeginn} – ${u.zeitEnde}${ueberMitternacht ? ' (+1 Tag)' : ''} Uhr`;
+    z = `${u.zeitBeginn} – ${u.zeitEnde}${ueberMitternacht ? ' (Folgetag)' : ''} Uhr`;
   } else if (u.zeitBeginn) {
     z = `${u.zeitBeginn} Uhr`;
   }
