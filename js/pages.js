@@ -934,15 +934,26 @@ registerPage('dienste', async (el) => {
     <div style="margin-top:0.8rem">
       <button class="btn btn-secondary btn-sm btn-full" onclick="kalenderImportieren()" id="kal-btn">📅 Aus Google Kalender importieren</button>
       <div id="kal-status" class="muted" style="font-size:0.8rem;text-align:center;margin-top:0.4rem"></div>
+      <div id="kal-vorschau"></div>
     </div>` : ''}
   `;
   if (zeigeFahrzeugpruefungen) ladePruefaufgabenInline();
 });
 
+// Kalender-Import: lädt die Events NUR und zeigt sie zur Kontrolle an (kal-vorschau) – es wird
+// nichts automatisch in Firestore geschrieben. Erst mit "Ausgewählte übernehmen"
+// (kalenderImportUebernehmen) werden die angehakten Einträge tatsächlich angelegt/aktualisiert.
+// Grund: der Import kam bisher 1:1 durch, inkl. stillem Überschreiben bereits bearbeiteter Dienste
+// bei abweichenden Kerndaten – das soll jetzt sichtbar und bewusst passieren.
+let _kalVorschauDaten = null;
+
 window.kalenderImportieren = async () => {
-  const btn    = document.getElementById('kal-btn');
-  const status = document.getElementById('kal-status');
+  const btn      = document.getElementById('kal-btn');
+  const status   = document.getElementById('kal-status');
+  const vorschau = document.getElementById('kal-vorschau');
   btn.disabled = true; btn.textContent = '⏳ Wird geladen...';
+  status.textContent = '';
+  vorschau.innerHTML = '';
   try {
     const res = await fetch('https://europe-west3-ffw-oegeln-791ca.cloudfunctions.net/kalenderImport',
       { headers: { 'x-uid': fw.user.uid } });
@@ -951,59 +962,130 @@ window.kalenderImportieren = async () => {
 
     // Bestehende Dienste laden – Matching per Datum (YYYY-MM-DD)
     const snap = await fw.getDocs('dienste');
-    // Map: datum-String → {id, data}
     const vorhandeneMap = new Map(snap.docs.map(d => [
       d.data().datum?.toDate?.().toISOString().slice(0,10),
       { id: d.id, data: d.data() }
     ]));
 
-    let neu = 0, aktualisiert = 0, unveraendert = 0;
-    for (const e of events) {
+    // Nur klassifizieren (neu / geändert / unverändert), NICHT schreiben.
+    _kalVorschauDaten = events.map(e => {
       const bestehend = vorhandeneMap.get(e.datum);
-      const neuerEintrag = {
-        titel: e.titel, datum: new Date(e.datum),
-        dauer_h: e.dauer_h, beschreibung: e.beschreibung || '',
-        zeitBeginn: e.zeitBeginn || null, zeitEnde: e.zeitEnde || null,
-        ort: e.ort || null, typ: 'dienst',
-      };
+      if (!bestehend) return { ...e, status: 'neu' };
+      const alt = bestehend.data;
+      const diffs = [];
+      if (alt.titel !== e.titel) diffs.push(`Titel: "${alt.titel}" → "${e.titel}"`);
+      if ((alt.ort || '') !== (e.ort || '')) diffs.push(`Ort: "${alt.ort || '–'}" → "${e.ort || '–'}"`);
+      if ((alt.zeitBeginn || '') !== (e.zeitBeginn || '') || (alt.zeitEnde || '') !== (e.zeitEnde || ''))
+        diffs.push(`Zeit: ${alt.zeitBeginn || '–'}–${alt.zeitEnde || '–'} → ${e.zeitBeginn || '–'}–${e.zeitEnde || '–'} Uhr`);
+      if (Math.abs((alt.dauer_h || 0) - (e.dauer_h || 0)) > 0.01)
+        diffs.push(`Dauer: ${alt.dauer_h || 0}h → ${e.dauer_h || 0}h`);
+      if (!diffs.length) return { ...e, status: 'unveraendert' };
+      return { ...e, status: 'geaendert', diffs, bestehendId: bestehend.id };
+    });
 
-      if (!bestehend) {
-        // Neu anlegen
-        await fw.addDoc('dienste', { ...neuerEintrag, erstelltVon: fw.user.uid, erstelltAm: new Date() });
-        neu++;
-      } else {
-        // Prüfen ob sich Kerndaten geändert haben
-        const alt = bestehend.data;
-        const geaendert =
-          alt.titel !== e.titel ||
-          (alt.ort || '') !== (e.ort || '') ||
-          (alt.zeitBeginn || '') !== (e.zeitBeginn || '') ||
-          (alt.zeitEnde || '') !== (e.zeitEnde || '') ||
-          Math.abs((alt.dauer_h || 0) - (e.dauer_h || 0)) > 0.01;
-
-        if (geaendert) {
-          // Nur Kerndaten updaten – Anwesenheiten bleiben unberührt
-          await fw.setDoc('dienste/' + bestehend.id, neuerEintrag);
-          aktualisiert++;
-        } else {
-          unveraendert++;
-        }
-      }
-    }
-
-    const teile = [];
-    if (neu > 0)          teile.push(neu + ' neu');
-    if (aktualisiert > 0) teile.push(aktualisiert + ' aktualisiert');
-    if (unveraendert > 0) teile.push(unveraendert + ' unverändert');
-    status.textContent = teile.join(' · ');
+    const neuListe         = _kalVorschauDaten.filter(e => e.status === 'neu');
+    const geaendertListe   = _kalVorschauDaten.filter(e => e.status === 'geaendert');
+    const unveraendertListe = _kalVorschauDaten.filter(e => e.status === 'unveraendert');
     btn.textContent = '📅 Aus Google Kalender importieren';
     btn.disabled = false;
-    if (neu > 0 || aktualisiert > 0) setTimeout(() => navigate('dienste'), 1200);
+
+    if (!neuListe.length && !geaendertListe.length) {
+      status.textContent = `Keine Änderungen (${unveraendertListe.length} bereits unverändert vorhanden)`;
+      _kalVorschauDaten = null;
+      return;
+    }
+
+    const aktionable = _kalVorschauDaten
+      .map((e, idx) => ({ ...e, idx }))
+      .filter(e => e.status !== 'unveraendert');
+
+    vorschau.innerHTML = `
+      <div class="card" style="margin-top:0.6rem">
+        <div style="font-weight:600;margin-bottom:0.3rem">📅 Kalender-Vorschau</div>
+        <div class="muted" style="font-size:0.78rem;margin-bottom:0.5rem">
+          ${neuListe.length} neu · ${geaendertListe.length} geändert · ${unveraendertListe.length} unverändert (nicht angezeigt) –
+          bitte prüfen, was übernommen werden soll (⚠️ "Geändert" überschreibt einen bestehenden Dienst).
+        </div>
+        <div>${aktionable.map(e => kalEventZeile(e, e.idx)).join('')}</div>
+        <div style="display:flex;gap:0.5rem;margin-top:0.7rem">
+          <button class="btn btn-primary btn-sm" style="flex:1" onclick="kalenderImportUebernehmen()">✅ Ausgewählte übernehmen</button>
+          <button class="btn btn-secondary btn-sm" onclick="kalenderImportAbbrechen()">Abbrechen</button>
+        </div>
+      </div>`;
   } catch(e) {
     status.textContent = 'Fehler: ' + e.message;
     btn.textContent = '📅 Aus Google Kalender importieren';
     btn.disabled = false;
   }
+};
+
+// Eine Zeile der Kalender-Vorschau: "neu" ist standardmäßig angehakt (unkritisch, legt nur neu an),
+// "geändert" ist standardmäßig NICHT angehakt, weil es einen bestehenden Dienst überschreibt – der
+// Nutzer muss das bewusst anhaken, nachdem er den Diff darunter gelesen hat.
+function kalEventZeile(ev, idx) {
+  const istNeu  = ev.status === 'neu';
+  const icon    = istNeu ? '🆕' : '✏️';
+  const label   = istNeu ? 'Neu' : 'Geändert';
+  const farbe   = istNeu ? '#16a34a' : '#f59e0b';
+  const checked = istNeu ? 'checked' : '';
+  const diffHtml = ev.diffs?.length
+    ? `<div style="font-size:0.75rem;color:var(--muted);margin-top:0.25rem">${ev.diffs.map(d => `<div>${d}</div>`).join('')}</div>`
+    : '';
+  return `<label style="display:flex;align-items:flex-start;gap:0.6rem;padding:0.55rem 0;border-bottom:1px solid var(--border);cursor:pointer">
+    <input type="checkbox" id="kal-cb-${idx}" ${checked} style="margin-top:0.2rem;flex-shrink:0">
+    <div style="flex:1;min-width:0">
+      <div style="font-weight:600;font-size:0.88rem">${ev.titel}</div>
+      <div style="font-size:0.78rem;color:var(--muted);margin-top:0.1rem">${datum(ev.datum)}${ev.zeitBeginn ? ' · '+ev.zeitBeginn+(ev.zeitEnde ? '–'+ev.zeitEnde : '')+' Uhr' : ''}${ev.ort ? ' · '+ev.ort : ''} · <span style="color:${farbe};font-weight:600">${icon} ${label}</span></div>
+      ${diffHtml}
+    </div>
+  </label>`;
+}
+
+// Schreibt nur die in der Vorschau angehakten Einträge nach Firestore.
+window.kalenderImportUebernehmen = async () => {
+  if (!_kalVorschauDaten) return;
+  const btn = document.querySelector('#kal-vorschau .btn-primary');
+  if (btn) { btn.disabled = true; btn.textContent = '⏳ Wird übernommen...'; }
+  try {
+    let neu = 0, aktualisiert = 0;
+    for (let idx = 0; idx < _kalVorschauDaten.length; idx++) {
+      const ev = _kalVorschauDaten[idx];
+      if (ev.status === 'unveraendert') continue;
+      const cb = document.getElementById('kal-cb-'+idx);
+      if (!cb || !cb.checked) continue;
+      const eintrag = {
+        titel: ev.titel, datum: new Date(ev.datum),
+        dauer_h: ev.dauer_h, beschreibung: ev.beschreibung || '',
+        zeitBeginn: ev.zeitBeginn || null, zeitEnde: ev.zeitEnde || null,
+        ort: ev.ort || null, typ: 'dienst',
+      };
+      if (ev.status === 'neu') {
+        await fw.addDoc('dienste', { ...eintrag, erstelltVon: fw.user.uid, erstelltAm: new Date() });
+        neu++;
+      } else {
+        // Merge statt Overwrite (fw.setDoc nutzt { merge: true }) – andere Felder wie Art,
+        // Bemerkung oder MP-Haken bleiben unberührt, Anwesenheiten sowieso.
+        await fw.setDoc('dienste/' + ev.bestehendId, eintrag);
+        aktualisiert++;
+      }
+    }
+    const teile = [];
+    if (neu > 0)          teile.push(neu + ' neu');
+    if (aktualisiert > 0) teile.push(aktualisiert + ' aktualisiert');
+    document.getElementById('kal-status').textContent = teile.length ? teile.join(' · ') : 'Nichts ausgewählt';
+    document.getElementById('kal-vorschau').innerHTML = '';
+    _kalVorschauDaten = null;
+    if (neu > 0 || aktualisiert > 0) setTimeout(() => navigate('dienste'), 1200);
+  } catch(e) {
+    fw.toast('Fehler: ' + e.message, true);
+    if (btn) { btn.disabled = false; btn.textContent = '✅ Ausgewählte übernehmen'; }
+  }
+};
+
+window.kalenderImportAbbrechen = () => {
+  document.getElementById('kal-vorschau').innerHTML = '';
+  document.getElementById('kal-status').textContent = '';
+  _kalVorschauDaten = null;
 };
 
 
