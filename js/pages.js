@@ -1022,6 +1022,7 @@ window.einsatzReagieren = async (uebungId, status) => {
       status, gemeldetAm: new Date(),
     });
   }
+  if (typ === 'einsatz') await pruefeBereitschaftAutoEndzeit(uebungId);
 };
 
 
@@ -1212,8 +1213,8 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
             // umschaltbar, nicht als Erstreaktion. Eigene Zeile oder Teilnahme-Verwalter.
             const darfUmschalten = isEinsatz && (kommt || bereitschaft) && (a.userId === fw.user.uid || fw.hatRecht(teilnRecht));
             const umschaltBtn = !darfUmschalten ? '' : bereitschaft
-              ? `<button onclick="bereitschaftUmschalten('${a.id}','kommt')" style="background:none;cursor:pointer;font-size:0.72rem;padding:0.15rem 0.4rem;color:var(--blue);border:1px solid var(--border);border-radius:6px" title="Zurück auf Ausrücken">🚛 Ausrücken</button>`
-              : `<button onclick="bereitschaftUmschalten('${a.id}','bereitschaft')" style="background:none;cursor:pointer;font-size:0.72rem;padding:0.15rem 0.4rem;color:var(--blue);border:1px solid var(--border);border-radius:6px" title="Auf Bereitschaft setzen">🏠 Bereitschaft</button>`;
+              ? `<button onclick="bereitschaftUmschalten('${a.id}','kommt','${id}')" style="background:none;cursor:pointer;font-size:0.72rem;padding:0.15rem 0.4rem;color:var(--blue);border:1px solid var(--border);border-radius:6px" title="Zurück auf Ausrücken">🚛 Ausrücken</button>`
+              : `<button onclick="bereitschaftUmschalten('${a.id}','bereitschaft','${id}')" style="background:none;cursor:pointer;font-size:0.72rem;padding:0.15rem 0.4rem;color:var(--blue);border:1px solid var(--border);border-radius:6px" title="Auf Bereitschaft setzen">🏠 Bereitschaft</button>`;
             const loeschBtn = fw.hatRecht(teilnRecht)
               ? `<button onclick="teilnehmerEntfernen('${a.id}','${id}','${u.typ}')" style="background:none;border:none;cursor:pointer;font-size:0.9rem;color:#9ca3af;padding:0.1rem 0.3rem" title="Entfernen">🗑</button>`
               : '';
@@ -1241,9 +1242,42 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
 
 // Nachträgliches Umschalten zwischen "rückt aus" und "Bereitschaft" (bleibt in der Wache).
 // Wird erst am Gerätehaus entschieden, daher kein Teil der Erstreaktion.
-window.bereitschaftUmschalten = async (aId, neuerStatus) => {
+window.bereitschaftUmschalten = async (aId, neuerStatus, uebungId) => {
   await fw.updateDoc('anwesenheiten/'+aId, { status: neuerStatus });
   fw.toast(neuerStatus === 'bereitschaft' ? 'Auf Bereitschaft gesetzt 🏠' : 'Auf Ausrücken gesetzt 🚛');
+  if (uebungId) await pruefeBereitschaftAutoEndzeit(uebungId);
+};
+
+// Automatische Endzeit für Einsätze: Sind ALLE Zusagenden ("Daumen hoch") gleichzeitig auf
+// Bereitschaft (niemand rückt tatsächlich mit dem Fahrzeug aus), wird die Endzeit automatisch
+// auf Beginn + 15 Minuten gesetzt – sonst bliebe der Einsatz ohne manuelles Nachtragen als
+// "unvollständig" (fehlende Endzeit) stehen, obwohl klar ist, dass er nach 15 Min. beendet ist.
+// zeitEndeAuto:true markiert eine so gesetzte Endzeit als automatisch, damit sie wieder entfernt
+// werden kann, falls doch noch jemand ausrückt. Eine von der Einsatzleitung manuell eingetragene
+// Endzeit (zeitEndeAuto nicht gesetzt) wird davon nie überschrieben oder entfernt.
+window.pruefeBereitschaftAutoEndzeit = async (uebungId) => {
+  const [eSnap, aSnap] = await Promise.all([
+    fw.getDoc('einsaetze/'+uebungId),
+    fw.getDocs('anwesenheiten', fw.where('uebungId','==',uebungId)),
+  ]);
+  if (!eSnap.exists()) return;
+  const e = eSnap.data();
+  const alle = aSnap.docs.map(d => d.data());
+  const ausrueckend  = alle.filter(a => a.status === 'kommt' || a.status === 'bestaetigt');
+  const bereitschaft = alle.filter(a => a.status === 'bereitschaft');
+  // "Alle Daumen hoch auf Bereitschaft" = es gibt mindestens eine Zusage, und niemand davon rückt aus
+  const sollAutoEnde = (ausrueckend.length + bereitschaft.length) > 0 && ausrueckend.length === 0 && !!e.zeitBeginn;
+
+  if (sollAutoEnde && (!e.zeitEnde || e.zeitEndeAuto === true)) {
+    const [bh, bm] = e.zeitBeginn.split(':').map(Number);
+    const endeMin  = bh*60 + bm + 15;
+    const zeitEnde = `${String(Math.floor(endeMin/60)%24).padStart(2,'0')}:${String(endeMin%60).padStart(2,'0')}`;
+    if (e.zeitEnde !== zeitEnde) {
+      await fw.updateDoc('einsaetze/'+uebungId, { zeitEnde, zeitEndeAuto: true, dauer_h: 0.25 });
+    }
+  } else if (!sollAutoEnde && e.zeitEndeAuto === true) {
+    await fw.updateDoc('einsaetze/'+uebungId, { zeitEnde: null, zeitEndeAuto: false, dauer_h: null });
+  }
 };
 
 // MP-Feuer-Haken: Feld direkt auf dienste/einsaetze, wie ein ganz normales Recht (z. B. News
@@ -1274,6 +1308,7 @@ window.teilnahmeMelden = async (uebungId, titel, dauer_h, typ, datumStr) => {
 window.teilnehmerEntfernen = async (aId, uebungId, typ) => {
   if (!confirm('Anwesenheit entfernen?')) return;
   await fw.deleteDoc('anwesenheiten/'+aId);
+  if (typ === 'einsatz') await pruefeBereitschaftAutoEndzeit(uebungId);
   fw.toast('Entfernt'); navigateReplace('uebung-detail', {id: uebungId, typ});
 };
 
@@ -1281,28 +1316,40 @@ window.teilnehmerEntfernen = async (aId, uebungId, typ) => {
 registerPage('uebung-eintragen', async (el, {id, titel, dauer, typ, datumStr}) => {
   fw.setTitle('Eintragen');
   fw.showBack(() => navigateBack());
-  const [usersSnap, bereitsSnap] = await Promise.all([
+  const [usersSnap, bereitsSnap, uebungSnap] = await Promise.all([
     fw.getDocs('users'),
     fw.getDocs('anwesenheiten', fw.where('uebungId','==',id)),
+    fw.getDoc(col(typ)+'/'+id),
   ]);
+  const uebung = uebungSnap.exists() ? uebungSnap.data() : {};
+  // Bemerkung: gleiches Recht wie in der Detail-Ansicht – nur für Berechtigte sichtbar.
+  const bemerkungRecht = typ === 'einsatz' ? 'einsaetze_bemerkungen' : 'dienste_bemerkungen';
+  const darfBemerkung = fw.hatRecht(bemerkungRecht);
   const bereits = new Set(bereitsSnap.docs.map(d => d.data().userId));
   const verfuegbar = usersSnap.docs.map(d => ({id:d.id,...d.data()}))
-    .filter(u => !bereits.has(u.id) && u.aktiv !== false)
+    .filter(k => !bereits.has(k.id) && k.aktiv !== false)
     .sort((a,b) => (a.nachname||'').localeCompare(b.nachname||''));
   el.innerHTML = `
     <div class="card">
       <div class="card-title">Kamerad eintragen</div>
-      <p class="muted" style="font-size:0.85rem;margin-bottom:0.8rem">${titel}</p>
+      <p class="muted" style="font-size:0.85rem;margin-bottom:0.8rem">${uebung.titel || titel || ''}</p>
       ${verfuegbar.length===0 ? '<div class="empty">Alle bereits eingetragen</div>' :
-        verfuegbar.map(u => `
+        verfuegbar.map(k => `
           <div class="list-item">
             <div class="list-item-body">
-              <div class="list-item-title">${u.nachname||''}, ${u.vorname||''}</div>
-              <div class="list-item-sub">${u.dienstgrad||'–'}</div>
+              <div class="list-item-title">${k.nachname||''}, ${k.vorname||''}</div>
+              <div class="list-item-sub">${k.dienstgrad||'–'}</div>
             </div>
-            <button class="btn btn-sm btn-success" onclick="direktEintragen('${id}','${u.id}','${kurzName(u.vorname,u.nachname)}',${dauer},'${typ}','${datumStr}')">Eintragen</button>
+            <button class="btn btn-sm btn-success" onclick="direktEintragen('${id}','${k.id}','${kurzName(k.vorname,k.nachname)}',${dauer},'${typ}','${datumStr}')">Eintragen</button>
           </div>`).join('')}
-    </div>`;
+    </div>
+    ${darfBemerkung ? `
+      <div class="card" style="margin-top:0.8rem">
+        <label style="font-size:0.82rem;color:var(--muted)">Bemerkung (nur für Berechtigte sichtbar)</label>
+        <textarea id="bemerkung-feld" rows="3" style="width:100%;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:0.5rem;font-size:0.85rem;color:var(--text);resize:vertical;margin-top:0.3rem">${uebung.bemerkung||''}</textarea>
+        <button class="btn btn-secondary btn-sm" style="margin-top:0.3rem" onclick="bemerkungSpeichern('${typ}','${id}')">💾 Bemerkung speichern</button>
+      </div>
+    ` : ''}`;
 });
 
 window.direktEintragen = async (uebungId, userId, name, dauer_h, typ, datumStr) => {
@@ -1318,6 +1365,7 @@ window.direktEintragen = async (uebungId, userId, name, dauer_h, typ, datumStr) 
     rolle,
     fuehrerschein: profil.fuehrerschein || '',
   });
+  if (typ === 'einsatz') await pruefeBereitschaftAutoEndzeit(uebungId);
   fw.toast(name+' eingetragen ✅');
   // Seite neu laden damit neue Anwesenheit sofort sichtbar - navigateReplace() statt navigate(),
   // sonst legt sich bei jedem eingetragenen Kameraden ein weiterer History-Eintrag drauf und der
@@ -1639,6 +1687,9 @@ window.uebungSpeichern = async (id, forcTyp) => {
     : (fw.profil.ortswehrIds?.length ? fw.profil.ortswehrIds : (fw.profil.ortswehrId ? [fw.profil.ortswehrId] : []));
   const data = { titel, datum: new Date(datumStr), typ, dauer_h, beschreibung: beschr, zeitBeginn, zeitEnde, ort, relevant, ortswehrIds };
   if (!isEinsatz) data.art = art;
+  // Manuell im Formular gespeicherte Endzeit ist keine automatische Bereitschafts-Endzeit mehr –
+  // Flag zurücksetzen, damit pruefeBereitschaftAutoEndzeit() diesen Wert nie wieder anfasst.
+  if (isEinsatz) data.zeitEndeAuto = false;
   const isNeu = !id;
   try {
     let uebungId = id;
