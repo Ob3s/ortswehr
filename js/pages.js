@@ -231,15 +231,23 @@ function initOrtAutocomplete(inputId, onSelect) {
 // Zählt-in-der-Einsatzstärke-als wird live aus den Lehrgängen abgeleitet, nicht mehr manuell
 // gepflegt: wer einen Zugführer- bzw. Gruppenführer-Lehrgang hat, zählt entsprechend, alle
 // anderen als Kamerad/Mannschaft.
-function staerkeKategorie(qualis) {
-  const qs = (qualis || []).map(q => (q.bezeichnung || q.titel || q.name || '').toLowerCase());
+// Optionaler Stichtag: zählt nur Lehrgänge, deren Prüfungsdatum (qualis[].datum) bis zu diesem
+// Zeitpunkt bereits erreicht war. Wichtig für historische Auswertungen (z. B. Stärke eines alten
+// Einsatzes) – sonst würde dort die HEUTIGE Qualifikation angezeigt, nicht die damalige (Bug: alte
+// Einsätze zeigten Kameraden rückwirkend schon als Gruppen-/Zugführer, obwohl sie das zum
+// Einsatzzeitpunkt noch nicht waren). Ohne Stichtag (Standardfall, z. B. Dashboard/aktueller
+// Status) bleibt das Verhalten wie bisher: alle vorhandenen Lehrgänge zählen.
+function staerkeKategorie(qualis, stichtag) {
+  const grenze = stichtag ? new Date(stichtag) : null;
+  const relevante = (qualis || []).filter(q => !grenze || (q.datum && new Date(q.datum) <= grenze));
+  const qs = relevante.map(q => (q.bezeichnung || q.titel || q.name || '').toLowerCase());
   if (qs.some(q => q.includes('zugführer') || q.includes('zugfuehrer'))) return 'zugfuehrer';
   if (qs.some(q => q.includes('gruppenführer') || q.includes('gruppenfuehrer'))) return 'gruppenfuehrer';
   return 'kamerad';
 }
-async function staerkeKategorieVon(userId) {
+async function staerkeKategorieVon(userId, stichtag) {
   const qSnap = await fw.getDocs('users/'+userId+'/qualifikationen');
-  return staerkeKategorie(qSnap.docs.map(d => d.data()));
+  return staerkeKategorie(qSnap.docs.map(d => d.data()), stichtag);
 }
 
 // ── Dienst-Sichtbarkeit ───────────────────────────────────
@@ -1163,6 +1171,10 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
     let usersMap   = new Map();
     let agtMap     = new Map();
     let staerkeMap = new Map();
+    // Stichtag für Stärke-/AGT-Berechnung: das Datum DIESES Einsatzes/Dienstes, nicht "heute" –
+    // sonst zeigen alte Einsätze rückwirkend die aktuelle Qualifikation der Kameraden an, statt
+    // die, die sie zum Zeitpunkt des Einsatzes tatsächlich hatten.
+    const bezugsDatum = u.datum?.toDate ? u.datum.toDate() : new Date(u.datum);
     const ladeProfilDaten = async () => {
       const usersSnap = await fw.getDocs('users');
       usersMap = new Map(usersSnap.docs.map(d => [d.id, d.data()]));
@@ -1172,17 +1184,22 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
         const profil = d.data();
         const qSnap = await fw.getDocs('users/'+d.id+'/qualifikationen');
         const qualis = qSnap.docs.map(q => q.data());
-        staerkeMap.set(d.id, staerkeKategorie(qualis));
-        const hatAgt = qualis.some(q => (q.bezeichnung||q.titel||q.name||'').toLowerCase().includes('agt'));
+        staerkeMap.set(d.id, staerkeKategorie(qualis, bezugsDatum));
+        const hatAgt = qualis.some(q => {
+          const bez = (q.bezeichnung||q.titel||q.name||'').toLowerCase();
+          return bez.includes('agt') && (!q.datum || new Date(q.datum) <= bezugsDatum);
+        });
         if (!hatAgt) return;
-        // AGT nur aktiv wenn alle 3 Nachweise gültig
-        const heute = new Date();
-        const j3 = new Date(); j3.setFullYear(heute.getFullYear()-3); j3.setHours(0,0,0,0);
-        const j1 = new Date(); j1.setFullYear(heute.getFullYear()-1); j1.setHours(0,0,0,0);
+        // AGT nur aktiv, wenn alle 3 Nachweise zum Bezugsdatum bereits erbracht (nicht erst danach)
+        // und noch gültig waren (G26 ≤ 3 Jahre, Übungen ≤ 1 Jahr vor dem Bezugsdatum).
+        const j3 = new Date(bezugsDatum); j3.setFullYear(bezugsDatum.getFullYear()-3); j3.setHours(0,0,0,0);
+        const j1 = new Date(bezugsDatum); j1.setFullYear(bezugsDatum.getFullYear()-1); j1.setHours(0,0,0,0);
         const unt  = profil.agt_untersuchung ? new Date(profil.agt_untersuchung) : null;
         const waer = profil.agt_waermeuebung ? new Date(profil.agt_waermeuebung) : null;
         const bel  = profil.agt_belastung    ? new Date(profil.agt_belastung)    : null;
-        const agtAktiv = unt && unt >= j3 && waer && waer >= j1 && bel && bel >= j1;
+        const agtAktiv = unt && unt <= bezugsDatum && unt >= j3
+          && waer && waer <= bezugsDatum && waer >= j1
+          && bel && bel <= bezugsDatum && bel >= j1;
         if (agtAktiv) agtMap.set(d.id, true);
       }));
     };
