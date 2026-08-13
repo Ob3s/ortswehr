@@ -44,10 +44,29 @@ function dauerFormat(h) {
   const min = gesamt % 60;
   return min === 0 ? `${std}:00` : `${std}:${String(min).padStart(2,'0')}`;
 }
+// Dauer aus Beginn/Ende in Stunden. Liegt die Ende-Uhrzeit numerisch VOR der Beginn-Uhrzeit
+// (z. B. 22:00 -> 02:00), geht das Ende als am Folgetag ein, statt eine negative Dauer zu ergeben –
+// betrifft Einsätze, die über Mitternacht hinausgehen (z. B. nächtliche Alarmierungen).
+function dauerAusZeiten(beginn, ende) {
+  const [bh, bm] = beginn.split(':').map(Number);
+  const [eh, em] = ende.split(':').map(Number);
+  const beginnMin = bh*60 + bm;
+  let endeMin = eh*60 + em;
+  if (endeMin < beginnMin) endeMin += 24*60;
+  return Math.round((endeMin - beginnMin) / 60 * 100) / 100;
+}
 function zeitZeile(u) {
-  const z = u.zeitBeginn && u.zeitEnde
-    ? `${u.zeitBeginn} – ${u.zeitEnde} Uhr`
-    : u.zeitBeginn ? `${u.zeitBeginn} Uhr` : '';
+  let z = '';
+  if (u.zeitBeginn && u.zeitEnde) {
+    const [bh, bm] = u.zeitBeginn.split(':').map(Number);
+    const [eh, em] = u.zeitEnde.split(':').map(Number);
+    // Über Mitternacht hinaus: Ende numerisch vor Beginn -> Hinweis "(+1 Tag)" dranhängen,
+    // damit "22:00 – 02:00 Uhr" nicht wie eine falsch herum eingetragene Zeit aussieht.
+    const ueberMitternacht = !isNaN(bh) && !isNaN(eh) && (eh*60+em) < (bh*60+bm);
+    z = `${u.zeitBeginn} – ${u.zeitEnde}${ueberMitternacht ? ' (+1 Tag)' : ''} Uhr`;
+  } else if (u.zeitBeginn) {
+    z = `${u.zeitBeginn} Uhr`;
+  }
   const d = u.dauer_h ? dauerFormat(u.dauer_h) + 'h' : '';
   return [z, d].filter(Boolean).join(' · ');
 }
@@ -1781,10 +1800,7 @@ window.berechneDauer = () => {
   const b = document.getElementById('f-beginn')?.value;
   const e = document.getElementById('f-ende')?.value;
   if (!b || !e) return;
-  const [bh, bm] = b.split(':').map(Number);
-  const [eh, em] = e.split(':').map(Number);
-  const diff = (eh * 60 + em) - (bh * 60 + bm);
-  if (diff > 0) document.getElementById('f-dauer').value = Math.round(diff / 60 * 100) / 100;
+  document.getElementById('f-dauer').value = dauerAusZeiten(b, e);
 };
 
 window.uebungSpeichern = async (id, forcTyp) => {
@@ -1799,11 +1815,9 @@ window.uebungSpeichern = async (id, forcTyp) => {
   const zeitBeginn = document.getElementById('f-beginn')?.value || null;
   const zeitEnde   = document.getElementById('f-ende')?.value || null;
 
-  // Dauer aus Zeiten berechnen wenn vorhanden
+  // Dauer aus Zeiten berechnen wenn vorhanden (mit Mitternachts-Überlauf, siehe dauerAusZeiten)
   if (isEinsatz && zeitBeginn && zeitEnde) {
-    const [bh, bm] = zeitBeginn.split(':').map(Number);
-    const [eh, em] = zeitEnde.split(':').map(Number);
-    dauer_h = Math.round(((eh*60+em) - (bh*60+bm)) / 60 * 100) / 100;
+    dauer_h = dauerAusZeiten(zeitBeginn, zeitEnde);
   }
 
   if (!titel) { fw.toast('Stichwort erforderlich', true); return; }
@@ -3121,9 +3135,7 @@ window.backendZeileSpeichern = async (btnEl) => {
     const ort        = tr.querySelector('.bt-ort').value.trim() || null;
     let dauer_h = 0;
     if (zeitBeginn && zeitEnde) {
-      const [bh,bm] = zeitBeginn.split(':').map(Number);
-      const [eh,em] = zeitEnde.split(':').map(Number);
-      dauer_h = Math.round(((eh*60+em) - (bh*60+bm)) / 60 * 100) / 100;
+      dauer_h = dauerAusZeiten(zeitBeginn, zeitEnde);
     }
     // Manuell gepflegte Endzeit ist keine automatische Bereitschafts-Endzeit mehr.
     Object.assign(data, { zeitBeginn, zeitEnde, ort, dauer_h, zeitEndeAuto: false });
