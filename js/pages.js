@@ -724,9 +724,10 @@ function renderEintrag(u, meineMap) {
     (fw.hatRecht('dienste_bearbeiten') && dienstUnvollstaendig(u)) ||
     (fw.hatRecht('einsaetze_bearbeiten') && einsatzUnvollstaendig(u))
   );
+  // Gelbe Zeilen-Hervorhebung nur noch für "heute" (Einsatz) – bei Unvollständig bleibt
+  // ausschließlich das ⚠️ vor dem Titel als Hinweis, keine Zeilen-Einfärbung mehr.
   let highlightStyle = '';
   if (istHeute) highlightStyle = 'border-left:3px solid var(--red);padding-left:0.5rem;background:rgba(220,38,38,0.08);';
-  else if (istUnvollstaendig) highlightStyle = 'border-left:3px solid #f59e0b;padding-left:0.5rem;background:rgba(245,158,11,0.08);';
   const nichtRelevantBadge = ''; // nicht relevant wird nicht in der Liste angezeigt
   const artLabel = u.art ? dienstArtLabel(u.art) : '';
   // MP-Feuer-Haken: ganz normales Recht (wie News sehen) – wer's nicht hat, sieht das Badge nicht.
@@ -737,7 +738,6 @@ function renderEintrag(u, meineMap) {
       <div class="list-item-title">${istHeute ? '🚨 ' : ''}${istUnvollstaendig ? '⚠️ ' : ''}${u.titel}${nichtRelevantBadge}</div>
       ${u.ort ? `<div class="list-item-sub" style="margin-top:0.05rem">📍 ${u.ort}</div>` : ''}
       <div class="list-item-sub">${datum(u.datum)}${zeitZeile(u) ? ' · '+zeitZeile(u) : ''}${artLabel ? ' · '+artLabel : ''}${u.typ !== 'einsatz' && u.relevant !== false ? ' · <span style="color:#22c55e;font-weight:600">40h</span>' : ''}${mpGeprueft ? ' · <span style="color:#16a34a;font-weight:600">✔ MP</span>' : ''}</div>
-      ${istUnvollstaendig ? `<div class="list-item-sub" style="color:#f59e0b;margin-top:0.1rem">⚠️ Unvollständig (Daten prüfen)</div>` : ''}
     </div>
     <div class="list-item-right">${badge}</div>
     <div class="list-chevron">›</div>
