@@ -748,7 +748,7 @@ function renderEintrag(u, meineMap) {
   const darfMp = fw.hatRecht(mpRecht);
   const mpGeprueft = u.mpGeprueft === true;
   const mpSpan = darfMp
-    ? `<span onclick="event.stopPropagation();mpUmschaltenListe(this,'${u.typ}','${u.id}',${!mpGeprueft})" style="cursor:pointer;font-weight:600;color:${mpGeprueft ? '#16a34a' : 'var(--muted)'}">${mpGeprueft ? '✔ MP' : '☐ MP'}</span>`
+    ? `<span onclick="event.stopPropagation();mpUmschaltenListe(this,'${u.typ}','${u.id}',${!mpGeprueft})" style="cursor:pointer;font-weight:600;color:${mpGeprueft ? '#16a34a' : 'var(--red)'}">${mpGeprueft ? '✔ MP' : '☐ MP'}</span>`
     : '';
   return `<div class="list-item" onclick="navigate('uebung-detail',{id:'${u.id}',typ:'${u.typ}'})" style="${highlightStyle}">
     <div class="list-item-body">
@@ -1413,7 +1413,7 @@ window.mpUmschaltenListe = async (el, typ, id, geprueft) => {
   try {
     await mpUmschalten(typ, id, geprueft);
     el.textContent = geprueft ? '✔ MP' : '☐ MP';
-    el.style.color = geprueft ? '#16a34a' : 'var(--muted)';
+    el.style.color = geprueft ? '#16a34a' : 'var(--red)';
     el.setAttribute('onclick', `event.stopPropagation();mpUmschaltenListe(this,'${typ}','${id}',${!geprueft})`);
   } finally {
     el.style.pointerEvents = '';
