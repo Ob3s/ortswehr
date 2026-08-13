@@ -1703,7 +1703,10 @@ window.uebungSpeichern = async (id, forcTyp) => {
   if (isNeu && mitAlarmFlag) await benachrichtigeOrtswehr(typ, titel, datumStr, dauer_h, uebungId, ortswehrIds);
   else if (isNeu && !mitAlarmFlag && typ === 'dienst') await benachrichtigeOrtswehr(typ, titel, datumStr, dauer_h, uebungId, ortswehrIds);
     fw.toast('Gespeichert ✅');
-    navigate(typ === 'einsatz' ? 'einsaetze' : 'dienste');
+    // Beim Bearbeiten zurück in den Einsatz/Dienst selbst (nicht in die Liste) – beim Neuanlegen
+    // gibt es noch keine sinnvolle Detailansicht zum Zurückspringen, daher weiterhin die Liste.
+    if (isNeu) navigate(typ === 'einsatz' ? 'einsaetze' : 'dienste');
+    else navigate('uebung-detail', {id: uebungId, typ});
   } catch(e) { fw.toast(e.message, true); }
 };
 
