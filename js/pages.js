@@ -2003,9 +2003,10 @@ registerPage('profil', async (el) => {
       </div>
     </div>
     <div class="stats-grid">
-      <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.dienstRelevant)}h</div><div class="stat-count">${stats.dienstRelevantAnzahl} ${stats.dienstRelevantAnzahl===1?'Dienst':'Dienste'}</div><div class="stat-label">Dienststunden ${new Date().getFullYear()}</div></div>
+      <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.dienstRelevant)}h</div><div class="stat-label">Dienststunden ${new Date().getFullYear()}</div></div>
+      <div class="stat-card"><div class="stat-zahl">${stats.dienste}</div><div class="stat-label">${stats.dienste===1?'Dienst':'Dienste'} ${new Date().getFullYear()}</div></div>
       <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.gesamtEinsatz)}h</div><div class="stat-label">Einsatzstunden ${new Date().getFullYear()}</div></div>
-      <div class="stat-card wide"><div class="stat-zahl">${stats.einsaetze}</div><div class="stat-label">${stats.einsaetze===1?'Einsatz':'Einsätze'} ${new Date().getFullYear()}</div></div>
+      <div class="stat-card"><div class="stat-zahl">${stats.einsaetze}</div><div class="stat-label">${stats.einsaetze===1?'Einsatz':'Einsätze'} ${new Date().getFullYear()}</div></div>
     </div>
 
     <details class="card" style="padding:0">
