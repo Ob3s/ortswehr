@@ -2809,8 +2809,20 @@ registerPage('dienstart-form', async (el, {id}) => {
     const doppelt = _dienstarten.some(a => a.id !== artId && a.bezeichnung.toLowerCase() === bez.toLowerCase());
     if (doppelt) { fw.toast('Diese Bezeichnung gibt es bereits', true); return; }
     const relevant = document.getElementById('da-relevant').checked;
+    let toastText = 'Gespeichert ✅';
     if (artId) {
+      const vorher = _dienstarten.find(a => a.id === artId);
       await fw.updateDoc('dienstarten/'+artId, { bezeichnung: bez, relevant });
+      // Die 40h-Zugehörigkeit war bisher nur auf jedem einzelnen Dienst als Kopie gespeichert
+      // (relevant), die beim Anlegen aus der Dienst-Art übernommen wurde – eine spätere Änderung
+      // der Dienst-Art wirkte sich dadurch NICHT auf schon bestehende Dienste aus (gemeldeter Bug).
+      // Deshalb hier bei geänderter Einstufung alle bestehenden Dienste dieser Art nachziehen.
+      if (vorher && vorher.relevant !== relevant) {
+        const dSnap = await fw.getDocs('dienste', fw.where('art','==',artId));
+        const betroffen = dSnap.docs.filter(d => d.data().relevant !== relevant);
+        await Promise.all(betroffen.map(d => fw.updateDoc('dienste/'+d.id, { relevant })));
+        if (betroffen.length) toastText = `Gespeichert ✅ (${betroffen.length} bestehende Dienste angepasst)`;
+      }
     } else {
       // Fortlaufende numerische ID vergeben, unabhängig von der Bezeichnung
       const maxId = _dienstarten.reduce((max, a) => Math.max(max, parseInt(a.id) || 0), 0);
@@ -2819,7 +2831,7 @@ registerPage('dienstart-form', async (el, {id}) => {
     }
     _dienstartenGeladen = false;
     await ladeDienstarten();
-    fw.toast('Gespeichert ✅');
+    fw.toast(toastText);
     navigate('dienstarten-verwalten');
   };
 
