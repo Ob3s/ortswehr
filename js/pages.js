@@ -1089,19 +1089,6 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
           <button class="btn btn-secondary btn-sm" onclick="ortSpeichern('${u.id}')">📍 Speichern</button>
         </div>
       ` : ''}
-      ${darfMp ? `
-        <label style="display:flex;align-items:center;gap:0.5rem;margin-top:0.6rem;cursor:pointer;font-size:0.85rem">
-          <input type="checkbox" id="mp-checkbox" ${mpGeprueft ? 'checked' : ''} onchange="mpUmschalten('${u.typ}','${id}',this.checked)">
-          In MP-Feuer überprüft
-        </label>
-      ` : ''}
-      ${darfBemerkung ? `
-        <div style="margin-top:0.6rem">
-          <label style="font-size:0.82rem;color:var(--muted)">Bemerkung (nur für Berechtigte sichtbar)</label>
-          <textarea id="bemerkung-feld" rows="3" style="width:100%;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:0.5rem;font-size:0.85rem;color:var(--text);resize:vertical;margin-top:0.3rem">${u.bemerkung||''}</textarea>
-          <button class="btn btn-secondary btn-sm" style="margin-top:0.3rem" onclick="bemerkungSpeichern('${u.typ}','${id}')">💾 Bemerkung speichern</button>
-        </div>
-      ` : ''}
     </div>
     <div class="section-header"><span id="einsatz-zaehler" style="font-weight:400;font-size:0.85rem"></span></div>
     <div id="einsatz-reaktionen" class="card">⏳ Lade...</div>
@@ -1114,6 +1101,23 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
         onclick="einsatzReagieren('${id}','kommt_nicht')">👎 Komme nicht</button>
     </div>
     ${fw.hatRecht(teilnRecht) ? `<div style="padding:0 0 0.5rem">${eintragBtn}</div>` : ''}
+    ${(darfMp || darfBemerkung) ? `
+    <div class="card" style="margin-top:0.8rem">
+      ${darfMp ? `
+        <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-size:0.85rem">
+          <input type="checkbox" id="mp-checkbox" ${mpGeprueft ? 'checked' : ''} onchange="mpUmschalten('${u.typ}','${id}',this.checked)">
+          In MP-Feuer überprüft
+        </label>
+      ` : ''}
+      ${darfBemerkung ? `
+        <div style="${darfMp ? 'margin-top:0.6rem' : ''}">
+          <label style="font-size:0.82rem;color:var(--muted)">Bemerkung (nur für Berechtigte sichtbar)</label>
+          <textarea id="bemerkung-feld" rows="3" style="width:100%;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:0.5rem;font-size:0.85rem;color:var(--text);resize:vertical;margin-top:0.3rem">${u.bemerkung||''}</textarea>
+          <button class="btn btn-secondary btn-sm" style="margin-top:0.3rem" onclick="bemerkungSpeichern('${u.typ}','${id}')">💾 Bemerkung speichern</button>
+        </div>
+      ` : ''}
+    </div>
+    ` : ''}
   `;
 
   // Autocomplete für inline Adress-Eingabe (Detail-Seite, kein <script> in innerHTML)
