@@ -68,12 +68,14 @@ function anwesenheitBadge(s) {
   return '<span style="color:#f59e0b;font-size:1.1rem">⏳</span>'; // keine Reaktion
 }
 // Stunden-Anrechnung für eine Anwesenheit: bei Diensten immer die hinterlegte Dauer.
-// Bei Einsätzen gilt die pauschale 15-Minuten-Regel für "Bereitschaft" (in der Wache
-// geblieben, nicht ausgerückt) sowie für Einsätze ohne Endzeit (Fahrzeug ist gar nicht
-// ausgerückt – dann bekommen alle Zusagen pauschal 15 Minuten, nicht nur die, die
-// explizit auf Bereitschaft gesetzt wurden).
+// Bei Einsätzen gilt die pauschale 15-Minuten-Regel für "Bereitschaft" (in der Wache geblieben,
+// nicht ausgerückt) – unabhängig davon, ob/wann die Einsatz-Endzeit gesetzt ist (siehe
+// pruefeBereitschaftAutoEndzeit()). Wer tatsächlich ausgerückt ist, bekommt die reguläre Dauer
+// aus Beginn/Ende des Einsatzes – solange die Endzeit noch fehlt (z. B. weil die automatische
+// Bereitschafts-Endzeit gerade zurückgenommen wurde, weil doch noch jemand ausgerückt ist),
+// zählen für ihn 0 Std., bis sie nachgetragen wird.
 function einsatzStunden(a, eintrag, istEinsatz) {
-  if (istEinsatz && (a.status === 'bereitschaft' || (eintrag && !eintrag.zeitEnde))) return 0.25;
+  if (istEinsatz && a.status === 'bereitschaft') return 0.25;
   return eintrag?.dauer_h ?? a.dauer_h ?? 0;
 }
 function getStats(anwesenheiten, dienstMap, einsatzMap, jahr) {
