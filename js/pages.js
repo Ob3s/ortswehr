@@ -1034,6 +1034,11 @@ let _einsatzListener = null; // aktiver onSnapshot Listener
 registerPage('uebung-detail', async (el, {id, typ}) => {
   // alten Listener aufräumen
   if (_einsatzListener) { _einsatzListener(); _einsatzListener = null; }
+  // Selbstheilung: pruefeBereitschaftAutoEndzeit() läuft sonst nur reaktiv bei einer neuen
+  // Reaktion/Umschaltung. Ältere Einsätze, die schon vor dieser Funktion (oder ohne seitdem
+  // erfolgte Änderung) auf "nur Bereitschaft" standen, holen die automatische Endzeit hier beim
+  // Öffnen der Detailseite nach.
+  if ((typ || 'dienst') === 'einsatz') await pruefeBereitschaftAutoEndzeit(id);
   const [snap, owSnap] = await Promise.all([
     fw.getDoc(col(typ||'dienst')+'/'+id),
     fw.getDocs('ortswehren'),
