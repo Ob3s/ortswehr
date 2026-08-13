@@ -85,7 +85,8 @@ function getStats(anwesenheiten, dienstMap, einsatzMap, jahr) {
   const vor12m  = new Date(); vor12m.setFullYear(jetzt.getFullYear()-1); vor12m.setHours(0,0,0,0);
 
   let gesamtEinsatz=0, dienstRelevant=0, dienstIrrelevant=0, einsaetze=0, dienste=0;
-  let dienstStunden12m=0;
+  let dienstRelevantAnzahl=0, dienstIrrelevantAnzahl=0;
+  let dienstStunden12m=0, dienste12m=0;
   for (const a of anwesenheiten) {
     if (a.status !== 'bestaetigt' && a.status !== 'kommt' && a.status !== 'bereitschaft') continue;
     const dienstEintrag  = dienstMap?.get(a.uebungId)  || null;
@@ -103,10 +104,10 @@ function getStats(anwesenheiten, dienstMap, einsatzMap, jahr) {
     } else {
       if (d.getFullYear() === jahrAkt) {
         dienste++;
-        if (istRelevant) dienstRelevant += h;
-        else             dienstIrrelevant += h;
+        if (istRelevant) { dienstRelevant += h; dienstRelevantAnzahl++; }
+        else             { dienstIrrelevant += h; dienstIrrelevantAnzahl++; }
       }
-      if (d >= vor12m && istRelevant) dienstStunden12m += h;
+      if (d >= vor12m && istRelevant) { dienstStunden12m += h; dienste12m++; }
     }
   }
   const gesamtDienst = dienstRelevant + dienstIrrelevant;
@@ -115,7 +116,9 @@ function getStats(anwesenheiten, dienstMap, einsatzMap, jahr) {
     gesamtDienst:     Math.round(gesamtDienst*10)/10,
     dienstRelevant:   Math.round(dienstRelevant*10)/10,
     dienstIrrelevant: Math.round(dienstIrrelevant*10)/10,
+    dienstRelevantAnzahl, dienstIrrelevantAnzahl,
     einsaetze, dienste,
+    dienste12m,       // Anzahl relevanter Dienste im rollierenden 12-Monats-Fenster (passend zu stunden12mZiel)
     stunden12m:       Math.round(dienstRelevant*10)/10,  // aktuelles Jahr, nur relevante
     ziel:             dienstStunden12m >= 40,
     stunden12mZiel:   Math.round(dienstStunden12m*10)/10,
@@ -2000,10 +2003,9 @@ registerPage('profil', async (el) => {
       </div>
     </div>
     <div class="stats-grid">
-      <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.dienstRelevant)}h</div><div class="stat-label">Dienststunden ${new Date().getFullYear()}</div></div>
-      <div class="stat-card"><div class="stat-zahl">${stats.dienste}</div><div class="stat-label">${stats.dienste===1?'Dienst':'Dienste'} ${new Date().getFullYear()}</div></div>
+      <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.dienstRelevant)}h</div><div class="stat-count">${stats.dienstRelevantAnzahl} ${stats.dienstRelevantAnzahl===1?'Dienst':'Dienste'}</div><div class="stat-label">Dienststunden ${new Date().getFullYear()}</div></div>
       <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.gesamtEinsatz)}h</div><div class="stat-label">Einsatzstunden ${new Date().getFullYear()}</div></div>
-      <div class="stat-card"><div class="stat-zahl">${stats.einsaetze}</div><div class="stat-label">${stats.einsaetze===1?'Einsatz':'Einsätze'} ${new Date().getFullYear()}</div></div>
+      <div class="stat-card wide"><div class="stat-zahl">${stats.einsaetze}</div><div class="stat-label">${stats.einsaetze===1?'Einsatz':'Einsätze'} ${new Date().getFullYear()}</div></div>
     </div>
 
     <details class="card" style="padding:0">
@@ -3640,7 +3642,7 @@ registerPage('kameraden', async (el) => {
     const erreicht = h >= ZIEL;
     const farbe = erreicht ? '#22c55e' : h >= ZIEL * 0.75 ? '#f59e0b' : 'var(--muted)';
     return `<div style="text-align:right;min-width:64px">
-      <div style="font-size:0.8rem;font-weight:600;color:${farbe}">${h}h</div>
+      <div style="font-size:0.8rem;font-weight:600;color:${farbe}">${h}h <span style="font-size:0.68rem;font-weight:500;color:var(--muted)">· ${stats.dienste12m}</span></div>
       <div style="background:var(--border);border-radius:3px;height:4px;width:64px;margin-top:3px">
         <div style="background:${farbe};width:${pct}%;height:4px;border-radius:3px"></div>
       </div>
@@ -4073,8 +4075,8 @@ registerPage('kamerad-detail', async (el, {id}) => {
       </div>
     </div>
     <div class="stats-grid">
-      <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.dienstRelevant)}h</div><div class="stat-label">Dienste (relevant) ${new Date().getFullYear()}</div></div>
-      <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.dienstIrrelevant)}h</div><div class="stat-label">Dienste (nicht relevant) ${new Date().getFullYear()}</div></div>
+      <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.dienstRelevant)}h</div><div class="stat-count">${stats.dienstRelevantAnzahl} ${stats.dienstRelevantAnzahl===1?'Dienst':'Dienste'}</div><div class="stat-label">Dienste (relevant) ${new Date().getFullYear()}</div></div>
+      <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.dienstIrrelevant)}h</div><div class="stat-count">${stats.dienstIrrelevantAnzahl} ${stats.dienstIrrelevantAnzahl===1?'Dienst':'Dienste'}</div><div class="stat-label">Dienste (nicht relevant) ${new Date().getFullYear()}</div></div>
       <div class="stat-card"><div class="stat-zahl">${dauerFormat(stats.gesamtEinsatz)}h</div><div class="stat-label">Einsatzstunden ${new Date().getFullYear()}</div></div>
       <div class="stat-card"><div class="stat-zahl">${stats.einsaetze}</div><div class="stat-label">${stats.einsaetze===1?'Einsatz':'Einsätze'} ${new Date().getFullYear()}</div></div>
     </div>
