@@ -1166,27 +1166,26 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
   // erfolgte Änderung) auf "nur Bereitschaft" standen, holen die automatische Endzeit hier beim
   // Öffnen der Detailseite nach.
   if ((typ || 'dienst') === 'einsatz') await pruefeBereitschaftAutoEndzeit(id);
-  const [snap, owSnap, dNavSnap, eNavSnap] = await Promise.all([
+  const navCol = (typ || 'dienst') === 'einsatz' ? 'einsaetze' : 'dienste';
+  const [snap, owSnap, navSnap] = await Promise.all([
     fw.getDoc(col(typ||'dienst')+'/'+id),
     fw.getDocs('ortswehren'),
-    fw.getDocs('dienste'),
-    fw.getDocs('einsaetze'),
+    fw.getDocs(navCol),
   ]);
   if (!snap.exists()) { el.innerHTML='<div class="empty">Nicht gefunden</div>'; return; }
   const u = {id,...snap.data()};
   const owMap = new Map(owSnap.docs.map(d => [d.id, d.data().name]));
 
-  // Vorheriger/Nächster: Dienste UND Einsätze zusammen chronologisch durchblättern können,
-  // damit man beim Abarbeiten (z. B. MP-Kontrolle) nicht jedes Mal in die Liste zurück muss.
-  const navListe = [
-    ...dNavSnap.docs.map(d => ({id:d.id, typ:'dienst', datum:d.data().datum})),
-    ...eNavSnap.docs.map(d => ({id:d.id, typ:'einsatz', datum:d.data().datum})),
-  ].sort((a,b) => {
-    const da = a.datum?.toDate ? a.datum.toDate() : new Date(a.datum);
-    const db = b.datum?.toDate ? b.datum.toDate() : new Date(b.datum);
-    return da - db;
-  });
-  const navIdx = navListe.findIndex(x => x.id === u.id && x.typ === u.typ);
+  // Vorheriger/Nächster: nur innerhalb des gleichen Typs (Dienst bleibt unter Diensten, Einsatz
+  // unter Einsätzen) chronologisch durchblättern, damit man beim Abarbeiten (z. B. MP-Kontrolle)
+  // nicht jedes Mal in die Liste zurück muss.
+  const navListe = navSnap.docs.map(d => ({id:d.id, typ:u.typ, datum:d.data().datum}))
+    .sort((a,b) => {
+      const da = a.datum?.toDate ? a.datum.toDate() : new Date(a.datum);
+      const db = b.datum?.toDate ? b.datum.toDate() : new Date(b.datum);
+      return da - db;
+    });
+  const navIdx = navListe.findIndex(x => x.id === u.id);
   const navVorheriger = navIdx > 0 ? navListe[navIdx-1] : null;
   const navNaechster  = navIdx >= 0 && navIdx < navListe.length-1 ? navListe[navIdx+1] : null;
   const navBtn = (eintrag, label) => eintrag
