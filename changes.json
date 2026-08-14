@@ -1,1 +1,1 @@
-[{"version": "20260811120546", "datum": "11.08.2026", "punkte": ["Fix: Alarm/Benachrichtigung bei Kameraden mit mehreren Ortswehren kam teils bei niemandem an"]}]
+[{"version": "20260814122654", "datum": "14.08.2026", "punkte": ["Dienst-Art speichern gleicht jetzt immer bestehende Dienste ab (vorher nur bei erkannter \u00c4nderung)", "Dienst-Arten: neuer Knopf, um bestehende Dienste einmalig mit der aktuellen 40h-Einstufung abzugleichen (bereinigt alte Karteileichen)"]}]
