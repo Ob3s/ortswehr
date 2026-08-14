@@ -776,7 +776,7 @@ function renderEintrag(u, meineMap) {
   const darfMp = fw.hatRecht(mpRecht);
   const mpGeprueft = u.mpGeprueft === true;
   const mpSpan = darfMp
-    ? `<span onclick="event.stopPropagation();mpUmschaltenListe(this,'${u.typ}','${u.id}',${!mpGeprueft})" style="cursor:pointer;font-weight:600;color:${mpGeprueft ? '#16a34a' : 'var(--red)'}">${mpGeprueft ? '✔ MP' : '☐ MP'}</span>`
+    ? `<span onclick="event.stopPropagation();mpUmschaltenListe(this,'${u.typ}','${u.id}',${!mpGeprueft})" style="cursor:pointer;font-weight:600;color:${mpGeprueft ? '#16a34a' : 'var(--red)'}">${mpGeprueft ? '✔ MP' : '✕ MP'}</span>`
     : '';
   return `<div class="list-item" onclick="navigate('uebung-detail',{id:'${u.id}',typ:'${u.typ}'})" style="${highlightStyle}">
     <div class="list-item-body">
@@ -1166,13 +1166,38 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
   // erfolgte Änderung) auf "nur Bereitschaft" standen, holen die automatische Endzeit hier beim
   // Öffnen der Detailseite nach.
   if ((typ || 'dienst') === 'einsatz') await pruefeBereitschaftAutoEndzeit(id);
-  const [snap, owSnap] = await Promise.all([
+  const [snap, owSnap, dNavSnap, eNavSnap] = await Promise.all([
     fw.getDoc(col(typ||'dienst')+'/'+id),
     fw.getDocs('ortswehren'),
+    fw.getDocs('dienste'),
+    fw.getDocs('einsaetze'),
   ]);
   if (!snap.exists()) { el.innerHTML='<div class="empty">Nicht gefunden</div>'; return; }
   const u = {id,...snap.data()};
   const owMap = new Map(owSnap.docs.map(d => [d.id, d.data().name]));
+
+  // Vorheriger/Nächster: Dienste UND Einsätze zusammen chronologisch durchblättern können,
+  // damit man beim Abarbeiten (z. B. MP-Kontrolle) nicht jedes Mal in die Liste zurück muss.
+  const navListe = [
+    ...dNavSnap.docs.map(d => ({id:d.id, typ:'dienst', datum:d.data().datum})),
+    ...eNavSnap.docs.map(d => ({id:d.id, typ:'einsatz', datum:d.data().datum})),
+  ].sort((a,b) => {
+    const da = a.datum?.toDate ? a.datum.toDate() : new Date(a.datum);
+    const db = b.datum?.toDate ? b.datum.toDate() : new Date(b.datum);
+    return da - db;
+  });
+  const navIdx = navListe.findIndex(x => x.id === u.id && x.typ === u.typ);
+  const navVorheriger = navIdx > 0 ? navListe[navIdx-1] : null;
+  const navNaechster  = navIdx >= 0 && navIdx < navListe.length-1 ? navListe[navIdx+1] : null;
+  const navBtn = (eintrag, label) => eintrag
+    ? `<button class="btn btn-secondary btn-sm" onclick="navigate('uebung-detail',{id:'${eintrag.id}',typ:'${eintrag.typ}'})">${label}</button>`
+    : `<span></span>`;
+  const navZeile = (navVorheriger || navNaechster)
+    ? `<div style="display:flex;justify-content:space-between;gap:0.5rem;margin-bottom:0.6rem">
+        ${navBtn(navVorheriger, '‹ Vorheriger')}
+        ${navBtn(navNaechster, 'Nächster ›')}
+      </div>`
+    : '';
   const isEinsatz = u.typ === 'einsatz';
   const bearbRecht = isEinsatz ? 'einsaetze_bearbeiten' : 'dienste_bearbeiten';
   const teilnRecht = isEinsatz ? 'einsaetze_teilnahme_verwalten' : 'dienste_teilnahme_verwalten';
@@ -1198,6 +1223,7 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
     : '';
 
   el.innerHTML = `
+    ${navZeile}
     <div class="card">
       <div style="font-weight:600;font-size:1.1rem">${u.titel}</div>
       <div style="margin-top:0.3rem;color:var(--muted);font-size:0.85rem">${datum(u.datum)}${zeitZeile(u) ? ' · '+zeitZeile(u) : ''}${!isEinsatz && u.art ? ' · '+dienstArtLabel(u.art) : ''}${!isEinsatz && u.relevant !== false ? ' · <span style="color:#22c55e;font-weight:600">40h</span>' : ''}</div>
@@ -1440,7 +1466,7 @@ window.mpUmschaltenListe = async (el, typ, id, geprueft) => {
   el.style.pointerEvents = 'none';
   try {
     await mpUmschalten(typ, id, geprueft);
-    el.textContent = geprueft ? '✔ MP' : '☐ MP';
+    el.textContent = geprueft ? '✔ MP' : '✕ MP';
     el.style.color = geprueft ? '#16a34a' : 'var(--red)';
     el.setAttribute('onclick', `event.stopPropagation();mpUmschaltenListe(this,'${typ}','${id}',${!geprueft})`);
   } finally {
