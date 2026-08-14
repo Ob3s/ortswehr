@@ -2802,10 +2802,37 @@ registerPage('dienstarten-verwalten', async (el) => {
                 <button onclick="dienstartRunter('${a.id}')" ${i===arten.length-1?'disabled':''} style="background:none;border:none;color:${i===arten.length-1?'#ccc':'var(--text)'};cursor:pointer;padding:0.1rem 0.4rem;font-size:1rem">▼</button>
               </div>
             </div>`).join('')}
-      </div>`;
+      </div>
+      ${arten.length ? `
+      <div style="margin-top:0.8rem">
+        <button id="da-abgleich-btn" class="btn btn-secondary btn-sm btn-full" onclick="dienstartenAlleAbgleichen()">🔄 Bestehende Dienste mit 40h-Einstufung abgleichen</button>
+        <div class="muted" style="font-size:0.78rem;text-align:center;margin-top:0.3rem">Für alte Dienste, deren 40h-Zuordnung noch vom Stand vor einer Dienst-Art-Änderung stammt</div>
+      </div>` : ''}`;
   };
 
   renderListe();
+
+  // Einmaliger Komplett-Abgleich über ALLE Dienst-Arten hinweg: nötig für Dienste, deren
+  // relevant-Feld schon VOR dem Fix in dienstartSpeichern (der jetzt bei jedem Speichern
+  // abgleicht) veraltet ist – die werden sonst erst korrigiert, wenn jemand die jeweilige
+  // Dienst-Art manuell einmal erneut speichert.
+  window.dienstartenAlleAbgleichen = async () => {
+    if (!confirm('Alle bestehenden Dienste auf die aktuelle 40h-Einstufung ihrer Dienst-Art abgleichen?')) return;
+    const btn = document.getElementById('da-abgleich-btn');
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Wird abgeglichen...'; }
+    try {
+      const artMap = new Map(arten.map(a => [a.id, a.relevant !== false]));
+      const dSnap = await fw.getDocs('dienste');
+      const betroffen = dSnap.docs.filter(d => {
+        const data = d.data();
+        return data.art && artMap.has(data.art) && data.relevant !== artMap.get(data.art);
+      });
+      await Promise.all(betroffen.map(d => fw.updateDoc('dienste/'+d.id, { relevant: artMap.get(d.data().art) })));
+      fw.toast(betroffen.length ? `${betroffen.length} Dienste angepasst ✅` : 'War schon alles aktuell ✅');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = '🔄 Bestehende Dienste mit 40h-Einstufung abgleichen'; }
+    }
+  };
 
   window.dienstartHoch = async (id) => {
     const idx = arten.findIndex(a => a.id === id);
@@ -2862,18 +2889,19 @@ registerPage('dienstart-form', async (el, {id}) => {
     const relevant = document.getElementById('da-relevant').checked;
     let toastText = 'Gespeichert ✅';
     if (artId) {
-      const vorher = _dienstarten.find(a => a.id === artId);
       await fw.updateDoc('dienstarten/'+artId, { bezeichnung: bez, relevant });
       // Die 40h-Zugehörigkeit war bisher nur auf jedem einzelnen Dienst als Kopie gespeichert
       // (relevant), die beim Anlegen aus der Dienst-Art übernommen wurde – eine spätere Änderung
       // der Dienst-Art wirkte sich dadurch NICHT auf schon bestehende Dienste aus (gemeldeter Bug).
-      // Deshalb hier bei geänderter Einstufung alle bestehenden Dienste dieser Art nachziehen.
-      if (vorher && vorher.relevant !== relevant) {
-        const dSnap = await fw.getDocs('dienste', fw.where('art','==',artId));
-        const betroffen = dSnap.docs.filter(d => d.data().relevant !== relevant);
-        await Promise.all(betroffen.map(d => fw.updateDoc('dienste/'+d.id, { relevant })));
-        if (betroffen.length) toastText = `Gespeichert ✅ (${betroffen.length} bestehende Dienste angepasst)`;
-      }
+      // WICHTIG: bewusst IMMER abgleichen, nicht nur wenn sich die Checkbox gerade jetzt ändert –
+      // Dienste, die VOR diesem Fix angelegt wurden, können schon jetzt vom aktuellen Stand der
+      // Dienst-Art abweichen, ohne dass beim Speichern eine Änderung erkannt würde (genau das war
+      // der gemeldete Fall bei "Fortbildung": Checkbox stand schon lange auf "nicht relevant",
+      // aber alte Dienste hatten noch relevant:true von vor der ersten Korrektur).
+      const dSnap = await fw.getDocs('dienste', fw.where('art','==',artId));
+      const betroffen = dSnap.docs.filter(d => d.data().relevant !== relevant);
+      await Promise.all(betroffen.map(d => fw.updateDoc('dienste/'+d.id, { relevant })));
+      if (betroffen.length) toastText = `Gespeichert ✅ (${betroffen.length} bestehende Dienste angepasst)`;
     } else {
       // Fortlaufende numerische ID vergeben, unabhängig von der Bezeichnung
       const maxId = _dienstarten.reduce((max, a) => Math.max(max, parseInt(a.id) || 0), 0);
