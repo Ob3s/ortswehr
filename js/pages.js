@@ -1240,6 +1240,7 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
           🗺 Navigation
         </a>` : ''}
       </div>` : ''}</div>
+      ${isEinsatz && u.ort ? `<div id="loeschwasser-karte" style="height:220px;border-radius:8px;margin-top:0.6rem;background:var(--panel2)">⏳ Lade Karte...</div>` : ''}
       ${isEinsatz && !u.zeitEnde && fw.hatRecht(bearbRecht) ? `
         <button class="btn btn-secondary btn-sm" style="margin-top:0.6rem" onclick="navigate('uebung-form',{id:'${u.id}',typ:'einsatz'})">⏱ Endzeit nachtragen</button>
       ` : ''}
@@ -1282,6 +1283,7 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
 
   // Autocomplete für inline Adress-Eingabe (Detail-Seite, kein <script> in innerHTML)
   requestAnimationFrame(() => initOrtAutocomplete('ort-inline'));
+  if (isEinsatz && u.ort) requestAnimationFrame(() => initLoeschwasserKarte(u));
 
   // Live: Ort-Änderungen anderer Geräte sofort anzeigen
   if (isEinsatz) {
@@ -1664,6 +1666,10 @@ const RECHTE_KATALOG = [
     { key: 'pruefaufgaben_bearbeiten', label: 'Bearbeiten' },
     { key: 'pruefaufgaben_loeschen',   label: 'Löschen' },
     { key: 'pruefaufgaben_ergebnisse', label: 'Prüfergebnisse eintragen' },
+  ]},
+  { bereich: 'Löschwasser', rechte: [
+    { key: 'loeschwasser_verwalten', label: 'Stammdaten anlegen/bearbeiten/löschen' },
+    { key: 'loeschwasser_pruefen',   label: 'Status melden (geprüft/funktioniert, Bemerkung)' },
   ]},
   { bereich: 'News', rechte: [
     { key: 'news_sehen',       label: 'Sehen' },
@@ -3981,6 +3987,7 @@ window.aufgabeEinblenden = async (key) => {
       ${fw.hatRecht('stammdaten_dienstgrade') ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('einstellungen-admin')">Dienstgrade & Filter</button>` : ''}
       ${fw.hatRecht('stammdaten_dienstarten') ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('dienstarten-verwalten')">Dienst-Arten</button>` : ''}
       ${fw.hatRecht('stammdaten_raenge') ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('raenge-verwalten')">Ränge</button>` : ''}
+      ${(fw.hatRecht('loeschwasser_verwalten') || fw.hatRecht('loeschwasser_pruefen')) ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('loeschwasser-verwalten')">💧 Löschwasser</button>` : ''}
       ${(fw.hatRecht('dienste_bearbeiten') || fw.hatRecht('einsaetze_bearbeiten')) ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('uebungen-backend')">📋 Dienste & Einsätze bearbeiten</button>` : ''}
     </div>
   `;
@@ -4811,6 +4818,278 @@ window.pruefaufgabeLoeschen = async (id) => {
   await fw.deleteDoc('pruefaufgaben/'+id);
   fw.toast('Gelöscht');
   navigate('dienste');
+};
+
+// ── Löschwasser (Phase 1: eigene Firestore-Einträge + Karte auf Einsatz-Detail) ────────────
+// Bewusst NICHT Teil dieser Phase: Overpass/OSM-Datenimport mit Zuständigkeits-Auswahl und
+// Offline-Vorab-Download der Kartenkacheln – kommt in einer späteren Phase.
+
+const LOESCHWASSER_TYPEN = {
+  ueberflurhydrant: { label: 'Überflurhydrant',    icon: '🔴', farbe: '#dc2626' },
+  unterflurhydrant: { label: 'Unterflurhydrant',   icon: '🟠', farbe: '#f59e0b' },
+  teich:            { label: 'Löschwasserteich',   icon: '🔵', farbe: '#0284c7' },
+  zisterne:         { label: 'Zisterne',           icon: '🟣', farbe: '#7c3aed' },
+  brunnen:          { label: 'Brunnen',            icon: '🟤', farbe: '#78350f' },
+};
+
+// Leaflet.js wird nur bei Bedarf nachgeladen (Einsatz-Detail-Karte bzw. Löschwasser-Formular),
+// nicht bei jedem Seitenaufruf – spart Ladezeit für alle anderen Seiten. Einmal geladen bleibt
+// window.L bestehen, weitere Aufrufe geben sofort das schon geladene Leaflet zurück.
+let _leafletLadePromise = null;
+function ladeLeaflet() {
+  if (window.L) return Promise.resolve(window.L);
+  if (_leafletLadePromise) return _leafletLadePromise;
+  _leafletLadePromise = new Promise((resolve, reject) => {
+    const css = document.createElement('link');
+    css.rel = 'stylesheet';
+    css.href = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.css';
+    document.head.appendChild(css);
+    const script = document.createElement('script');
+    script.src = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js';
+    script.onload = () => resolve(window.L);
+    script.onerror = () => reject(new Error('Karte konnte nicht geladen werden'));
+    document.head.appendChild(script);
+  });
+  return _leafletLadePromise;
+}
+
+// Entfernung zweier Koordinaten in Metern (Haversine) – reicht für den ~300m-Umkreis locker aus,
+// keine externe Geo-Bibliothek nötig.
+function distanzMeter(lat1, lng1, lat2, lng2) {
+  const R = 6371000;
+  const toRad = d => d * Math.PI / 180;
+  const dLat = toRad(lat2 - lat1), dLng = toRad(lng2 - lng1);
+  const a = Math.sin(dLat/2)**2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+}
+
+// Geokodiert einen Adresstext über Nominatim (OSM, kostenlos, kein API-Key) – bewusst NICHT über
+// die bestehende (kostenpflichtige) Google-Places-Autocomplete-Funktion, die nur Text liefert,
+// keine Koordinaten. Ergebnis wird auf dem Einsatz gecacht (siehe ladeEinsatzKoordinaten), um
+// Nominatims Nutzungsbedingungen (max. ~1 Anfrage/Sek., kein Massenabruf) einzuhalten.
+async function geocodeAdresse(adresse) {
+  const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&countrycodes=de&q=${encodeURIComponent(adresse)}`;
+  const res = await fetch(url, { headers: { 'Accept-Language': 'de' } });
+  if (!res.ok) throw new Error('Geocoding fehlgeschlagen');
+  const data = await res.json();
+  if (!data.length) return null;
+  return { lat: parseFloat(data[0].lat), lng: parseFloat(data[0].lon) };
+}
+
+// Liefert lat/lng zum Einsatzort – aus dem Cache auf dem Einsatz-Dokument, falls vorhanden und der
+// Ort-Text seitdem unverändert ist, sonst frisch über Nominatim und danach best-effort
+// zurückgeschrieben (schlägt das Schreiben fehl, macht die Karte trotzdem mit dem frischen
+// Ergebnis weiter – nur der Cache fürs nächste Mal fehlt dann).
+async function ladeEinsatzKoordinaten(u) {
+  if (!u.ort) return null;
+  if (u.ortLat != null && u.ortLng != null && u.ortGeocodiert === u.ort) {
+    return { lat: u.ortLat, lng: u.ortLng };
+  }
+  const koord = await geocodeAdresse(u.ort);
+  if (!koord) return null;
+  try {
+    await fw.updateDoc('einsaetze/'+u.id, { ortLat: koord.lat, ortLng: koord.lng, ortGeocodiert: u.ort });
+  } catch(e) { /* Cache-Schreiben ist best effort */ }
+  return koord;
+}
+
+// Karte auf der Einsatz-Detailseite: Einsatzort + Löschwasserquellen im Umkreis von 300m.
+async function initLoeschwasserKarte(u) {
+  const el = document.getElementById('loeschwasser-karte');
+  if (!el) return;
+  try {
+    const koord = await ladeEinsatzKoordinaten(u);
+    if (!koord) { el.innerHTML = '<div class="muted" style="font-size:0.78rem;padding:0.5rem 0">Adresse konnte nicht auf der Karte gefunden werden.</div>'; return; }
+    const L = await ladeLeaflet();
+    if (!document.getElementById('loeschwasser-karte')) return; // Seite evtl. inzwischen gewechselt
+    el.innerHTML = '';
+    const map = L.map(el, { scrollWheelZoom: false }).setView([koord.lat, koord.lng], 16);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap-Mitwirkende', maxZoom: 19,
+    }).addTo(map);
+    L.marker([koord.lat, koord.lng], {
+      icon: L.divIcon({ className: '', html: '<div style="font-size:1.4rem">🚨</div>', iconSize: [28,28], iconAnchor: [14,14] })
+    }).addTo(map).bindPopup('Einsatzort');
+
+    const lwSnap = await fw.getDocs('loeschwasser');
+    const quellen = lwSnap.docs
+      .map(d => ({id:d.id, ...d.data()}))
+      .filter(q => q.aktiv !== false && q.lat != null && q.lng != null)
+      .map(q => ({...q, distanz: distanzMeter(koord.lat, koord.lng, q.lat, q.lng)}))
+      .filter(q => q.distanz <= 300);
+
+    quellen.forEach(q => {
+      const typ = LOESCHWASSER_TYPEN[q.typ] || { label: q.typ, icon: '💧', farbe: 'var(--muted)' };
+      const statusZeile = q.geprueftAm
+        ? `${q.funktioniert === false ? '❌ Funktioniert nicht' : '✅ Funktioniert'} · geprüft ${datum(q.geprueftAm)}`
+        : 'Noch nicht geprüft';
+      const popup = `<div style="min-width:160px">
+        <div style="font-weight:600">${typ.icon} ${typ.label}</div>
+        ${q.nennweite ? `<div style="font-size:0.82rem">Nennweite: ${q.nennweite}</div>` : ''}
+        ${q.kapazitaet ? `<div style="font-size:0.82rem">Kapazität: ${q.kapazitaet}</div>` : ''}
+        <div style="font-size:0.82rem;margin-top:0.2rem">${statusZeile}</div>
+        ${q.notizen ? `<div style="font-size:0.8rem;color:#666;margin-top:0.2rem">${q.notizen}</div>` : ''}
+        <a href="https://www.google.com/maps/search/?api=1&query=${q.lat},${q.lng}" target="_blank" style="display:inline-block;margin-top:0.4rem;font-size:0.78rem">🗺 Navigation öffnen</a>
+      </div>`;
+      L.marker([q.lat, q.lng], {
+        icon: L.divIcon({ className: '', html: `<div style="font-size:1.3rem;filter:drop-shadow(0 0 1px #fff)">${typ.icon}</div>`, iconSize: [24,24], iconAnchor: [12,12] })
+      }).addTo(map).bindPopup(popup);
+    });
+
+    if (!quellen.length) {
+      const hinweis = document.createElement('div');
+      hinweis.className = 'muted';
+      hinweis.style.cssText = 'font-size:0.78rem;padding:0.4rem 0 0';
+      hinweis.textContent = 'Keine Löschwasserquellen im Umkreis von 300 m erfasst.';
+      el.after(hinweis);
+    }
+  } catch(e) {
+    el.innerHTML = '<div class="muted" style="font-size:0.78rem;padding:0.5rem 0">Karte konnte nicht geladen werden.</div>';
+    console.warn('Löschwasserkarte Fehler:', e);
+  }
+}
+
+// ── Löschwasser-Verwaltung ────────────────────────────────
+registerPage('loeschwasser-verwalten', async (el) => {
+  const darfVerwalten = fw.hatRecht('loeschwasser_verwalten');
+  const darfPruefen   = darfVerwalten || fw.hatRecht('loeschwasser_pruefen');
+  if (!darfVerwalten && !darfPruefen) { navigate('dashboard'); return; }
+  fw.setTitle('Löschwasser');
+  fw.showBack(() => navigateBack());
+  if (darfVerwalten) fw.showHeaderAction('+ Neu', () => navigate('loeschwasser-form', {}));
+
+  const snap = await fw.getDocs('loeschwasser');
+  const alle = snap.docs.map(d => ({id:d.id, ...d.data()})).filter(q => q.aktiv !== false);
+
+  if (!alle.length) {
+    el.innerHTML = `<div class="empty">Noch keine Löschwasser-Objekte erfasst</div>
+      ${darfVerwalten ? `<button class="btn btn-secondary btn-sm" style="margin-top:0.5rem" onclick="navigate('loeschwasser-form',{})">+ Erstes Objekt anlegen</button>` : ''}`;
+    return;
+  }
+
+  const zeile = (q) => {
+    const typ = LOESCHWASSER_TYPEN[q.typ] || { label: q.typ, icon: '💧', farbe: 'var(--muted)' };
+    const statusFarbe = !q.geprueftAm ? '#94a3b8' : (q.funktioniert === false ? '#dc2626' : '#22c55e');
+    const statusText  = !q.geprueftAm ? 'Noch nicht geprüft' : `${q.funktioniert === false ? '❌ Funktioniert nicht' : '✅ Funktioniert'} · geprüft ${datum(q.geprueftAm)}`;
+    return `<div class="list-item">
+      <div class="list-item-icon" style="background:${typ.farbe}22">${typ.icon}</div>
+      <div class="list-item-body">
+        <div class="list-item-title">${typ.label}${q.nennweite ? ` · ${q.nennweite}` : ''}</div>
+        <div class="list-item-sub" style="color:${statusFarbe}">${statusText}</div>
+        ${q.notizen ? `<div class="list-item-sub">${q.notizen}</div>` : ''}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:0.2rem;align-items:flex-end">
+        ${darfPruefen ? `<div style="display:flex;gap:0.2rem">
+          <button class="btn btn-sm btn-success" style="font-size:0.7rem;padding:0.15rem 0.35rem" onclick="loeschwasserStatusSetzen('${q.id}',true)" title="Funktioniert">✅</button>
+          <button class="btn btn-sm btn-danger" style="font-size:0.7rem;padding:0.15rem 0.35rem" onclick="loeschwasserStatusSetzen('${q.id}',false)" title="Funktioniert nicht">❌</button>
+          <button class="btn btn-sm btn-secondary" style="font-size:0.7rem;padding:0.15rem 0.35rem" onclick="loeschwasserBemerkung('${q.id}')" title="Bemerkung">💬</button>
+        </div>` : ''}
+        ${darfVerwalten ? `<button class="btn btn-sm btn-secondary" style="font-size:0.7rem;padding:0.15rem 0.4rem" onclick="navigate('loeschwasser-form',{id:'${q.id}'})">✏️</button>` : ''}
+      </div>
+    </div>`;
+  };
+
+  el.innerHTML = `<div class="card" style="padding:0">${alle.map(zeile).join('')}</div>`;
+});
+
+window.loeschwasserStatusSetzen = async (id, funktioniert) => {
+  await fw.setDoc('loeschwasser/'+id, { geprueftAm: new Date(), geprueftVon: fw.user.uid, funktioniert });
+  fw.toast(funktioniert ? 'Als funktionierend markiert ✅' : 'Als defekt markiert ❌');
+  navigate('loeschwasser-verwalten');
+};
+
+window.loeschwasserBemerkung = async (id) => {
+  const snap = await fw.getDoc('loeschwasser/'+id);
+  const aktuell = snap.data()?.notizen || '';
+  const neu = prompt('Bemerkung:', aktuell);
+  if (neu === null) return;
+  await fw.setDoc('loeschwasser/'+id, { notizen: neu.trim() || null });
+  fw.toast('Bemerkung gespeichert ✅');
+  navigate('loeschwasser-verwalten');
+};
+
+// ── Löschwasser-Formular ──────────────────────────────────
+registerPage('loeschwasser-form', async (el, {id}) => {
+  if (!fw.hatRecht('loeschwasser_verwalten')) { el.innerHTML = '<div class="empty">Keine Berechtigung</div>'; return; }
+  fw.setTitle(id ? 'Löschwasser bearbeiten' : 'Neues Löschwasser-Objekt');
+  fw.showBack(() => navigateBack());
+
+  let obj = null;
+  if (id) {
+    const snap = await fw.getDoc('loeschwasser/'+id);
+    if (snap.exists()) obj = {id, ...snap.data()};
+  }
+
+  el.innerHTML = `
+    <div class="card">
+      <div class="form-row"><label>Typ</label>
+        <select id="lw-typ">
+          ${Object.entries(LOESCHWASSER_TYPEN).map(([key,t]) => `<option value="${key}" ${obj?.typ===key?'selected':''}>${t.icon} ${t.label}</option>`).join('')}
+        </select>
+      </div>
+      <div class="form-row"><label>Position (Karte antippen zum Setzen)</label>
+        <div id="lw-karte" style="height:220px;border-radius:8px;background:var(--panel2)"></div>
+        <div class="muted" style="font-size:0.75rem;margin-top:0.3rem" id="lw-koord-text">${obj?.lat!=null ? `${obj.lat.toFixed(5)}, ${obj.lng.toFixed(5)}` : 'Noch keine Position gesetzt'}</div>
+      </div>
+      <div class="form-row"><label>Nennweite (optional, z.B. DN 100)</label><input id="lw-nennweite" value="${obj?.nennweite||''}"></div>
+      <div class="form-row"><label>Kapazität (optional, z.B. 800 l/min oder 50 m³)</label><input id="lw-kapazitaet" value="${obj?.kapazitaet||''}"></div>
+      <div class="form-row"><label>Notizen</label><textarea id="lw-notizen" rows="3">${obj?.notizen||''}</textarea></div>
+      <div style="display:flex;align-items:center;gap:0.6rem;padding:0.4rem 0;border-top:1px solid var(--border);margin-top:0.2rem">
+        <input type="checkbox" id="lw-aktiv" style="width:1.2rem;height:1.2rem;accent-color:var(--red)" ${obj?.aktiv===false?'':'checked'}>
+        <label for="lw-aktiv" style="font-size:0.88rem;cursor:pointer">Aktiv (in Übersicht und Karte anzeigen)</label>
+      </div>
+      <div class="btn-row" style="margin-top:0.5rem">
+        <button class="btn btn-primary btn-full" onclick="loeschwasserSpeichern('${id||''}')">💾 Speichern</button>
+        ${id ? `<button class="btn btn-danger" onclick="loeschwasserLoeschen('${id}')">🗑 Löschen</button>` : ''}
+      </div>
+    </div>`;
+
+  // Position per Klick auf die Karte setzen – Startansicht: vorhandener Punkt, sonst grob Oegeln/
+  // Brandenburg gezoomt, damit man nicht erst über die ganze Welt suchen muss.
+  let lwLat = obj?.lat ?? null, lwLng = obj?.lng ?? null;
+  let lwMarker = null;
+  ladeLeaflet().then(L => {
+    const kartenEl = document.getElementById('lw-karte');
+    if (!kartenEl) return;
+    const startLat = lwLat ?? 52.1683, startLng = lwLng ?? 14.2433;
+    const map = L.map(kartenEl).setView([startLat, startLng], lwLat != null ? 17 : 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap-Mitwirkende', maxZoom: 19 }).addTo(map);
+    const setzeMarker = (lat, lng) => {
+      if (lwMarker) map.removeLayer(lwMarker);
+      lwMarker = L.marker([lat, lng]).addTo(map);
+      lwLat = lat; lwLng = lng;
+      const txt = document.getElementById('lw-koord-text');
+      if (txt) txt.textContent = `${lat.toFixed(5)}, ${lng.toFixed(5)}`;
+    };
+    if (obj?.lat != null) setzeMarker(obj.lat, obj.lng);
+    map.on('click', e => setzeMarker(e.latlng.lat, e.latlng.lng));
+  }).catch(() => {
+    const kartenEl = document.getElementById('lw-karte');
+    if (kartenEl) kartenEl.innerHTML = '<div class="muted" style="font-size:0.78rem;padding:0.5rem">Karte konnte nicht geladen werden – Position lässt sich gerade nicht setzen.</div>';
+  });
+
+  window.loeschwasserSpeichern = async (objId) => {
+    if (lwLat == null || lwLng == null) { fw.toast('Bitte Position auf der Karte antippen', true); return; }
+    const data = {
+      typ: document.getElementById('lw-typ').value,
+      lat: lwLat, lng: lwLng,
+      nennweite: document.getElementById('lw-nennweite').value.trim() || null,
+      kapazitaet: document.getElementById('lw-kapazitaet').value.trim() || null,
+      notizen: document.getElementById('lw-notizen').value.trim() || null,
+      aktiv: document.getElementById('lw-aktiv').checked,
+    };
+    if (objId) { await fw.setDoc('loeschwasser/'+objId, data); }
+    else       { await fw.addDoc('loeschwasser', data); }
+    fw.toast('Gespeichert ✅');
+    navigate('loeschwasser-verwalten');
+  };
+});
+
+window.loeschwasserLoeschen = async (id) => {
+  if (!confirm('Löschwasser-Objekt wirklich löschen?')) return;
+  await fw.deleteDoc('loeschwasser/'+id);
+  fw.toast('Gelöscht');
+  navigate('loeschwasser-verwalten');
 };
 
 
