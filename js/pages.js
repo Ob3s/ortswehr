@@ -5,16 +5,14 @@ waitFw(() => {
 
 // Global: von überall aufrufbar (Kamerad-Aufgaben, Fahrzeuge-Übersicht), nicht an eine Seite gebunden
 window.navigiereZuFahrzeug = (fahrzeugId) => {
-  // Falls wir bereits auf der Dienste-Seite sind, nicht neu laden – nur aufklappen/scrollen
-  const bereitsDa = !!document.getElementById('fz-pruef-details');
+  // Falls wir bereits auf der Dienste-Seite sind, nicht neu laden – nur hinscrollen. Die
+  // Prüfaufgaben werden jetzt direkt angezeigt (kein Accordion mehr zum Aufklappen).
+  const bereitsDa = !!document.getElementById('pruef-inline');
   if (!bereitsDa) navigate('dienste');
-  // Nach dem (Neu-)Rendern das äußere und das richtige Fahrzeug-Accordion öffnen
   if (fahrzeugId) {
     setTimeout(() => {
-      const aussen = document.getElementById('fz-pruef-details');
-      if (aussen) aussen.open = true;
-      const el = document.querySelector(`details[data-fz-id="${fahrzeugId}"]`);
-      if (el) { el.open = true; el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
+      const el = document.querySelector(`#pruef-inline [data-fz-id="${fahrzeugId}"]`);
+      if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, bereitsDa ? 0 : 600);
   }
 };
@@ -954,13 +952,10 @@ registerPage('dienste', async (el) => {
   el.innerHTML = `
     <div class="card">${renderEintragListe(liste, meineMap)}</div>
     ${zeigeFahrzeugpruefungen ? `
-    <details id="fz-pruef-details" class="card" style="margin-top:0.8rem;padding:0">
-      <summary style="font-weight:600;cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;padding:0.4rem 0.8rem;font-size:13px;border-radius:8px">
-        <span>🔧 Fahrzeug- und Geräteprüfungen</span>
-        <span style="color:var(--muted)">▾</span>
-      </summary>
-      <div id="pruef-inline" style="padding:0 0.8rem 0.8rem">⏳ Lade...</div>
-    </details>` : ''}
+    <div class="card" style="margin-top:0.8rem">
+      <div style="font-weight:600;font-size:13px;margin-bottom:0.5rem">🔧 Fahrzeug- und Geräteprüfungen</div>
+      <div id="pruef-inline">⏳ Lade...</div>
+    </div>` : ''}
     ${fw.hatRecht('dienste_anlegen') ? `
     <div style="margin-top:0.8rem">
       <button class="btn btn-secondary btn-sm btn-full" onclick="kalenderImportieren()" id="kal-btn">📅 Aus Google Kalender importieren</button>
@@ -998,8 +993,16 @@ window.kalenderImportieren = async () => {
       { id: d.id, data: d.data() }
     ]));
 
+    // Nur voriges + aktuelles Jahr berücksichtigen (der Kalender enthält sonst auch länger
+    // zurückliegende oder weit in der Zukunft liegende Termine, die hier nicht relevant sind) und
+    // nach Datum sortieren, statt in der vom Kalender gelieferten (nicht garantiert sortierten) Reihenfolge.
+    const minJahr = new Date().getFullYear() - 1;
+    const eventsGefiltert = events
+      .filter(e => new Date(e.datum).getFullYear() >= minJahr)
+      .sort((a,b) => new Date(a.datum) - new Date(b.datum));
+
     // Nur klassifizieren (neu / geändert / unverändert), NICHT schreiben.
-    _kalVorschauDaten = events.map(e => {
+    _kalVorschauDaten = eventsGefiltert.map(e => {
       const bestehend = vorhandeneMap.get(e.datum);
       if (!bestehend) return { ...e, status: 'neu' };
       const alt = bestehend.data;
@@ -4546,6 +4549,19 @@ async function ladePruefaufgabenInline() {
     return faellig.getTime() - heute.getTime(); // ms bis Fälligkeit (negativ = überfällig)
   }
 
+  // MHD (Mindesthaltbarkeitsdatum): optionales Feld für Verbrauchsmittel (z.B. Löschschaum,
+  // Erste-Hilfe-Material) – unabhängig vom Prüfintervall, eigene Anzeige mit Ablauf-Warnung.
+  function mhdHtml(a) {
+    if (!a.mhd) return '';
+    const mhd = a.mhd.toDate ? a.mhd.toDate() : new Date(a.mhd);
+    const bald = new Date(heute); bald.setDate(bald.getDate() + 60);
+    const abgelaufen = heute > mhd;
+    const laeuftBald = !abgelaufen && bald >= mhd;
+    const farbe = abgelaufen ? '#dc2626' : laeuftBald ? '#f59e0b' : 'var(--muted)';
+    const praefix = abgelaufen ? '⚠️ MHD abgelaufen: ' : 'MHD: ';
+    return `<div style="font-size:0.73rem;color:${farbe};margin-top:0.15rem">${praefix}${mhd.toLocaleDateString('de-DE')}</div>`;
+  }
+
   function aufgabenHtml(fahrzeugId) {
     const aufgaben = alleAufgaben.filter(a => a.fahrzeugId === fahrzeugId);
     if (aufgaben.length === 0) return '<p class="muted" style="font-size:0.82rem;padding:0.3rem 0">Keine Aufgaben</p>';
@@ -4557,6 +4573,7 @@ async function ladePruefaufgabenInline() {
           <div style="flex:1;min-width:0">
             <div style="font-size:0.85rem;font-weight:600">${a.bezeichnung}</div>
             <div style="font-size:0.73rem;color:var(--muted)">${datumsAnzeige(a)}${a.intervall ? ` · alle ${a.intervall} Mon.` : ''}</div>
+            ${mhdHtml(a)}
             ${a.kommentar ? `<div style="font-size:0.73rem;color:var(--muted);margin-top:0.15rem">💬 ${a.kommentar}</div>` : ''}
           </div>
           <div style="display:flex;flex-direction:column;gap:0.2rem;flex-shrink:0;align-items:flex-end">
@@ -4596,29 +4613,30 @@ async function ladePruefaufgabenInline() {
     fahrzeugNotizen[f.id] = s?.exists() ? (s.data().text || '') : '';
   }));
 
-  // Offene Dropdowns merken vor dem Re-Render
-  const offeneDetails = new Set(
-    [...el.querySelectorAll('details[open]')].map(d => d.dataset.fzId)
-  );
+  // Kein Dropdown mehr: Prüfaufgaben werden direkt angezeigt statt hinter einem Accordion versteckt.
+  // Der Fahrzeugname wird nur als eigene Überschrift gezeigt, wenn es mehr als ein Fahrzeug gibt –
+  // bei genau einem Fahrzeug ist er redundant (steht ggf. schon in der Seitenüberschrift).
+  const mehrereFahrzeuge = fahrzeuge.length > 1;
+  const kopfButtons = (f) => (kannFahrzeugeBearbeiten || kannPruefaufgabenAnlegen)
+    ? `<div style="display:flex;gap:0.4rem;align-items:center">
+        ${kannFahrzeugeBearbeiten ? `<button class="btn btn-sm btn-secondary" style="font-size:0.65rem;padding:0.15rem 0.4rem" onclick="navigate('fahrzeug-form',{id:'${f.id}'})">✏️</button>` : ''}
+        ${kannPruefaufgabenAnlegen ? `<button class="btn btn-sm btn-secondary" style="font-size:0.65rem;padding:0.15rem 0.4rem" onclick="navigate('pruefaufgabe-form',{fahrzeugId:'${f.id}'})">+</button>` : ''}
+      </div>`
+    : '';
 
-  el.innerHTML = dashHtml + fahrzeuge.map(f => `
-    <details data-fz-id="${f.id}" style="margin-bottom:0.5rem;border:1px solid var(--border);border-radius:10px" ${offeneDetails.has(f.id) ? 'open' : ''}>
-      <summary style="padding:0.4rem 0.8rem;cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;font-weight:600;font-size:13px;border-radius:8px">
+  el.innerHTML = dashHtml + fahrzeuge.map((f, i) => `
+    <div data-fz-id="${f.id}" style="${i < fahrzeuge.length-1 ? 'margin-bottom:0.8rem;padding-bottom:0.8rem;border-bottom:1px solid var(--border)' : ''}">
+      ${mehrereFahrzeuge ? `
+      <div style="display:flex;align-items:center;justify-content:space-between;font-weight:600;font-size:13px;margin-bottom:0.4rem">
         <span>${f.name}${f.bezeichnung ? ` <span style="font-weight:400;color:var(--muted);font-size:0.8rem">(${f.bezeichnung})</span>` : ''}</span>
-        <div style="display:flex;gap:0.4rem;align-items:center">
-          ${kannFahrzeugeBearbeiten ? `<button class="btn btn-sm btn-secondary" style="font-size:0.65rem;padding:0.15rem 0.4rem" onclick="event.stopPropagation();navigate('fahrzeug-form',{id:'${f.id}'})">✏️</button>` : ''}
-          ${kannPruefaufgabenAnlegen ? `<button class="btn btn-sm btn-secondary" style="font-size:0.65rem;padding:0.15rem 0.4rem" onclick="event.stopPropagation();navigate('pruefaufgabe-form',{fahrzeugId:'${f.id}'})">+</button>` : ''}
-          <span style="color:var(--muted)">▾</span>
-        </div>
-      </summary>
-      <div style="padding:0 0.8rem 0.8rem">
-        ${aufgabenHtml(f.id)}
-        <div style="margin-top:0.6rem;padding-top:0.4rem;border-top:1px solid var(--border)">
-          <textarea id="notiz-${f.id}" rows="3" style="width:100%;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:0.5rem;font-size:0.8rem;color:var(--text);resize:vertical" placeholder="Notizen zu diesem Fahrzeug…">${fahrzeugNotizen[f.id]||''}</textarea>
-          <button class="btn btn-secondary btn-sm" style="margin-top:0.3rem" onclick="fahrzeugNotizSpeichern('${f.id}')">💾 Notiz speichern</button>
-        </div>
+        ${kopfButtons(f)}
+      </div>` : (kopfButtons(f) ? `<div style="display:flex;justify-content:flex-end;margin-bottom:0.4rem">${kopfButtons(f)}</div>` : '')}
+      ${aufgabenHtml(f.id)}
+      <div style="margin-top:0.6rem;padding-top:0.4rem;border-top:1px solid var(--border)">
+        <textarea id="notiz-${f.id}" rows="3" style="width:100%;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:0.5rem;font-size:0.8rem;color:var(--text);resize:vertical" placeholder="Notizen zu diesem Fahrzeug…">${fahrzeugNotizen[f.id]||''}</textarea>
+        <button class="btn btn-secondary btn-sm" style="margin-top:0.3rem" onclick="fahrzeugNotizSpeichern('${f.id}')">💾 Notiz speichern</button>
       </div>
-    </details>`).join('') +
+    </div>`).join('') +
     (kannFahrzeugeAnlegen ? `<button class="btn btn-secondary btn-sm" style="margin-top:0.5rem" onclick="navigate('fahrzeug-form',{})">+ Fahrzeug hinzufügen</button>` : '');
 
   window.fahrzeugNotizSpeichern = async (fzId) => {
@@ -4737,6 +4755,9 @@ registerPage('pruefaufgabe-form', async (el, {id, fahrzeugId: vorFahrzeugId}) =>
   const letztesDatum = aufgabe?.letztesPruefDatum
     ? (aufgabe.letztesPruefDatum.toDate ? aufgabe.letztesPruefDatum.toDate() : new Date(aufgabe.letztesPruefDatum)).toISOString().split('T')[0]
     : '';
+  const mhdDatum = aufgabe?.mhd
+    ? (aufgabe.mhd.toDate ? aufgabe.mhd.toDate() : new Date(aufgabe.mhd)).toISOString().split('T')[0]
+    : '';
 
   const fzSnap = await fw.getDocs('fahrzeuge', fw.orderBy('name','asc'));
   const fahrzeuge = fzSnap.docs.map(d => ({id:d.id,...d.data()}));
@@ -4754,6 +4775,7 @@ registerPage('pruefaufgabe-form', async (el, {id, fahrzeugId: vorFahrzeugId}) =>
       <div class="form-row"><label>Bezeichnung</label><input id="pa-bez" value="${aufgabe?.bezeichnung||''}"></div>
       <div class="form-row"><label>Intervall (Monate)</label><input id="pa-int" type="number" min="1" value="${aufgabe?.intervall||''}"></div>
       <div class="form-row"><label>Letztes Prüfdatum</label><input id="pa-dat" type="date" value="${letztesDatum}"></div>
+      <div class="form-row"><label>MHD – Mindesthaltbarkeitsdatum (optional, z.B. für Verbrauchsmittel)</label><input id="pa-mhd" type="date" value="${mhdDatum}"></div>
       ${aufgabe?.ausgeblendet ? `<div style="margin-bottom:0.5rem"><button class="btn btn-secondary btn-full" onclick="pruefEinblenden('${id}')">👁 Wieder einblenden</button></div>` : ''}
       <div class="btn-row" style="margin-top:0.5rem">
         <button class="btn btn-primary" onclick="pruefaufgabeSpeichern('${id||''}')">💾 Speichern</button>
@@ -4774,9 +4796,10 @@ window.pruefaufgabeSpeichern = async (id) => {
   const bez  = document.getElementById('pa-bez').value.trim();
   const int  = parseInt(document.getElementById('pa-int').value) || null;
   const datStr = document.getElementById('pa-dat').value;
+  const mhdStr = document.getElementById('pa-mhd').value;
   if (!bez) { fw.toast('Bezeichnung fehlt', true); return; }
   if (!fzId) { fw.toast('Fahrzeug fehlt', true); return; }
-  const data = { bezeichnung: bez, intervall: int, fahrzeugId: fzId, letztesPruefDatum: datStr ? new Date(datStr) : null };
+  const data = { bezeichnung: bez, intervall: int, fahrzeugId: fzId, letztesPruefDatum: datStr ? new Date(datStr) : null, mhd: mhdStr ? new Date(mhdStr) : null };
   if (id) { await fw.setDoc('pruefaufgaben/'+id, data); }
   else    { await fw.addDoc('pruefaufgaben', data); }
   fw.toast('Gespeichert ✅');
