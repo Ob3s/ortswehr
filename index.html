@@ -77,7 +77,7 @@
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
   import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail }
     from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
-  import { getFirestore, collection, doc, getDoc, getDocs, addDoc, setDoc, updateDoc, deleteDoc, query, where, orderBy, Timestamp, onSnapshot }
+  import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, doc, getDoc, getDocs, addDoc, setDoc, updateDoc, deleteDoc, query, where, orderBy, Timestamp, onSnapshot }
     from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
   import { getMessaging, getToken, onMessage }
     from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging.js';
@@ -96,7 +96,21 @@
 
   const firebaseApp = initializeApp(firebaseConfig);
   const auth      = getAuth(firebaseApp);
-  const db        = getFirestore(firebaseApp);
+  // Offline-Persistenz: Firestore cacht gelesene Daten in IndexedDB, damit beim Öffnen ohne Netz
+  // zumindest der letzte bekannte Stand sofort da ist (nicht nur die App-Hülle, die der Service
+  // Worker cacht, sondern auch die eigentlichen Inhalte) und offline erfasste Änderungen bei
+  // Rückkehr ins Netz automatisch nachgesendet werden. Mehrere gleichzeitig offene Tabs teilen
+  // sich den Cache (persistentMultipleTabManager). Fällt auf den Standard-Speicher-Cache zurück,
+  // falls IndexedDB im Browser nicht verfügbar ist (z.B. mancher privater Modus).
+  let db;
+  try {
+    db = initializeFirestore(firebaseApp, {
+      localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() })
+    });
+  } catch(e) {
+    console.warn('Firestore-Offline-Cache nicht verfügbar, nutze Standard:', e);
+    db = getFirestore(firebaseApp);
+  }
   const storage   = getStorage(firebaseApp);
   let   messaging = null;
   try { messaging = getMessaging(firebaseApp); } catch(e) {}

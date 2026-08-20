@@ -1,4 +1,4 @@
-const CACHE = 'ortswehr-v7';
+const CACHE = 'ortswehr-v8';
 const STATIC = ['./manifest.json', './icons/icon-192.png', './icons/icon-512.png'];
 
 self.addEventListener('install', e => {
@@ -15,6 +15,21 @@ self.addEventListener('activate', e => {
 
 self.addEventListener('fetch', e => {
   const url = e.request.url;
+
+  // Leaflet (Kartenbibliothek) von cdnjs: Cache-first, damit sie nach dem ersten Laden auch
+  // offline verfügbar ist (nur der JS/CSS-Code der Bibliothek – die Kartenkacheln selbst sind
+  // eine spätere Phase). Live-Daten (Firebase, Google, Cloud Functions, Nominatim, Overpass)
+  // bleiben bewusst außen vor.
+  if (url.startsWith('https://cdnjs.cloudflare.com/ajax/libs/leaflet/')) {
+    e.respondWith(
+      caches.match(e.request).then(cached => cached || fetch(e.request).then(res => {
+        const clone = res.clone();
+        caches.open(CACHE).then(c => c.put(e.request, clone));
+        return res;
+      }))
+    );
+    return;
+  }
 
   // Externe/dynamische Requests komplett ignorieren – kein respondWith
   if (url.includes('googleapis.com') ||

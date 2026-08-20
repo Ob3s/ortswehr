@@ -4516,19 +4516,48 @@ async function ladePruefaufgabenInline() {
   const alleAufgaben = aufgabenSnap.docs.map(d => ({id:d.id,...d.data()}));
 
   const heute = new Date(); heute.setHours(0,0,0,0);
+  const toDate = v => v?.toDate ? v.toDate() : new Date(v);
 
-  function statusFarbe(a) {
-    if (!a.letztesPruefDatum) return '#f59e0b';
-    const letztes = a.letztesPruefDatum.toDate ? a.letztesPruefDatum.toDate() : new Date(a.letztesPruefDatum);
-    if (!a.intervall) return '#94a3b8';
+  // ── Ampel-System ──────────────────────────────────────────────────────────
+  // Zwei unabhängige Signale pro Aufgabe: Prüfintervall (statusFarbe/pruefKategorie) und MHD
+  // (mhdKategorie). Der Gesamtstatus (statusKategorie) ist immer das "schlechtere" der beiden –
+  // ein bald ablaufendes MHD zieht eine ansonsten grüne Aufgabe z.B. auf Orange hoch, aber ein
+  // gutes MHD kann eine rote/orange Prüf-Fälligkeit nicht "grün rechnen". Warnfenster sind pro
+  // Aufgabe einstellbar (pruefWarnungTage / mhdWarnungTage), sonst gelten die alten Standardwerte
+  // (10% des Intervalls bzw. 60 Tage).
+  const KATEGORIE_RANG  = { rot: 0, orange: 1, gruen: 2, grau: 3 };
+  const KATEGORIE_FARBE = { rot: '#dc2626', orange: '#f59e0b', gruen: '#22c55e', grau: '#94a3b8' };
+
+  function pruefKategorie(a) {
+    if (!a.letztesPruefDatum) return 'orange';
+    const letztes = toDate(a.letztesPruefDatum);
+    if (!a.intervall) return 'grau';
     const intervallMs = a.intervall * 30.44 * 24 * 60 * 60 * 1000; // Monate in ms
     const faellig = new Date(letztes.getTime() + intervallMs);
-    const warnungMs = intervallMs * 0.1; // 10% des Intervalls
+    const warnungMs = a.pruefWarnungTage != null ? a.pruefWarnungTage * 24 * 60 * 60 * 1000 : intervallMs * 0.1;
     const warnung = new Date(faellig.getTime() - warnungMs);
-    if (heute > faellig) return '#dc2626';
-    if (heute >= warnung) return '#f59e0b';
-    return '#22c55e';
+    if (heute > faellig) return 'rot';
+    if (heute >= warnung) return 'orange';
+    return 'gruen';
   }
+
+  function mhdKategorie(a) {
+    if (!a.mhd) return null; // kein MHD gesetzt -> beeinflusst Gesamtstatus nicht
+    const mhd = toDate(a.mhd);
+    const warnTage = a.mhdWarnungTage != null ? a.mhdWarnungTage : 60;
+    const bald = new Date(heute); bald.setDate(bald.getDate() + warnTage);
+    if (heute > mhd) return 'rot';
+    if (bald >= mhd) return 'orange';
+    return 'gruen';
+  }
+
+  function statusKategorie(a) {
+    const pruef = pruefKategorie(a);
+    const mhd = mhdKategorie(a);
+    return (mhd != null && KATEGORIE_RANG[mhd] < KATEGORIE_RANG[pruef]) ? mhd : pruef;
+  }
+
+  function statusFarbe(a) { return KATEGORIE_FARBE[statusKategorie(a)]; }
 
   function datumsAnzeige(a) {
     if (!a.letztesPruefDatum) return 'Noch nie geprüft';
@@ -4547,32 +4576,28 @@ async function ladePruefaufgabenInline() {
     return (istUeberfaellig ? '⚠️ Nächste: ' : 'Nächste: ') + naechstes.toLocaleDateString('de-DE');
   }
 
-  // Dringlichkeit: je kleiner, desto dringlicher (negativ = überfällig)
-  function dringlichkeit(a) {
-    if (!a.letztesPruefDatum || !a.intervall) return 0;
-    const letztes = a.letztesPruefDatum.toDate ? a.letztesPruefDatum.toDate() : new Date(a.letztesPruefDatum);
-    const intervallMs = a.intervall * 30.44 * 24 * 60 * 60 * 1000;
-    const faellig = new Date(letztes.getTime() + intervallMs);
-    return faellig.getTime() - heute.getTime(); // ms bis Fälligkeit (negativ = überfällig)
-  }
 
   // MHD (Mindesthaltbarkeitsdatum): optionales Feld für Verbrauchsmittel (z.B. Löschschaum,
   // Erste-Hilfe-Material) – unabhängig vom Prüfintervall, eigene Anzeige mit Ablauf-Warnung.
+  // Warnfenster nutzt dieselbe (ggf. pro Aufgabe eingestellte) Schwelle wie statusKategorie.
   function mhdHtml(a) {
     if (!a.mhd) return '';
-    const mhd = a.mhd.toDate ? a.mhd.toDate() : new Date(a.mhd);
-    const bald = new Date(heute); bald.setDate(bald.getDate() + 60);
-    const abgelaufen = heute > mhd;
-    const laeuftBald = !abgelaufen && bald >= mhd;
-    const farbe = abgelaufen ? '#dc2626' : laeuftBald ? '#f59e0b' : 'var(--muted)';
-    const praefix = abgelaufen ? '⚠️ MHD abgelaufen: ' : 'MHD: ';
+    const mhd = toDate(a.mhd);
+    const kat = mhdKategorie(a);
+    const farbe = kat === 'rot' ? '#dc2626' : kat === 'orange' ? '#f59e0b' : 'var(--muted)';
+    const praefix = kat === 'rot' ? '⚠️ MHD abgelaufen: ' : 'MHD: ';
     return `<div style="font-size:0.73rem;color:${farbe};margin-top:0.15rem">${praefix}${mhd.toLocaleDateString('de-DE')}</div>`;
   }
 
   function aufgabenHtml(fahrzeugId) {
     const aufgaben = alleAufgaben.filter(a => a.fahrzeugId === fahrzeugId);
     if (aufgaben.length === 0) return '<p class="muted" style="font-size:0.82rem;padding:0.3rem 0">Keine Aufgaben</p>';
-    const sorted = [...aufgaben.filter(a => !a.ausgeblendet)].sort((a,b) => dringlichkeit(a) - dringlichkeit(b));
+    // Ampel-Sortierung: Rot vor Orange vor Grün vor Grau, innerhalb einer Farbe alphabetisch.
+    const sorted = [...aufgaben.filter(a => !a.ausgeblendet)].sort((a,b) => {
+      const rangDiff = KATEGORIE_RANG[statusKategorie(a)] - KATEGORIE_RANG[statusKategorie(b)];
+      if (rangDiff !== 0) return rangDiff;
+      return (a.bezeichnung||'').localeCompare(b.bezeichnung||'', 'de');
+    });
     return sorted.map(a => `
       <div style="padding:0.5rem 0;border-bottom:1px solid var(--border)">
         <div style="display:flex;align-items:flex-start;gap:0.6rem">
@@ -4781,8 +4806,10 @@ registerPage('pruefaufgabe-form', async (el, {id, fahrzeugId: vorFahrzeugId}) =>
       </div>
       <div class="form-row"><label>Bezeichnung</label><input id="pa-bez" value="${aufgabe?.bezeichnung||''}"></div>
       <div class="form-row"><label>Intervall (Monate)</label><input id="pa-int" type="number" min="1" value="${aufgabe?.intervall||''}"></div>
+      <div class="form-row"><label>Prüf-Warnung (Tage vor Fälligkeit auf Orange springen, leer = automatisch 10% des Intervalls)</label><input id="pa-pruef-warnung" type="number" min="0" value="${aufgabe?.pruefWarnungTage ?? ''}"></div>
       <div class="form-row"><label>Letztes Prüfdatum</label><input id="pa-dat" type="date" value="${letztesDatum}"></div>
       <div class="form-row"><label>MHD – Mindesthaltbarkeitsdatum (optional, z.B. für Verbrauchsmittel)</label><input id="pa-mhd" type="date" value="${mhdDatum}"></div>
+      <div class="form-row"><label>MHD-Warnung (Tage vor Ablauf auf Orange springen, leer = Standard 60 Tage)</label><input id="pa-mhd-warnung" type="number" min="0" value="${aufgabe?.mhdWarnungTage ?? ''}"></div>
       ${aufgabe?.ausgeblendet ? `<div style="margin-bottom:0.5rem"><button class="btn btn-secondary btn-full" onclick="pruefEinblenden('${id}')">👁 Wieder einblenden</button></div>` : ''}
       <div class="btn-row" style="margin-top:0.5rem">
         <button class="btn btn-primary" onclick="pruefaufgabeSpeichern('${id||''}')">💾 Speichern</button>
@@ -4804,9 +4831,16 @@ window.pruefaufgabeSpeichern = async (id) => {
   const int  = parseInt(document.getElementById('pa-int').value) || null;
   const datStr = document.getElementById('pa-dat').value;
   const mhdStr = document.getElementById('pa-mhd').value;
+  const pruefWarnungStr = document.getElementById('pa-pruef-warnung').value;
+  const mhdWarnungStr = document.getElementById('pa-mhd-warnung').value;
   if (!bez) { fw.toast('Bezeichnung fehlt', true); return; }
   if (!fzId) { fw.toast('Fahrzeug fehlt', true); return; }
-  const data = { bezeichnung: bez, intervall: int, fahrzeugId: fzId, letztesPruefDatum: datStr ? new Date(datStr) : null, mhd: mhdStr ? new Date(mhdStr) : null };
+  const data = {
+    bezeichnung: bez, intervall: int, fahrzeugId: fzId,
+    letztesPruefDatum: datStr ? new Date(datStr) : null, mhd: mhdStr ? new Date(mhdStr) : null,
+    pruefWarnungTage: pruefWarnungStr !== '' ? parseInt(pruefWarnungStr) : null,
+    mhdWarnungTage: mhdWarnungStr !== '' ? parseInt(mhdWarnungStr) : null,
+  };
   if (id) { await fw.setDoc('pruefaufgaben/'+id, data); }
   else    { await fw.addDoc('pruefaufgaben', data); }
   fw.toast('Gespeichert ✅');
@@ -4820,9 +4854,10 @@ window.pruefaufgabeLoeschen = async (id) => {
   navigate('dienste');
 };
 
-// ── Löschwasser (Phase 1: eigene Firestore-Einträge + Karte auf Einsatz-Detail) ────────────
-// Bewusst NICHT Teil dieser Phase: Overpass/OSM-Datenimport mit Zuständigkeits-Auswahl und
-// Offline-Vorab-Download der Kartenkacheln – kommt in einer späteren Phase.
+// ── Löschwasser (Phase 1: eigene Firestore-Einträge + Karte auf Einsatz-Detail;
+//    Phase 2: OSM/Overpass-Import s.u.) ─────────────────────────────────────────
+// Bewusst NICHT Teil dieser Phasen: Offline-Vorab-Download der Kartenkacheln (max. 2×2km) –
+// kommt in Phase 3.
 
 const LOESCHWASSER_TYPEN = {
   ueberflurhydrant: { label: 'Überflurhydrant',    icon: '🔴', farbe: '#dc2626' },
@@ -4961,8 +4996,10 @@ registerPage('loeschwasser-verwalten', async (el) => {
   const snap = await fw.getDocs('loeschwasser');
   const alle = snap.docs.map(d => ({id:d.id, ...d.data()})).filter(q => q.aktiv !== false);
 
+  const osmButton = darfVerwalten ? `<button class="btn btn-secondary btn-sm btn-full" style="margin-bottom:0.6rem" onclick="navigate('loeschwasser-overpass')">🌍 Daten aus OpenStreetMap importieren</button>` : '';
+
   if (!alle.length) {
-    el.innerHTML = `<div class="empty">Noch keine Löschwasser-Objekte erfasst</div>
+    el.innerHTML = osmButton + `<div class="empty">Noch keine Löschwasser-Objekte erfasst</div>
       ${darfVerwalten ? `<button class="btn btn-secondary btn-sm" style="margin-top:0.5rem" onclick="navigate('loeschwasser-form',{})">+ Erstes Objekt anlegen</button>` : ''}`;
     return;
   }
@@ -4989,7 +5026,7 @@ registerPage('loeschwasser-verwalten', async (el) => {
     </div>`;
   };
 
-  el.innerHTML = `<div class="card" style="padding:0">${alle.map(zeile).join('')}</div>`;
+  el.innerHTML = osmButton + `<div class="card" style="padding:0">${alle.map(zeile).join('')}</div>`;
 });
 
 window.loeschwasserStatusSetzen = async (id, funktioniert) => {
@@ -5091,5 +5128,158 @@ window.loeschwasserLoeschen = async (id) => {
   fw.toast('Gelöscht');
   navigate('loeschwasser-verwalten');
 };
+
+// ── Löschwasser Phase 2: OSM/Overpass-Import ──────────────────────────────
+// Ordnet gängige deutsche OSM-Feuerwehr-Tags (emergency=fire_hydrant/fire_water_pond/
+// water_tank/suction_point) auf unsere LOESCHWASSER_TYPEN ab. Unbekannte/andere Tags liefern
+// null und werden herausgefiltert – wir importieren nur, was wir sinnvoll einem Typ zuordnen
+// können.
+function overpassTypBestimmen(tags) {
+  if (!tags) return null;
+  if (tags.emergency === 'fire_hydrant') {
+    const t = tags['fire_hydrant:type'];
+    return (t === 'underground' || t === 'pipe') ? 'unterflurhydrant' : 'ueberflurhydrant';
+  }
+  if (tags.emergency === 'fire_water_pond') return 'teich';
+  if (tags.emergency === 'water_tank') return 'zisterne';
+  if (tags.emergency === 'suction_point') return 'brunnen';
+  return null;
+}
+
+// Fragt die Overpass-API (öffentliche OSM-Instanz, kostenlos, kein Key) nach Löschwasser-
+// relevanten Knoten im Umkreis von radiusMeter um lat/lng ab. Wird bewusst NUR auf Knopfdruck
+// aufgerufen (siehe registerPage('loeschwasser-overpass', ...) unten) – Overpass toleriert keine
+// automatisierten Dauerabfragen.
+async function overpassSuche(lat, lng, radiusMeter) {
+  const ql = `[out:json][timeout:25];(
+    node["emergency"="fire_hydrant"](around:${radiusMeter},${lat},${lng});
+    node["emergency"="fire_water_pond"](around:${radiusMeter},${lat},${lng});
+    node["emergency"="water_tank"](around:${radiusMeter},${lat},${lng});
+    node["emergency"="suction_point"](around:${radiusMeter},${lat},${lng});
+  );out body;`;
+  const res = await fetch('https://overpass-api.de/api/interpreter', {
+    method: 'POST',
+    body: 'data=' + encodeURIComponent(ql),
+  });
+  if (!res.ok) throw new Error('Overpass-Abfrage fehlgeschlagen (' + res.status + ')');
+  const data = await res.json();
+  return (data.elements || [])
+    .map(el => ({
+      osmId: 'node/' + el.id,
+      lat: el.lat, lng: el.lon,
+      typ: overpassTypBestimmen(el.tags),
+      nennweite: el.tags?.['fire_hydrant:diameter'] ? el.tags['fire_hydrant:diameter'] + ' mm' : null,
+    }))
+    .filter(c => c.typ && c.lat != null && c.lng != null);
+}
+
+// Übersicht + Steuerung des OSM-Imports: Mittelpunkt (per Klick/Drag auf Mini-Karte oder Zahlen-
+// felder) + Umkreis wählen, auf Knopfdruck abfragen, Ergebnis in loeschwasser_overpass_cache
+// zwischenspeichern (überlebt Seitenwechsel/Reload) und einzeln in echte loeschwasser-Einträge
+// übernehmen. "Eigene Einträge haben Vorrang": ein Kandidat gilt als bereits erfasst, sobald
+// entweder seine osmId schon auf einem loeschwasser-Dokument steht oder ein bestehender Eintrag
+// näher als 15m dran liegt (z.B. weil er vorher schon von Hand angelegt wurde).
+registerPage('loeschwasser-overpass', async (el) => {
+  if (!fw.hatRecht('loeschwasser_verwalten')) { el.innerHTML = '<div class="empty">Keine Berechtigung</div>'; return; }
+  fw.setTitle('OSM-Import');
+  fw.showBack(() => navigateBack());
+
+  const cacheSnap = await fw.getDoc('loeschwasser_overpass_cache/cache');
+  const cache = cacheSnap.exists() ? cacheSnap.data() : null;
+
+  const bestehendeSnap = await fw.getDocs('loeschwasser');
+  const bestehende = bestehendeSnap.docs.map(d => ({id:d.id, ...d.data()}));
+  const istBereitsErfasst = (c) => bestehende.some(b =>
+    b.osmId === c.osmId || (b.lat != null && b.lng != null && distanzMeter(b.lat, b.lng, c.lat, c.lng) < 15));
+
+  el.innerHTML = `
+    <div class="card">
+      <p class="muted" style="font-size:0.82rem">Sucht Hydranten, Löschteiche, Zisternen und Saugstellen aus OpenStreetMap im gewählten Umkreis um einen Mittelpunkt. Läuft bewusst nur auf Knopfdruck – Overpass erlaubt keine Dauerabfragen.</p>
+      <div class="form-row"><label>Mittelpunkt Breite (Lat)</label><input id="ov-lat" type="number" step="0.0001" value="${cache?.zentrumLat ?? 52.1683}"></div>
+      <div class="form-row"><label>Mittelpunkt Länge (Lng)</label><input id="ov-lng" type="number" step="0.0001" value="${cache?.zentrumLng ?? 14.2433}"></div>
+      <div class="form-row"><label>Umkreis (km)</label><input id="ov-radius" type="number" step="0.5" min="0.5" max="15" value="${cache?.radiusKm ?? 3}"></div>
+      <div id="ov-zentrum-karte" style="height:200px;border-radius:8px;background:var(--panel2);margin-bottom:0.6rem"></div>
+      <button class="btn btn-primary btn-full" id="ov-such-btn" onclick="overpassJetztLaden()">🔄 Jetzt von OSM laden</button>
+      ${cache?.abgefragtAm ? `<div class="muted" style="font-size:0.75rem;margin-top:0.4rem">Letzte Abfrage: ${datum(cache.abgefragtAm)}</div>` : ''}
+    </div>
+    <div id="ov-ergebnisse" style="margin-top:0.6rem"></div>
+  `;
+
+  let ovLat = cache?.zentrumLat ?? 52.1683, ovLng = cache?.zentrumLng ?? 14.2433;
+  let ovMarker = null;
+  ladeLeaflet().then(L => {
+    const kEl = document.getElementById('ov-zentrum-karte');
+    if (!kEl) return;
+    const map = L.map(kEl).setView([ovLat, ovLng], 13);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap-Mitwirkende', maxZoom: 19 }).addTo(map);
+    ovMarker = L.marker([ovLat, ovLng], {draggable:true}).addTo(map);
+    const sync = (lat, lng) => {
+      ovLat = lat; ovLng = lng;
+      const latEl = document.getElementById('ov-lat'), lngEl = document.getElementById('ov-lng');
+      if (latEl) latEl.value = lat.toFixed(5);
+      if (lngEl) lngEl.value = lng.toFixed(5);
+    };
+    ovMarker.on('dragend', () => { const p = ovMarker.getLatLng(); sync(p.lat, p.lng); });
+    map.on('click', e => { ovMarker.setLatLng(e.latlng); sync(e.latlng.lat, e.latlng.lng); });
+  }).catch(() => {});
+
+  const renderErgebnisse = (kandidaten) => {
+    const zielEl = document.getElementById('ov-ergebnisse');
+    if (!zielEl) return;
+    if (!kandidaten.length) { zielEl.innerHTML = '<div class="empty">Keine Objekte in OSM im gewählten Umkreis gefunden.</div>'; return; }
+    zielEl.innerHTML = `<div class="card" style="padding:0">` + kandidaten.map((c, i) => {
+      const typInfo = LOESCHWASSER_TYPEN[c.typ] || { label: c.typ, icon: '💧', farbe: 'var(--muted)' };
+      const uebernommen = istBereitsErfasst(c);
+      return `<div class="list-item">
+        <div class="list-item-icon" style="background:${typInfo.farbe}22">${typInfo.icon}</div>
+        <div class="list-item-body">
+          <div class="list-item-title">${typInfo.label}${c.nennweite ? ' · '+c.nennweite : ''}</div>
+          <div class="list-item-sub">${c.lat.toFixed(5)}, ${c.lng.toFixed(5)}</div>
+        </div>
+        ${uebernommen
+          ? `<span class="muted" style="font-size:0.75rem;flex-shrink:0">✅ bereits erfasst</span>`
+          : `<button class="btn btn-sm btn-secondary" style="font-size:0.7rem;padding:0.2rem 0.5rem;flex-shrink:0" onclick="overpassUebernehmen(${i})">➕ Übernehmen</button>`}
+      </div>`;
+    }).join('') + `</div>`;
+  };
+
+  let ovKandidaten = (cache?.ergebnisse || []).filter(c => c.typ);
+  if (ovKandidaten.length) renderErgebnisse(ovKandidaten);
+
+  window.overpassJetztLaden = async () => {
+    const btn = document.getElementById('ov-such-btn');
+    const lat = parseFloat(document.getElementById('ov-lat').value);
+    const lng = parseFloat(document.getElementById('ov-lng').value);
+    const radiusKm = parseFloat(document.getElementById('ov-radius').value) || 3;
+    if (isNaN(lat) || isNaN(lng)) { fw.toast('Mittelpunkt ungültig', true); return; }
+    btn.disabled = true; btn.textContent = '⏳ Lädt von OSM…';
+    try {
+      const kandidaten = await overpassSuche(lat, lng, Math.round(radiusKm * 1000));
+      ovKandidaten = kandidaten;
+      await fw.setDoc('loeschwasser_overpass_cache/cache', {
+        zentrumLat: lat, zentrumLng: lng, radiusKm, abgefragtAm: new Date(), ergebnisse: kandidaten,
+      });
+      renderErgebnisse(kandidaten);
+      fw.toast(`${kandidaten.length} Objekt(e) gefunden ✅`);
+    } catch(e) {
+      console.warn('Overpass Fehler:', e);
+      fw.toast('OSM-Abfrage fehlgeschlagen – später erneut versuchen', true);
+    } finally {
+      btn.disabled = false; btn.textContent = '🔄 Jetzt von OSM laden';
+    }
+  };
+
+  window.overpassUebernehmen = async (i) => {
+    const c = ovKandidaten[i];
+    if (!c) return;
+    await fw.addDoc('loeschwasser', {
+      typ: c.typ, lat: c.lat, lng: c.lng,
+      nennweite: c.nennweite || null, kapazitaet: null,
+      notizen: 'Importiert aus OpenStreetMap', osmId: c.osmId, aktiv: true,
+    });
+    fw.toast('Übernommen ✅');
+    navigate('loeschwasser-overpass'); // Seite neu laden, damit "bereits erfasst" aktuell ist
+  };
+});
 
 
