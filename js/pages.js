@@ -4488,6 +4488,16 @@ window.ortswehrLoeschen = async (id) => {
 
 }); // end waitFw
 
+// datum(): alles ab hier liegt AUSSERHALB der waitFw-Closure oben, deshalb ist der dort lokal
+// definierte datum()-Helper hier nicht sichtbar – gleiche Formatierung, eigene Kopie für den
+// restlichen Code (Prüfaufgaben, Löschwasser).
+function datum(d) {
+  if (!d) return '–';
+  const ts = d?.toDate ? d.toDate() : new Date(d);
+  if (isNaN(ts)) return '–';
+  return ts.toLocaleDateString('de-DE', { day:'2-digit', month:'2-digit', year:'numeric' });
+}
+
 // ── Fahrzeug- und Geräteprüfungen ─────────────────────────
 async function ladePruefaufgabenInline() {
   const el = document.getElementById('pruef-inline');
