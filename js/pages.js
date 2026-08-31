@@ -93,65 +93,8 @@ function anwesenheitBadge(s) {
   if (s==='abgelehnt'  || s==='kommt_nicht') return '<span style="color:#dc2626;font-size:1.1rem">❌</span>';
   return '<span style="color:#f59e0b;font-size:1.1rem">⏳</span>'; // keine Reaktion
 }
-// Stunden-Anrechnung für eine Anwesenheit: bei Diensten immer die hinterlegte Dauer.
-// Bei Einsätzen gilt die pauschale 15-Minuten-Regel für "Bereitschaft" (in der Wache geblieben,
-// nicht ausgerückt) – unabhängig davon, ob/wann die Einsatz-Endzeit gesetzt ist (siehe
-// pruefeBereitschaftAutoEndzeit()). Wer tatsächlich ausgerückt ist, bekommt die reguläre Dauer
-// aus Beginn/Ende des Einsatzes – solange die Endzeit noch fehlt (z. B. weil die automatische
-// Bereitschafts-Endzeit gerade zurückgenommen wurde, weil doch noch jemand ausgerückt ist),
-// zählen für ihn 0 Std., bis sie nachgetragen wird.
-function einsatzStunden(a, eintrag, istEinsatz) {
-  if (istEinsatz && a.status === 'bereitschaft') return 0.25;
-  return eintrag?.dauer_h ?? a.dauer_h ?? 0;
-}
-function getStats(anwesenheiten, dienstMap, einsatzMap, jahr) {
-  const jetzt   = new Date();
-  const jahrAkt = jahr || jetzt.getFullYear();
-  // Die rollierende 12-Monats-Zielgröße bezieht sich immer auf "heute", unabhängig vom jahr-Parameter
-  const vor12m  = new Date(); vor12m.setFullYear(jetzt.getFullYear()-1); vor12m.setHours(0,0,0,0);
-
-  let gesamtEinsatz=0, dienstRelevant=0, dienstIrrelevant=0, einsaetze=0, dienste=0;
-  let dienstRelevantAnzahl=0, dienstIrrelevantAnzahl=0;
-  let dienstStunden12m=0, dienste12m=0;
-  for (const a of anwesenheiten) {
-    if (a.status !== 'bestaetigt' && a.status !== 'kommt' && a.status !== 'bereitschaft') continue;
-    const dienstEintrag  = dienstMap?.get(a.uebungId)  || null;
-    const einsatzEintrag = einsatzMap?.get(a.uebungId) || null;
-    const eintrag   = dienstEintrag || einsatzEintrag || null;
-    const typNorm   = a.typ === 'einsaetze' ? 'einsatz' : a.typ === 'dienste' ? 'dienst' : a.typ;
-    const istEinsatz = typNorm === 'einsatz' || (!a.typ && !!einsatzEintrag && !dienstEintrag);
-    const h = einsatzStunden(a, eintrag, istEinsatz);
-    const d = a.datum?.toDate ? a.datum.toDate() : (eintrag?.datum?.toDate?.()  || new Date(a.datum));
-    // relevant: default true, explizit false nur wenn gesetzt
-    const istRelevant = eintrag?.relevant !== false;
-
-    if (istEinsatz) {
-      // Ausnahme: Einsätze mit statistikIgnorieren fließen bewusst nicht in Einsatzzahlen/-stunden ein.
-      if (einsatzEintrag?.statistikIgnorieren === true) continue;
-      if (d.getFullYear() === jahrAkt) { gesamtEinsatz += h; einsaetze++; }
-    } else {
-      if (d.getFullYear() === jahrAkt) {
-        dienste++;
-        if (istRelevant) { dienstRelevant += h; dienstRelevantAnzahl++; }
-        else             { dienstIrrelevant += h; dienstIrrelevantAnzahl++; }
-      }
-      if (d >= vor12m && istRelevant) { dienstStunden12m += h; dienste12m++; }
-    }
-  }
-  const gesamtDienst = dienstRelevant + dienstIrrelevant;
-  return {
-    gesamtEinsatz:    Math.round(gesamtEinsatz*10)/10,
-    gesamtDienst:     Math.round(gesamtDienst*10)/10,
-    dienstRelevant:   Math.round(dienstRelevant*10)/10,
-    dienstIrrelevant: Math.round(dienstIrrelevant*10)/10,
-    dienstRelevantAnzahl, dienstIrrelevantAnzahl,
-    einsaetze, dienste,
-    dienste12m,       // Anzahl relevanter Dienste im rollierenden 12-Monats-Fenster (passend zu stunden12mZiel)
-    stunden12m:       Math.round(dienstRelevant*10)/10,  // aktuelles Jahr, nur relevante
-    ziel:             dienstStunden12m >= 40,
-    stunden12mZiel:   Math.round(dienstStunden12m*10)/10,
-  };
-}
+// einsatzStunden() und getStats() sind jetzt in js/logic.js (Unit-Test-tauglich, ohne
+// Firebase-/DOM-Abhängigkeiten), als window.einsatzStunden/window.getStats global verfügbar.
 
 // Für die Profil-Übersicht: Einzeleinträge statt nur Summen –
 // Dienste der letzten 12 Monate, Einsätze des laufenden Jahres.
@@ -272,14 +215,7 @@ function initOrtAutocomplete(inputId, onSelect) {
 // Einsätze zeigten Kameraden rückwirkend schon als Gruppen-/Zugführer, obwohl sie das zum
 // Einsatzzeitpunkt noch nicht waren). Ohne Stichtag (Standardfall, z. B. Dashboard/aktueller
 // Status) bleibt das Verhalten wie bisher: alle vorhandenen Lehrgänge zählen.
-function staerkeKategorie(qualis, stichtag) {
-  const grenze = stichtag ? new Date(stichtag) : null;
-  const relevante = (qualis || []).filter(q => !grenze || (q.datum && new Date(q.datum) <= grenze));
-  const qs = relevante.map(q => (q.bezeichnung || q.titel || q.name || '').toLowerCase());
-  if (qs.some(q => q.includes('zugführer') || q.includes('zugfuehrer'))) return 'zugfuehrer';
-  if (qs.some(q => q.includes('gruppenführer') || q.includes('gruppenfuehrer'))) return 'gruppenfuehrer';
-  return 'kamerad';
-}
+// staerkeKategorie() ist jetzt in js/logic.js (window.staerkeKategorie).
 async function staerkeKategorieVon(userId, stichtag) {
   const qSnap = await fw.getDocs('users/'+userId+'/qualifikationen');
   return staerkeKategorie(qSnap.docs.map(d => d.data()), stichtag);
@@ -1637,25 +1573,8 @@ function dienstArtLabel(wert) {
 function dienstArtRelevant(wert) {
   return _dienstarten.find(a => a.id === wert)?.relevant ?? true;
 }
-// Pflichtfelder für einen vollständigen Dienst (nicht Einsatz)
-function dienstUnvollstaendig(u) {
-  if (u.typ !== 'dienst') return false;
-  if (!u.titel) return true;
-  if (!u.datum) return true;
-  if (!u.dauer_h || u.dauer_h <= 0) return true;
-  if (!u.art) return true;
-  return false;
-}
-// Pflichtfelder für einen vollständigen Einsatz (nicht Dienst) – ohne Endzeit lässt sich
-// keine Dauer berechnen (relevant für die Stunden-Anrechnung), ohne Ort fehlt der Einsatzort.
-function einsatzUnvollstaendig(u) {
-  if (u.typ !== 'einsatz') return false;
-  if (!u.titel) return true;
-  if (!u.datum) return true;
-  if (!u.zeitEnde) return true;
-  if (!u.ort) return true;
-  return false;
-}
+// dienstUnvollstaendig()/einsatzUnvollstaendig() sind jetzt in js/logic.js
+// (window.dienstUnvollstaendig/window.einsatzUnvollstaendig).
 
 // ── Rollen-/Rechtekonzept ──────────────────────────────────
 // Katalog aller granularen Einzelrechte, gruppiert nach Bereich (für die Rang-Verwaltung).

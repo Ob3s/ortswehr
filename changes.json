@@ -1,1 +1,1 @@
-[{"version": "20260831114758", "datum": "31.08.2026", "punkte": ["Fix: Umgebungserkennung DEV/PROD lief über den falschen Wert (Hostname statt Pfad) und griff dadurch nie"]}]
+[{"version": "20260831122204", "datum": "31.08.2026", "punkte": ["Testinfrastruktur: Business-Logik nach js/logic.js ausgelagert, Unit-Tests + Playwright-E2E-Tests, GitHub-Actions-Gate vor PROD-Deploy"]}]
