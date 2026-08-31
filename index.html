@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="theme-color" content="#cc2200">
-  <meta name="app-version" content="20260831104606">
+  <meta name="app-version" content="20260831111822">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ortswehr">
@@ -84,7 +84,16 @@
   import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject }
     from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js';
 
-  const firebaseConfig = {
+  // Umgebungserkennung per Hostname: dieselbe index.html/pages.js wird unverändert nach
+  // ortswehr (PROD) UND ortswehr-dev (DEV) gepusht, deshalb hier zur Laufzeit statt per
+  // Build-Schritt entscheiden (kein Build-Step-Prinzip bleibt so erhalten). Capacitor lädt
+  // ebenfalls die echte https-URL, daher greift dieselbe Erkennung auch dort.
+  window.IST_DEV = location.hostname.includes('ortswehr-dev');
+  window.APP_NAME = window.IST_DEV ? 'Ortswehr DEV' : 'Ortswehr';
+  document.title = window.APP_NAME;
+  document.querySelector('meta[name="apple-mobile-web-app-title"]')?.setAttribute('content', window.APP_NAME);
+
+  const firebaseConfigProd = {
     apiKey: "AIzaSyDwV6LJUnL660nQnnlQ47QZnBc_bXzIezU",
     authDomain: "ffw-oegeln-791ca.firebaseapp.com",
     projectId: "ffw-oegeln-791ca",
@@ -92,7 +101,22 @@
     messagingSenderId: "170034438620",
     appId: "1:170034438620:web:f2e40bf21b6a9b6987ef19"
   };
-  const VAPID = 'BDpa4LsgE1SlkshoyiVWt7EQbSi2YVp0Z_27N1Ms6sxGA4qogEPI3PWcRTwn3vvsYAhT8b1mD3Hpj6plCx5CySg';
+  const firebaseConfigDev = {
+    apiKey: "AIzaSyAiG5H2bMIRqhMXJcOhn_GWaEPVAPlKm8k",
+    authDomain: "ffw-oegeln-dev.firebaseapp.com",
+    projectId: "ffw-oegeln-dev",
+    storageBucket: "ffw-oegeln-dev.firebasestorage.app",
+    messagingSenderId: "1083789051573",
+    appId: "1:1083789051573:web:90aea329bd0d903c51a0fc"
+  };
+  const firebaseConfig = window.IST_DEV ? firebaseConfigDev : firebaseConfigProd;
+  // VAPID-Key ist projektspezifisch (Cloud-Messaging-Webpush-Zertifikat). Für DEV noch offen –
+  // muss einmalig in der Firebase Console (Projekteinstellungen → Cloud Messaging → Web Push
+  // Zertifikate) erzeugt werden. Bis dahin schlägt nur das Push-Token-Abrufen fehl (siehe
+  // aktivierePush try/catch), der Rest der App funktioniert unabhängig davon.
+  const VAPID = window.IST_DEV
+    ? ''
+    : 'BDpa4LsgE1SlkshoyiVWt7EQbSi2YVp0Z_27N1Ms6sxGA4qogEPI3PWcRTwn3vvsYAhT8b1mD3Hpj6plCx5CySg';
 
   const firebaseApp = initializeApp(firebaseConfig);
   const auth      = getAuth(firebaseApp);
@@ -228,7 +252,7 @@
 
   if (messaging) {
     onMessage(messaging, payload => {
-      const title    = payload.notification?.title || '🚒 Ortswehr';
+      const title    = payload.notification?.title || `🚒 ${window.APP_NAME}`;
       const body     = payload.notification?.body  || '';
       const alarm    = payload.data?.alarm === 'true';
       const uebungId = payload.data?.uebungId || '';
@@ -456,7 +480,10 @@
   };
 
   if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.register('/ortswehr/sw.js', { updateViaCache: 'none' }).then(reg => {
+    // Relativer Pfad statt hartcodiertem '/ortswehr/sw.js': funktioniert damit sowohl unter
+    // /ortswehr/ (PROD) als auch /ortswehr-dev/ (DEV) - vorher zeigte DEV fälschlich auf den
+    // PROD-Pfad.
+    navigator.serviceWorker.register('./sw.js', { updateViaCache: 'none' }).then(reg => {
       // Sofort auf Update prüfen
       reg.update();
       // Wenn neuer SW aktiviert → Seite automatisch neu laden
