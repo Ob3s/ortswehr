@@ -222,34 +222,8 @@ async function staerkeKategorieVon(userId, stichtag) {
 }
 
 // ── Dienst-Sichtbarkeit ───────────────────────────────────
-function dienstSichtbar(d, profil, qualis) {
-  // Ortswehr-Filter: nur Dienste der eigenen Wehren anzeigen
-  // Wehrführer sieht immer alles
-  if (d.ortswehrIds?.length && profil?.rolle !== 'wehrfuehrer') {
-    const meineIds = profil?.ortswehrIds?.length ? profil.ortswehrIds
-      : (profil?.ortswehrId ? [profil.ortswehrId] : []);
-    // Wenn User keine Wehr zugeordnet: alle sehen
-    if (meineIds.length > 0 && !d.ortswehrIds.some(id => meineIds.includes(id))) return false;
-  }
-  const titel = (d.titel || '').toLowerCase();
-  const qs = (qualis || []).map(q => (q.bezeichnung || q.titel || q.name || '').toLowerCase());
-  // AGT-Termine
-  const agtTitel = (_dienstFilter?.agt || ['belastungslauf', 'wärmeübung', 'fortbildungstag agt']);
-  if (agtTitel.some(t => titel.includes(t))) {
-    return qs.some(q => q.includes('agt'));
-  }
-  // Maschinist
-  if (titel.includes('maschinist')) {
-    return qs.some(q => q.includes('maschinist'));
-  }
-  // Führungskräfte (Sichtbarkeit richtet sich nach der aus den Lehrgängen abgeleiteten
-  // Stärke-Kategorie, nicht mehr nach einer manuell gepflegten Rolle)
-  const fuehTitel = (_dienstFilter?.fuehrung || ['führungskräfte', 'gruppenführersitzung', 'zugführersitzung', 'zug- und gruppenführer']);
-  if (fuehTitel.some(t => titel.includes(t))) {
-    return profil?.rolle === 'wehrfuehrer' || staerkeKategorie(qualis) !== 'kamerad';
-  }
-  return true;
-}
+// dienstSichtbar() ist jetzt in js/logic.js (window.dienstSichtbar), Signatur um expliziten
+// dienstFilter-Parameter erweitert statt des impliziten _dienstFilter-Globals.
 // ── Nächste Dienste ──────────────────────────────────────
 function dienstKarte(d, label) {
   return `<div class="card" style="margin-bottom:0.5rem;cursor:pointer" onclick="navigate('uebung-detail',{id:'${d.id}',typ:'dienst'})">
@@ -268,11 +242,12 @@ function renderNaechsteDienste(naechster, zweiter) {
 // ── Dashboard ─────────────────────────────────────────────
 registerPage('dashboard', async (el) => {
   fw.setTitle('Dashboard');
-  const [aSnap, diensteSnap, einsaetzeSnap, qualiSnap] = await Promise.all([
+  const [aSnap, diensteSnap, einsaetzeSnap, qualiSnap, dienstFilter] = await Promise.all([
     fw.getDocs('anwesenheiten', fw.where('userId','==',fw.user.uid)),
     fw.getDocs('dienste', fw.orderBy('datum','asc')),
     fw.getDocs('einsaetze'),
     fw.getDocs('users/'+fw.user.uid+'/qualifikationen'),
+    ladeDienstFilter(),
   ]);
   const meine       = aSnap.docs.map(d => ({id:d.id,...d.data()}));
   const dienstMap   = new Map(diensteSnap.docs.map(d => [d.id, d.data()]));
@@ -282,7 +257,7 @@ registerPage('dashboard', async (el) => {
   const alleDienste = diensteSnap.docs.map(d => ({id:d.id,...d.data()}));
   const kuenftige   = alleDienste.filter(d => {
     const dt = d.datum?.toDate ? d.datum.toDate() : new Date(d.datum);
-    return dt >= heute && dienstSichtbar(d, fw.profil, meineQualis);
+    return dt >= heute && dienstSichtbar(d, fw.profil, meineQualis, dienstFilter);
   });
   // Oegeln-Logik: chronologisch nächster immer oben
   // nächster Dienst ≠ Oegeln → 2 anzeigen (nächster + nächster Oegeln-Dienst)
@@ -889,7 +864,7 @@ registerPage('dienste', async (el) => {
   const dQualis  = dQualiSnap.docs.map(d => d.data());
   const zeigeFahrzeugpruefungen = fw.hatRecht('fahrzeuge_anlegen') || fw.hatRecht('fahrzeuge_bearbeiten') || fw.hatRecht('fahrzeuge_loeschen')
     || fw.hatRecht('pruefaufgaben_anlegen') || fw.hatRecht('pruefaufgaben_bearbeiten') || fw.hatRecht('pruefaufgaben_loeschen') || fw.hatRecht('pruefaufgaben_ergebnisse');
-  const liste    = uSnap.docs.map(d => ({id:d.id,...d.data()})).filter(d => dienstSichtbar(d, fw.profil, dQualis));
+  const liste    = uSnap.docs.map(d => ({id:d.id,...d.data()})).filter(d => dienstSichtbar(d, fw.profil, dQualis, _dienstFilter));
   const meineMap = new Map(aSnap.docs.map(d => [d.data().uebungId, d.data().status]));
   el.innerHTML = `
     <div class="card">${renderEintragListe(liste, meineMap)}</div>

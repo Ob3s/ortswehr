@@ -97,13 +97,48 @@ function einsatzUnvollstaendig(u) {
   return false;
 }
 
+// Sichtbarkeit eines Dienstes für einen bestimmten Kameraden: Ortswehr-Zugehörigkeit plus
+// Themen-Filter (AGT/Maschinist/Führungskräfte anhand Titel-Schlüsselwörtern). dienstFilter ist
+// die geladene einstellungen/dienstfilter-Konfiguration ({agt:[...], fuehrung:[...]}) - explizit
+// als Parameter statt eines impliziten globalen Zustands, damit diese Funktion sowohl im Browser
+// (pages.js) als auch serverseitig (Cloud Function dienstErinnerung, eigene Kopie dort da Functions
+// nur ihr eigenes Verzeichnis deployen) verwendbar ist.
+function dienstSichtbar(d, profil, qualis, dienstFilter) {
+  // Ortswehr-Filter: nur Dienste der eigenen Wehren anzeigen. Wehrführer sieht immer alles.
+  if (d.ortswehrIds?.length && profil?.rolle !== 'wehrfuehrer') {
+    const meineIds = profil?.ortswehrIds?.length ? profil.ortswehrIds
+      : (profil?.ortswehrId ? [profil.ortswehrId] : []);
+    // Wenn User keine Wehr zugeordnet: alle sehen
+    if (meineIds.length > 0 && !d.ortswehrIds.some(id => meineIds.includes(id))) return false;
+  }
+  const titel = (d.titel || '').toLowerCase();
+  const qs = (qualis || []).map(q => (q.bezeichnung || q.titel || q.name || '').toLowerCase());
+  // AGT-Termine
+  const agtTitel = (dienstFilter?.agt || ['belastungslauf', 'wärmeübung', 'fortbildungstag agt']);
+  if (agtTitel.some(t => titel.includes(t))) {
+    return qs.some(q => q.includes('agt'));
+  }
+  // Maschinist
+  if (titel.includes('maschinist')) {
+    return qs.some(q => q.includes('maschinist'));
+  }
+  // Führungskräfte (Sichtbarkeit richtet sich nach der aus den Lehrgängen abgeleiteten
+  // Stärke-Kategorie, nicht mehr nach einer manuell gepflegten Rolle)
+  const fuehTitel = (dienstFilter?.fuehrung || ['führungskräfte', 'gruppenführersitzung', 'zugführersitzung', 'zug- und gruppenführer']);
+  if (fuehTitel.some(t => titel.includes(t))) {
+    return profil?.rolle === 'wehrfuehrer' || staerkeKategorie(qualis) !== 'kamerad';
+  }
+  return true;
+}
+
 if (typeof window !== 'undefined') {
   window.einsatzStunden       = einsatzStunden;
   window.getStats             = getStats;
   window.staerkeKategorie     = staerkeKategorie;
   window.dienstUnvollstaendig = dienstUnvollstaendig;
   window.einsatzUnvollstaendig = einsatzUnvollstaendig;
+  window.dienstSichtbar       = dienstSichtbar;
 }
 if (typeof module !== 'undefined' && module.exports) {
-  module.exports = { einsatzStunden, getStats, staerkeKategorie, dienstUnvollstaendig, einsatzUnvollstaendig };
+  module.exports = { einsatzStunden, getStats, staerkeKategorie, dienstUnvollstaendig, einsatzUnvollstaendig, dienstSichtbar };
 }

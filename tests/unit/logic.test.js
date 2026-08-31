@@ -8,6 +8,7 @@ const {
   staerkeKategorie,
   dienstUnvollstaendig,
   einsatzUnvollstaendig,
+  dienstSichtbar,
 } = require('../../js/logic.js');
 
 test('einsatzStunden: Bereitschaft bei Einsatz ist immer 0.25h', () => {
@@ -94,6 +95,40 @@ test('getStats: abgelehnte/unbeantwortete Anwesenheiten zählen nicht', () => {
   const einsatzMap = new Map([['e1', { dauer_h: 2, datum: `${jahr}-03-01` }]]);
   const stats = getStats(anwesenheiten, new Map(), einsatzMap, jahr);
   assert.equal(stats.einsaetze, 0);
+});
+
+test('dienstSichtbar: normaler Dienst ist für alle in der eigenen Ortswehr sichtbar', () => {
+  const d = { titel: 'Übung Löschangriff', ortswehrIds: ['ow1'] };
+  const profil = { rolle: 'kamerad', ortswehrIds: ['ow1'] };
+  assert.equal(dienstSichtbar(d, profil, []), true);
+});
+
+test('dienstSichtbar: AGT-Termin nur für AGT-Träger sichtbar (Kernbug: nicht einfach "hat man einen Dienst")', () => {
+  const d = { titel: 'Belastungslauf AGT', ortswehrIds: ['ow1'] };
+  const profil = { rolle: 'kamerad', ortswehrIds: ['ow1'] };
+  assert.equal(dienstSichtbar(d, profil, []), false, 'ohne AGT-Qualifikation nicht sichtbar');
+  assert.equal(dienstSichtbar(d, profil, [{ bezeichnung: 'AGT-Träger' }]), true, 'mit AGT-Qualifikation sichtbar');
+});
+
+test('dienstSichtbar: Maschinisten-Dienst nur für Maschinisten sichtbar', () => {
+  const d = { titel: 'Maschinisten-Fortbildung', ortswehrIds: ['ow1'] };
+  const profil = { rolle: 'kamerad', ortswehrIds: ['ow1'] };
+  assert.equal(dienstSichtbar(d, profil, []), false);
+  assert.equal(dienstSichtbar(d, profil, [{ bezeichnung: 'Maschinist' }]), true);
+});
+
+test('dienstSichtbar: Führungskräfte-Termin nur für Gruppen-/Zugführer oder Wehrführer sichtbar', () => {
+  const d = { titel: 'Gruppenführersitzung', ortswehrIds: ['ow1'] };
+  const kamerad = { rolle: 'kamerad', ortswehrIds: ['ow1'] };
+  assert.equal(dienstSichtbar(d, kamerad, []), false);
+  assert.equal(dienstSichtbar(d, kamerad, [{ bezeichnung: 'Gruppenführer' }]), true);
+  assert.equal(dienstSichtbar(d, { rolle: 'wehrfuehrer' }, []), true);
+});
+
+test('dienstSichtbar: fremde Ortswehr ist nicht sichtbar (außer Wehrführer)', () => {
+  const d = { titel: 'Übung', ortswehrIds: ['ow-fremd'] };
+  assert.equal(dienstSichtbar(d, { rolle: 'kamerad', ortswehrIds: ['ow1'] }, []), false);
+  assert.equal(dienstSichtbar(d, { rolle: 'wehrfuehrer', ortswehrIds: ['ow1'] }, []), true);
 });
 
 test('getStats: nicht-relevanter Dienst zählt separat (dienstIrrelevant), nicht in dienstRelevant', () => {
