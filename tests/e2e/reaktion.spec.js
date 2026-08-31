@@ -16,7 +16,7 @@ test('Reaktion auf einen Einsatz setzen und Persistenz nach Reload prüfen', asy
   // erneut zum Test-Einsatz navigieren, um die Persistenz in Firestore zu prüfen (nicht nur im
   // clientseitigen State).
   await page.reload();
-  await page.waitForSelector('#app:not(.hidden)', { timeout: 120_000 });
+  await page.waitForSelector('#app:not(.hidden)', { timeout: 30_000 });
   await page.click('[data-page="einsaetze"]');
   await page.getByText('E2E-Test-Einsatz', { exact: false }).click();
   await expect(page.locator('#einsatz-reaktionen')).toContainText('Wehrführer', { timeout: 10_000 });

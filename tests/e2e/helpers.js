@@ -11,11 +11,8 @@ async function login(page) {
   // Erster Login braucht länger (Firestore-Realtime-Kanal-Aufbau ohne warmen Cache), auf CI-Runnern
   // noch mehr als lokal (der alphabetisch erste Spec-Lauf hat keinerlei Warmlauf-Vorteil) - daher
   // großzügiges Timeout statt der sonst üblichen ~5s.
-  // onAuthStateChanged macht zwei sequentielle Firestore-getDoc-Aufrufe (users, dann raenge) UND
-  // muss dafür erst den Realtime-Kanal aufbauen - auf GitHub-Actions-Runnern (geografisch weit von
-  // der europe-west3-Region) hat sich das als deutlich langsamer/unzuverlässiger erwiesen als lokal,
-  // deshalb hier sehr großzügig statt nachträglich wieder zu knapp zu bemessen.
-  await page.waitForSelector('#app:not(.hidden)', { timeout: 120_000 });
+  // Erster Login braucht etwas länger (Firestore-Realtime-Kanal-Aufbau ohne warmen Cache).
+  await page.waitForSelector('#app:not(.hidden)', { timeout: 30_000 });
 }
 
 module.exports = { login };

@@ -25,6 +25,14 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+      # GitHub-Actions-Runner haben IPv6 aktiv, aber die Route zu Google-APIs ist von dort oft
+      # nicht nutzbar - Chromium versucht trotzdem zuerst IPv6 und hängt bis zum TCP-Timeout
+      # (~120s), bevor es auf IPv4 zurückfällt. Bekanntes Runner-Problem, das die Firestore-Logins
+      # in den E2E-Tests reproduzierbar zum Hängen gebracht hat. IPv6 deshalb hart abschalten.
+      - name: IPv6 deaktivieren (bekanntes Runner-Problem, verursacht hängende Google-API-Verbindungen)
+        run: |
+          sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1
+          sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1
       - name: Test-Dependencies installieren
         working-directory: tests
         run: npm ci
