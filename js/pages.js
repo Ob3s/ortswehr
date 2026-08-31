@@ -93,63 +93,8 @@ function anwesenheitBadge(s) {
   if (s==='abgelehnt'  || s==='kommt_nicht') return '<span style="color:#dc2626;font-size:1.1rem">❌</span>';
   return '<span style="color:#f59e0b;font-size:1.1rem">⏳</span>'; // keine Reaktion
 }
-// Stunden-Anrechnung für eine Anwesenheit: bei Diensten immer die hinterlegte Dauer.
-// Bei Einsätzen gilt die pauschale 15-Minuten-Regel für "Bereitschaft" (in der Wache geblieben,
-// nicht ausgerückt) – unabhängig davon, ob/wann die Einsatz-Endzeit gesetzt ist (siehe
-// pruefeBereitschaftAutoEndzeit()). Wer tatsächlich ausgerückt ist, bekommt die reguläre Dauer
-// aus Beginn/Ende des Einsatzes – solange die Endzeit noch fehlt (z. B. weil die automatische
-// Bereitschafts-Endzeit gerade zurückgenommen wurde, weil doch noch jemand ausgerückt ist),
-// zählen für ihn 0 Std., bis sie nachgetragen wird.
-function einsatzStunden(a, eintrag, istEinsatz) {
-  if (istEinsatz && a.status === 'bereitschaft') return 0.25;
-  return eintrag?.dauer_h ?? a.dauer_h ?? 0;
-}
-function getStats(anwesenheiten, dienstMap, einsatzMap, jahr) {
-  const jetzt   = new Date();
-  const jahrAkt = jahr || jetzt.getFullYear();
-  // Die rollierende 12-Monats-Zielgröße bezieht sich immer auf "heute", unabhängig vom jahr-Parameter
-  const vor12m  = new Date(); vor12m.setFullYear(jetzt.getFullYear()-1); vor12m.setHours(0,0,0,0);
-
-  let gesamtEinsatz=0, dienstRelevant=0, dienstIrrelevant=0, einsaetze=0, dienste=0;
-  let dienstRelevantAnzahl=0, dienstIrrelevantAnzahl=0;
-  let dienstStunden12m=0, dienste12m=0;
-  for (const a of anwesenheiten) {
-    if (a.status !== 'bestaetigt' && a.status !== 'kommt' && a.status !== 'bereitschaft') continue;
-    const dienstEintrag  = dienstMap?.get(a.uebungId)  || null;
-    const einsatzEintrag = einsatzMap?.get(a.uebungId) || null;
-    const eintrag   = dienstEintrag || einsatzEintrag || null;
-    const typNorm   = a.typ === 'einsaetze' ? 'einsatz' : a.typ === 'dienste' ? 'dienst' : a.typ;
-    const istEinsatz = typNorm === 'einsatz' || (!a.typ && !!einsatzEintrag && !dienstEintrag);
-    const h = einsatzStunden(a, eintrag, istEinsatz);
-    const d = a.datum?.toDate ? a.datum.toDate() : (eintrag?.datum?.toDate?.()  || new Date(a.datum));
-    // relevant: default true, explizit false nur wenn gesetzt
-    const istRelevant = eintrag?.relevant !== false;
-
-    if (istEinsatz) {
-      if (d.getFullYear() === jahrAkt) { gesamtEinsatz += h; einsaetze++; }
-    } else {
-      if (d.getFullYear() === jahrAkt) {
-        dienste++;
-        if (istRelevant) { dienstRelevant += h; dienstRelevantAnzahl++; }
-        else             { dienstIrrelevant += h; dienstIrrelevantAnzahl++; }
-      }
-      if (d >= vor12m && istRelevant) { dienstStunden12m += h; dienste12m++; }
-    }
-  }
-  const gesamtDienst = dienstRelevant + dienstIrrelevant;
-  return {
-    gesamtEinsatz:    Math.round(gesamtEinsatz*10)/10,
-    gesamtDienst:     Math.round(gesamtDienst*10)/10,
-    dienstRelevant:   Math.round(dienstRelevant*10)/10,
-    dienstIrrelevant: Math.round(dienstIrrelevant*10)/10,
-    dienstRelevantAnzahl, dienstIrrelevantAnzahl,
-    einsaetze, dienste,
-    dienste12m,       // Anzahl relevanter Dienste im rollierenden 12-Monats-Fenster (passend zu stunden12mZiel)
-    stunden12m:       Math.round(dienstRelevant*10)/10,  // aktuelles Jahr, nur relevante
-    ziel:             dienstStunden12m >= 40,
-    stunden12mZiel:   Math.round(dienstStunden12m*10)/10,
-  };
-}
+// einsatzStunden() und getStats() sind jetzt in js/logic.js (Unit-Test-tauglich, ohne
+// Firebase-/DOM-Abhängigkeiten), als window.einsatzStunden/window.getStats global verfügbar.
 
 // Für die Profil-Übersicht: Einzeleinträge statt nur Summen –
 // Dienste der letzten 12 Monate, Einsätze des laufenden Jahres.
@@ -189,7 +134,11 @@ function meineEintraegeListen(anwesenheiten, dienstMap, einsatzMap) {
 
 
 // ── Google Places Autocomplete (via Cloud Function Proxy) ─
-const AC_URL = 'https://europe-west3-ffw-oegeln-791ca.cloudfunctions.net/ortAutoComplete';
+// HTTP-Cloud-Functions haben je Firebase-Projekt eigene URLs (DEV nutzt Cloud-Run-URLs statt
+// des cloudfunctions.net-Schemas von PROD) - deshalb hier wie bei firebaseConfig per Hostname wählen.
+const AC_URL = window.IST_DEV
+  ? 'https://ortautocomplete-i7y73cc75a-ey.a.run.app'
+  : 'https://europe-west3-ffw-oegeln-791ca.cloudfunctions.net/ortAutoComplete';
 
 function initOrtAutocomplete(inputId, onSelect) {
   const input = document.getElementById(inputId);
@@ -266,14 +215,7 @@ function initOrtAutocomplete(inputId, onSelect) {
 // Einsätze zeigten Kameraden rückwirkend schon als Gruppen-/Zugführer, obwohl sie das zum
 // Einsatzzeitpunkt noch nicht waren). Ohne Stichtag (Standardfall, z. B. Dashboard/aktueller
 // Status) bleibt das Verhalten wie bisher: alle vorhandenen Lehrgänge zählen.
-function staerkeKategorie(qualis, stichtag) {
-  const grenze = stichtag ? new Date(stichtag) : null;
-  const relevante = (qualis || []).filter(q => !grenze || (q.datum && new Date(q.datum) <= grenze));
-  const qs = relevante.map(q => (q.bezeichnung || q.titel || q.name || '').toLowerCase());
-  if (qs.some(q => q.includes('zugführer') || q.includes('zugfuehrer'))) return 'zugfuehrer';
-  if (qs.some(q => q.includes('gruppenführer') || q.includes('gruppenfuehrer'))) return 'gruppenfuehrer';
-  return 'kamerad';
-}
+// staerkeKategorie() ist jetzt in js/logic.js (window.staerkeKategorie).
 async function staerkeKategorieVon(userId, stichtag) {
   const qSnap = await fw.getDocs('users/'+userId+'/qualifikationen');
   return staerkeKategorie(qSnap.docs.map(d => d.data()), stichtag);
@@ -981,7 +923,9 @@ window.kalenderImportieren = async () => {
   status.textContent = '';
   vorschau.innerHTML = '';
   try {
-    const res = await fetch('https://europe-west3-ffw-oegeln-791ca.cloudfunctions.net/kalenderImport',
+    const res = await fetch(window.IST_DEV
+      ? 'https://kalenderimport-i7y73cc75a-ey.a.run.app'
+      : 'https://europe-west3-ffw-oegeln-791ca.cloudfunctions.net/kalenderImport',
       { headers: { 'x-uid': fw.user.uid } });
     const { events, error } = await res.json();
     if (error) throw new Error(error);
@@ -1214,6 +1158,11 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
   const darfMp = fw.hatRecht(mpRecht);
   const mpGeprueft = darfMp && u.mpGeprueft === true;
   const darfBemerkung = fw.hatRecht(bemerkungRecht);
+  // Statistik-Ausschluss: Ausnahme für einzelne Einsätze, die zwar in der Einsatzliste bleiben,
+  // aber nicht in Einsatzzahlen/-stunden einfließen sollen. WF-exklusiv, kein eigenes Recht
+  // (analog Passwort-Reset) – bewusst selten/sensibel genug, um kein RECHTE_KATALOG-Eintrag zu sein.
+  const darfStatistikAusschluss = isEinsatz && fw.isWehrfuehrer();
+  const statistikIgnoriert = u.statistikIgnorieren === true;
 
   const aSnap = await fw.getDocs('anwesenheiten',
     fw.where('uebungId','==',id), fw.where('userId','==',fw.user.uid));
@@ -1262,7 +1211,7 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
         onclick="einsatzReagieren('${id}','kommt_nicht')">👎 Komme nicht</button>
     </div>
     ${fw.hatRecht(teilnRecht) ? `<div style="padding:0 0 0.5rem">${eintragBtn}</div>` : ''}
-    ${(darfMp || darfBemerkung) ? `
+    ${(darfMp || darfBemerkung || darfStatistikAusschluss) ? `
     <div class="card" style="margin-top:0.8rem">
       ${darfMp ? `
         <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-size:0.85rem">
@@ -1276,6 +1225,13 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
           <textarea id="bemerkung-feld" rows="3" style="width:100%;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:0.5rem;font-size:0.85rem;color:var(--text);resize:vertical;margin-top:0.3rem">${u.bemerkung||''}</textarea>
           <button class="btn btn-secondary btn-sm" style="margin-top:0.3rem" onclick="bemerkungSpeichern('${u.typ}','${id}')">💾 Bemerkung speichern</button>
         </div>
+      ` : ''}
+      ${darfStatistikAusschluss ? `
+        <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-size:0.85rem;${(darfMp||darfBemerkung) ? 'margin-top:0.6rem' : ''}">
+          <input type="checkbox" id="statistik-ausschluss-checkbox" ${statistikIgnoriert ? 'checked' : ''} onchange="statistikAusschlussUmschalten('${id}',this.checked)">
+          Ausnahme: nicht in Einsatzzahlen/-statistiken zählen
+        </label>
+        <div class="muted" style="font-size:0.75rem;margin-top:0.2rem;margin-left:1.7rem">Bleibt in der Einsatzliste sichtbar, fließt aber nicht in Statistik, Jahresvergleich oder Einsatzstunden ein.</div>
       ` : ''}
     </div>
     ` : ''}
@@ -1486,6 +1442,17 @@ window.bemerkungSpeichern = async (typ, id) => {
   fw.toast('Bemerkung gespeichert ✅');
 };
 
+// Statistik-Ausschluss: nur für Einsätze, WF-exklusiv (siehe uebung-detail). Feld direkt auf
+// einsaetze/{id}, wird von getStats() und der Statistik-Seite ausgewertet.
+window.statistikAusschlussUmschalten = async (id, ausgeschlossen) => {
+  await fw.updateDoc('einsaetze/'+id, {
+    statistikIgnorieren: ausgeschlossen,
+    statistikIgnoriertAm: ausgeschlossen ? new Date() : null,
+    statistikIgnoriertVon: ausgeschlossen ? fw.user.uid : null,
+  });
+  fw.toast(ausgeschlossen ? 'Von Statistik ausgeschlossen ✅' : 'Zählt wieder in Statistik ✅');
+};
+
 window.teilnahmeMelden = async (uebungId, titel, dauer_h, typ, datumStr) => {
   const name = kurzName(fw.profil.vorname, fw.profil.nachname);
   await fw.addDoc('anwesenheiten', {
@@ -1606,25 +1573,8 @@ function dienstArtLabel(wert) {
 function dienstArtRelevant(wert) {
   return _dienstarten.find(a => a.id === wert)?.relevant ?? true;
 }
-// Pflichtfelder für einen vollständigen Dienst (nicht Einsatz)
-function dienstUnvollstaendig(u) {
-  if (u.typ !== 'dienst') return false;
-  if (!u.titel) return true;
-  if (!u.datum) return true;
-  if (!u.dauer_h || u.dauer_h <= 0) return true;
-  if (!u.art) return true;
-  return false;
-}
-// Pflichtfelder für einen vollständigen Einsatz (nicht Dienst) – ohne Endzeit lässt sich
-// keine Dauer berechnen (relevant für die Stunden-Anrechnung), ohne Ort fehlt der Einsatzort.
-function einsatzUnvollstaendig(u) {
-  if (u.typ !== 'einsatz') return false;
-  if (!u.titel) return true;
-  if (!u.datum) return true;
-  if (!u.zeitEnde) return true;
-  if (!u.ort) return true;
-  return false;
-}
+// dienstUnvollstaendig()/einsatzUnvollstaendig() sind jetzt in js/logic.js
+// (window.dienstUnvollstaendig/window.einsatzUnvollstaendig).
 
 // ── Rollen-/Rechtekonzept ──────────────────────────────────
 // Katalog aller granularen Einzelrechte, gruppiert nach Bereich (für die Rang-Verwaltung).
@@ -2411,7 +2361,7 @@ registerPage('statistik', async (el) => {
 
   // Jahresvergleich gesamt
   const gesamt = (jahr) => ({
-    einsaetze: einsaetze.filter(e => jahrvon(e.datum, jahr)).length,
+    einsaetze: einsaetze.filter(e => jahrvon(e.datum, jahr) && e.statistikIgnorieren !== true).length,
     dienststunden: users.reduce((s,u) => s + statsFuer(u.id,jahr).dienstRelevant, 0),
     lehrgangsstunden: users.reduce((s,u) => s + lehrgangStunden(u.id,jahr), 0),
   });
@@ -3934,7 +3884,9 @@ registerPage('kameraden', async (el) => {
   try {
     // Passwort über Cloud Function setzen
     const token = await fw.user.getIdToken();
-    const res = await fetch('https://europe-west3-ffw-oegeln-791ca.cloudfunctions.net/resetUserPassword', {
+    const res = await fetch(window.IST_DEV
+      ? 'https://resetuserpassword-i7y73cc75a-ey.a.run.app'
+      : 'https://europe-west3-ffw-oegeln-791ca.cloudfunctions.net/resetUserPassword', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer '+token },
       body: JSON.stringify({ userId, newPassword: neuesPasswort }),
@@ -3989,6 +3941,7 @@ window.aufgabeEinblenden = async (key) => {
       ${fw.hatRecht('stammdaten_raenge') ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('raenge-verwalten')">Ränge</button>` : ''}
       ${(fw.hatRecht('loeschwasser_verwalten') || fw.hatRecht('loeschwasser_pruefen')) ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('loeschwasser-verwalten')">💧 Löschwasser</button>` : ''}
       ${(fw.hatRecht('dienste_bearbeiten') || fw.hatRecht('einsaetze_bearbeiten')) ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('uebungen-backend')">📋 Dienste & Einsätze bearbeiten</button>` : ''}
+      ${fw.isWehrfuehrer() ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('api-status')">📡 API-Status</button>` : ''}
     </div>
   `;
   if (fw.hatRecht('stammdaten_ortswehren')) ladeOrtswehrenInline();
@@ -5290,6 +5243,102 @@ registerPage('loeschwasser-overpass', async (el) => {
     fw.toast('Übernommen ✅');
     navigate('loeschwasser-overpass'); // Seite neu laden, damit "bereits erfasst" aktuell ist
   };
+});
+
+// ── API-Status ────────────────────────────────────────────
+// Reine Erreichbarkeits-Anzeige der externen Dienste, die die App nutzt (kein Kosten-/Nutzungs-
+// Zugriff möglich - dafür fehlt Zugriff auf Firebase-Billing). WF-exklusiv wie Passwort-Reset,
+// bewusst kein eigenes Recht dafür.
+const API_STATUS_LEAFLET_JS = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js';
+
+async function apiStatusFetch(url, opts) {
+  const start = performance.now();
+  const ctrl = new AbortController();
+  const timeout = setTimeout(() => ctrl.abort(), 6000);
+  try {
+    const res = await fetch(url, { ...opts, signal: ctrl.signal });
+    return { ok: res.ok, ms: Math.round(performance.now() - start), status: res.status };
+  } catch (e) {
+    return { ok: false, ms: Math.round(performance.now() - start), fehler: e.name === 'AbortError' ? 'Zeitüberschreitung' : e.message };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+const API_STATUS_DIENSTE = [
+  {
+    id: 'firebase', icon: '🔥', name: 'Firebase (Firestore)',
+    sub: 'Backend der App – Datenbank, Login, Push',
+    check: async () => {
+      const start = performance.now();
+      try {
+        await Promise.race([
+          fw.getDoc('einstellungen/dienstgrade'),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('Zeitüberschreitung')), 6000)),
+        ]);
+        return { ok: true, ms: Math.round(performance.now() - start) };
+      } catch (e) {
+        return { ok: false, ms: Math.round(performance.now() - start), fehler: e.message };
+      }
+    },
+  },
+  {
+    id: 'nominatim', icon: '📍', name: 'Nominatim (OpenStreetMap)',
+    sub: 'Adress-Geokodierung für die Löschwasserkarte',
+    check: () => apiStatusFetch('https://nominatim.openstreetmap.org/status.php?format=json'),
+  },
+  {
+    id: 'overpass', icon: '🗺️', name: 'Overpass API (OpenStreetMap)',
+    sub: 'OSM-Import von Löschwasserquellen',
+    check: () => apiStatusFetch('https://overpass-api.de/api/status'),
+  },
+  {
+    id: 'cdnjs', icon: '📦', name: 'cdnjs (Leaflet)',
+    sub: 'Kartenbibliothek für die Löschwasserkarte',
+    check: () => apiStatusFetch(API_STATUS_LEAFLET_JS, { method: 'HEAD' }),
+  },
+];
+
+registerPage('api-status', async (el) => {
+  if (!fw.isWehrfuehrer()) { navigate('dashboard'); return; }
+  fw.setTitle('API-Status');
+  fw.showBack(() => navigateBack());
+
+  const zeile = (d) => `
+    <div id="api-status-${d.id}" style="display:flex;align-items:center;gap:0.8rem;padding:0.6rem 0;border-bottom:1px solid var(--border)">
+      <div style="font-size:1.3rem;flex-shrink:0">${d.icon}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600">${d.name}</div>
+        <div class="muted" style="font-size:0.78rem">${d.sub}</div>
+      </div>
+      <span class="badge badge-gray" data-rolle="badge">⏳ prüfe…</span>
+    </div>`;
+
+  el.innerHTML = `
+    <div class="card" style="padding:0 1rem">
+      ${API_STATUS_DIENSTE.map(zeile).join('')}
+    </div>
+    <div class="card" style="margin-top:0.8rem;color:var(--muted);font-size:0.82rem;line-height:1.5">
+      💡 Das hier prüft nur, ob die Dienste gerade erreichbar sind – keine echten Nutzungs- oder
+      Kostenzahlen (dafür hat die App keinen Zugriff auf das Firebase-Billing). Nutzung/Kosten von
+      Firebase einsehen:
+      <a href="https://console.firebase.google.com/project/ffw-oegeln-791ca/usage" target="_blank" rel="noopener">
+        Firebase Console öffnen ↗
+      </a>
+    </div>`;
+
+  const badgeSetzen = (id, ok, detailText) => {
+    const row = document.getElementById('api-status-' + id);
+    if (!row) return;
+    const badge = row.querySelector('[data-rolle="badge"]');
+    badge.className = 'badge ' + (ok ? 'badge-green' : 'badge-red');
+    badge.textContent = ok ? `✅ erreichbar${detailText ? ' · ' + detailText : ''}` : `❌ nicht erreichbar${detailText ? ' · ' + detailText : ''}`;
+  };
+
+  await Promise.all(API_STATUS_DIENSTE.map(async (d) => {
+    const r = await d.check();
+    badgeSetzen(d.id, r.ok, r.ok ? r.ms + ' ms' : (r.fehler || ('HTTP ' + r.status)));
+  }));
 });
 
 

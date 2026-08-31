@@ -1,0 +1,60 @@
+name: Tests vor PROD
+
+# Läuft auf jedem Pull Request gegen main - via Branch-Protection als Pflicht-Check hinterlegt,
+# damit main (== was GitHub Pages als PROD ausliefert) nicht ohne grüne Tests aktualisiert werden
+# kann. Der eigentliche Merge braucht trotzdem weiterhin die explizite Bestätigung des Nutzers.
+on:
+  pull_request:
+    branches: [main]
+
+jobs:
+  unit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Unit-Tests (reine Business-Logik, js/logic.js)
+        run: node --test tests/unit/*.test.js
+
+  e2e:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      # GitHub-Actions-Runner haben IPv6 aktiv, aber die Route zu Google-APIs ist von dort oft
+      # nicht nutzbar - Chromium versucht trotzdem zuerst IPv6 und hängt bis zum TCP-Timeout
+      # (~120s), bevor es auf IPv4 zurückfällt. Bekanntes Runner-Problem, das die Firestore-Logins
+      # in den E2E-Tests reproduzierbar zum Hängen gebracht hat. IPv6 deshalb hart abschalten.
+      - name: IPv6 deaktivieren (bekanntes Runner-Problem, verursacht hängende Google-API-Verbindungen)
+        run: |
+          sudo sysctl -w net.ipv6.conf.all.disable_ipv6=1
+          sudo sysctl -w net.ipv6.conf.default.disable_ipv6=1
+      - name: Test-Dependencies installieren
+        working-directory: tests
+        run: npm ci
+      - name: Playwright-Browser installieren
+        working-directory: tests
+        run: npx playwright install --with-deps chromium
+      - name: DEV-Service-Account aus Secret schreiben
+        run: echo "$FIREBASE_DEV_SERVICE_ACCOUNT_JSON" > /tmp/serviceAccount-dev.json
+        env:
+          FIREBASE_DEV_SERVICE_ACCOUNT_JSON: ${{ secrets.FIREBASE_DEV_SERVICE_ACCOUNT_JSON }}
+      - name: E2E-Tests gegen DEV
+        working-directory: tests
+        run: npx playwright test
+        env:
+          FIREBASE_DEV_SERVICE_ACCOUNT: /tmp/serviceAccount-dev.json
+          ORTSWEHR_TEST_LOGIN: ${{ secrets.ORTSWEHR_TEST_LOGIN }}
+          ORTSWEHR_TEST_PASSWORD: ${{ secrets.ORTSWEHR_TEST_PASSWORD }}
+          ORTSWEHR_BASE_URL: https://ob3s.github.io/ortswehr-dev/
+      - name: Playwright-Report bei Fehlschlag hochladen
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-report
+          path: tests/playwright-report/
+          retention-days: 7

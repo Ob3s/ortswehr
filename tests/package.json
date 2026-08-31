@@ -1,0 +1,13 @@
+{
+  "name": "ortswehr-tests",
+  "private": true,
+  "description": "Unit- und E2E-Tests für die Ortswehr-PWA. Reine Dev-Dependency, Teil der App-Auslieferung nicht betroffen (kein Build-Step für die App selbst).",
+  "scripts": {
+    "test:unit": "node --test unit/*.test.js",
+    "test:e2e": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.47.0",
+    "firebase-admin": "^12.0.0"
+  }
+}

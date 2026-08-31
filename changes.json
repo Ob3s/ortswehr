@@ -1,1 +1,1 @@
-[{"version": "20260811094550", "datum": "11.08.2026", "punkte": ["Text: 'Derzeit nicht versichert.' statt 'Du bist derzeit nicht versichert.'"]}]
+[{"version": "20260831122204", "datum": "31.08.2026", "punkte": ["Testinfrastruktur: Business-Logik nach js/logic.js ausgelagert, Unit-Tests + Playwright-E2E-Tests, GitHub-Actions-Gate vor PROD-Deploy"]}]
