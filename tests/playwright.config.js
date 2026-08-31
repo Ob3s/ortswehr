@@ -6,7 +6,12 @@ module.exports = defineConfig({
   timeout: 45_000,
   fullyParallel: false, // teilen sich einen DEV-Testuser/dieselben Firestore-Daten
   workers: 1, // ein gemeinsamer Testuser/Datensatz - parallele Logins bremsen sich sonst gegenseitig aus
-  retries: process.env.CI ? 1 : 0,
+  // CI-Runner zeigen eine hartnäckige, nicht vollständig geklärte Netzwerk-Varianz beim ersten
+  // Firestore-Login (auch mit IPv6 deaktiviert und großzügigem Timeout - siehe
+  // PROJEKT-UEBERGABE.md Abschnitt 13.9). Mehr Retries statt weiter am Timeout drehen: fängt
+  // echte Aussetzer ab, ohne echte Bugs zu maskieren (die schlagen konsistent fehl, nicht nur
+  // manchmal).
+  retries: process.env.CI ? 2 : 0,
   reporter: process.env.CI ? 'github' : 'list',
   globalSetup: require.resolve('./e2e/global-setup.js'),
   globalTeardown: require.resolve('./e2e/global-teardown.js'),
