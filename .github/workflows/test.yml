@@ -16,7 +16,7 @@ jobs:
         with:
           node-version: 22
       - name: Unit-Tests (reine Business-Logik, js/logic.js)
-        run: node --test tests/unit
+        run: node --test tests/unit/*.test.js
 
   e2e:
     runs-on: ubuntu-latest
