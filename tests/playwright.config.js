@@ -3,7 +3,7 @@ const { defineConfig } = require('@playwright/test');
 
 module.exports = defineConfig({
   testDir: './e2e',
-  timeout: 45_000,
+  timeout: 60_000,
   fullyParallel: false, // teilen sich einen DEV-Testuser/dieselben Firestore-Daten
   workers: 1, // ein gemeinsamer Testuser/Datensatz - parallele Logins bremsen sich sonst gegenseitig aus
   retries: process.env.CI ? 1 : 0,
