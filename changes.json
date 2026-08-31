@@ -1,1 +1,1 @@
-[{"version": "20260831111822", "datum": "31.08.2026", "punkte": ["DEV/PROD-Trennung Phase A: eigenes Firebase-Projekt für DEV, App wählt Konfiguration/Namen zur Laufzeit je nach Hostname", "Fix: Service-Worker-Registrierung nutzte hartcodierten PROD-Pfad, funktioniert jetzt auch auf DEV"]}]
+[{"version": "20260831114323", "datum": "31.08.2026", "punkte": ["DEV/PROD-Trennung: DEV-spezifische Cloud-Function-URLs (Kalender-Import, Orts-Autocomplete, Passwort-Reset) ergänzt", "DEV-Firebase-Projekt vollständig eingerichtet (Firestore, Functions, Push-Zertifikat)"]}]

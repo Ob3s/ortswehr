@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="theme-color" content="#cc2200">
-  <meta name="app-version" content="20260831111822">
+  <meta name="app-version" content="20260831114323">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ortswehr">
@@ -110,12 +110,9 @@
     appId: "1:1083789051573:web:90aea329bd0d903c51a0fc"
   };
   const firebaseConfig = window.IST_DEV ? firebaseConfigDev : firebaseConfigProd;
-  // VAPID-Key ist projektspezifisch (Cloud-Messaging-Webpush-Zertifikat). Für DEV noch offen –
-  // muss einmalig in der Firebase Console (Projekteinstellungen → Cloud Messaging → Web Push
-  // Zertifikate) erzeugt werden. Bis dahin schlägt nur das Push-Token-Abrufen fehl (siehe
-  // aktivierePush try/catch), der Rest der App funktioniert unabhängig davon.
+  // VAPID-Key ist projektspezifisch (Cloud-Messaging-Webpush-Zertifikat), je Umgebung eigener Wert.
   const VAPID = window.IST_DEV
-    ? ''
+    ? 'BFaoLToH4xUKX-S-nwrLW-VnQFb9cNqPKbnHfIjFVDiOTF3Ty24l1-UYjJgzBFyokvQhbRi0WMI_xm4z6GDEMZ4'
     : 'BDpa4LsgE1SlkshoyiVWt7EQbSi2YVp0Z_27N1Ms6sxGA4qogEPI3PWcRTwn3vvsYAhT8b1mD3Hpj6plCx5CySg';
 
   const firebaseApp = initializeApp(firebaseConfig);
@@ -318,7 +315,9 @@
     if (!loginName) { msg.textContent = 'Bitte Anmeldename eingeben'; msg.style.color = 'var(--red)'; return; }
     try {
       document.getElementById('reset-btn').disabled = true;
-      const res = await fetch('https://europe-west3-ffw-oegeln-791ca.cloudfunctions.net/requestPasswordReset', {
+      const res = await fetch(window.IST_DEV
+        ? 'https://requestpasswordreset-i7y73cc75a-ey.a.run.app'
+        : 'https://europe-west3-ffw-oegeln-791ca.cloudfunctions.net/requestPasswordReset', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ loginName }),

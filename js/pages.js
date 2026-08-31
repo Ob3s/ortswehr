@@ -191,7 +191,11 @@ function meineEintraegeListen(anwesenheiten, dienstMap, einsatzMap) {
 
 
 // ── Google Places Autocomplete (via Cloud Function Proxy) ─
-const AC_URL = 'https://europe-west3-ffw-oegeln-791ca.cloudfunctions.net/ortAutoComplete';
+// HTTP-Cloud-Functions haben je Firebase-Projekt eigene URLs (DEV nutzt Cloud-Run-URLs statt
+// des cloudfunctions.net-Schemas von PROD) - deshalb hier wie bei firebaseConfig per Hostname wählen.
+const AC_URL = window.IST_DEV
+  ? 'https://ortautocomplete-i7y73cc75a-ey.a.run.app'
+  : 'https://europe-west3-ffw-oegeln-791ca.cloudfunctions.net/ortAutoComplete';
 
 function initOrtAutocomplete(inputId, onSelect) {
   const input = document.getElementById(inputId);
@@ -983,7 +987,9 @@ window.kalenderImportieren = async () => {
   status.textContent = '';
   vorschau.innerHTML = '';
   try {
-    const res = await fetch('https://europe-west3-ffw-oegeln-791ca.cloudfunctions.net/kalenderImport',
+    const res = await fetch(window.IST_DEV
+      ? 'https://kalenderimport-i7y73cc75a-ey.a.run.app'
+      : 'https://europe-west3-ffw-oegeln-791ca.cloudfunctions.net/kalenderImport',
       { headers: { 'x-uid': fw.user.uid } });
     const { events, error } = await res.json();
     if (error) throw new Error(error);
@@ -3959,7 +3965,9 @@ registerPage('kameraden', async (el) => {
   try {
     // Passwort über Cloud Function setzen
     const token = await fw.user.getIdToken();
-    const res = await fetch('https://europe-west3-ffw-oegeln-791ca.cloudfunctions.net/resetUserPassword', {
+    const res = await fetch(window.IST_DEV
+      ? 'https://resetuserpassword-i7y73cc75a-ey.a.run.app'
+      : 'https://europe-west3-ffw-oegeln-791ca.cloudfunctions.net/resetUserPassword', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer '+token },
       body: JSON.stringify({ userId, newPassword: neuesPasswort }),
