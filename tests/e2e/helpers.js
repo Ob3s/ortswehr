@@ -8,11 +8,9 @@ async function login(page) {
   await page.fill('#login-email', email);
   await page.fill('#login-pass', pass);
   await page.click('#login-btn');
-  // Erster Login braucht länger (Firestore-Realtime-Kanal-Aufbau ohne warmen Cache), auf CI-Runnern
-  // noch mehr als lokal (der alphabetisch erste Spec-Lauf hat keinerlei Warmlauf-Vorteil) - daher
-  // großzügiges Timeout statt der sonst üblichen ~5s.
-  // Erster Login braucht etwas länger (Firestore-Realtime-Kanal-Aufbau ohne warmen Cache).
-  await page.waitForSelector('#app:not(.hidden)', { timeout: 30_000 });
+  // Erster Login braucht länger (Firestore-Realtime-Kanal-Aufbau ohne warmen Cache), auf
+  // CI-Runnern mit spürbarer Varianz trotz IPv6-Fix - daher etwas großzügiger als lokal nötig.
+  await page.waitForSelector('#app:not(.hidden)', { timeout: 45_000 });
 }
 
 module.exports = { login };
