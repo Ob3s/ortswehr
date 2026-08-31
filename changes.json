@@ -1,1 +1,1 @@
-[{"version": "20260811094550", "datum": "11.08.2026", "punkte": ["Text: 'Derzeit nicht versichert.' statt 'Du bist derzeit nicht versichert.'"]}]
+[{"version": "20260831103253", "datum": "31.08.2026", "punkte": ["Neu: API-Status-Seite (Einstellungen, nur Administrator) – zeigt Erreichbarkeit von Firebase, Nominatim, Overpass API und Leaflet-CDN"]}]

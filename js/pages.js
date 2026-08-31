@@ -2320,6 +2320,12 @@ registerPage('einstellungen', async (el) => {
         ⚠️ Nur in der nativen App verfügbar
       </div>` : ''}
     </div>
+
+    ${fw.isWehrfuehrer() ? `
+    <div class="section-header">🛠️ Technik</div>
+    <div class="card">
+      <button class="btn btn-secondary btn-sm btn-full" onclick="navigate('api-status')">📡 API-Status</button>
+    </div>` : ''}
   `;
 
   // Checkboxen setzen
@@ -5290,6 +5296,102 @@ registerPage('loeschwasser-overpass', async (el) => {
     fw.toast('Übernommen ✅');
     navigate('loeschwasser-overpass'); // Seite neu laden, damit "bereits erfasst" aktuell ist
   };
+});
+
+// ── API-Status ────────────────────────────────────────────
+// Reine Erreichbarkeits-Anzeige der externen Dienste, die die App nutzt (kein Kosten-/Nutzungs-
+// Zugriff möglich - dafür fehlt Zugriff auf Firebase-Billing). WF-exklusiv wie Passwort-Reset,
+// bewusst kein eigenes Recht dafür.
+const API_STATUS_LEAFLET_JS = 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js';
+
+async function apiStatusFetch(url, opts) {
+  const start = performance.now();
+  const ctrl = new AbortController();
+  const timeout = setTimeout(() => ctrl.abort(), 6000);
+  try {
+    const res = await fetch(url, { ...opts, signal: ctrl.signal });
+    return { ok: res.ok, ms: Math.round(performance.now() - start), status: res.status };
+  } catch (e) {
+    return { ok: false, ms: Math.round(performance.now() - start), fehler: e.name === 'AbortError' ? 'Zeitüberschreitung' : e.message };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+const API_STATUS_DIENSTE = [
+  {
+    id: 'firebase', icon: '🔥', name: 'Firebase (Firestore)',
+    sub: 'Backend der App – Datenbank, Login, Push',
+    check: async () => {
+      const start = performance.now();
+      try {
+        await Promise.race([
+          fw.getDoc('einstellungen/dienstgrade'),
+          new Promise((_, rej) => setTimeout(() => rej(new Error('Zeitüberschreitung')), 6000)),
+        ]);
+        return { ok: true, ms: Math.round(performance.now() - start) };
+      } catch (e) {
+        return { ok: false, ms: Math.round(performance.now() - start), fehler: e.message };
+      }
+    },
+  },
+  {
+    id: 'nominatim', icon: '📍', name: 'Nominatim (OpenStreetMap)',
+    sub: 'Adress-Geokodierung für die Löschwasserkarte',
+    check: () => apiStatusFetch('https://nominatim.openstreetmap.org/status.php?format=json'),
+  },
+  {
+    id: 'overpass', icon: '🗺️', name: 'Overpass API (OpenStreetMap)',
+    sub: 'OSM-Import von Löschwasserquellen',
+    check: () => apiStatusFetch('https://overpass-api.de/api/status'),
+  },
+  {
+    id: 'cdnjs', icon: '📦', name: 'cdnjs (Leaflet)',
+    sub: 'Kartenbibliothek für die Löschwasserkarte',
+    check: () => apiStatusFetch(API_STATUS_LEAFLET_JS, { method: 'HEAD' }),
+  },
+];
+
+registerPage('api-status', async (el) => {
+  if (!fw.isWehrfuehrer()) { navigate('dashboard'); return; }
+  fw.setTitle('API-Status');
+  fw.showBack(() => navigateBack());
+
+  const zeile = (d) => `
+    <div id="api-status-${d.id}" style="display:flex;align-items:center;gap:0.8rem;padding:0.6rem 0;border-bottom:1px solid var(--border)">
+      <div style="font-size:1.3rem;flex-shrink:0">${d.icon}</div>
+      <div style="flex:1;min-width:0">
+        <div style="font-weight:600">${d.name}</div>
+        <div class="muted" style="font-size:0.78rem">${d.sub}</div>
+      </div>
+      <span class="badge badge-gray" data-rolle="badge">⏳ prüfe…</span>
+    </div>`;
+
+  el.innerHTML = `
+    <div class="card" style="padding:0 1rem">
+      ${API_STATUS_DIENSTE.map(zeile).join('')}
+    </div>
+    <div class="card" style="margin-top:0.8rem;color:var(--muted);font-size:0.82rem;line-height:1.5">
+      💡 Das hier prüft nur, ob die Dienste gerade erreichbar sind – keine echten Nutzungs- oder
+      Kostenzahlen (dafür hat die App keinen Zugriff auf das Firebase-Billing). Nutzung/Kosten von
+      Firebase einsehen:
+      <a href="https://console.firebase.google.com/project/ffw-oegeln-791ca/usage" target="_blank" rel="noopener">
+        Firebase Console öffnen ↗
+      </a>
+    </div>`;
+
+  const badgeSetzen = (id, ok, detailText) => {
+    const row = document.getElementById('api-status-' + id);
+    if (!row) return;
+    const badge = row.querySelector('[data-rolle="badge"]');
+    badge.className = 'badge ' + (ok ? 'badge-green' : 'badge-red');
+    badge.textContent = ok ? `✅ erreichbar${detailText ? ' · ' + detailText : ''}` : `❌ nicht erreichbar${detailText ? ' · ' + detailText : ''}`;
+  };
+
+  await Promise.all(API_STATUS_DIENSTE.map(async (d) => {
+    const r = await d.check();
+    badgeSetzen(d.id, r.ok, r.ok ? r.ms + ' ms' : (r.fehler || ('HTTP ' + r.status)));
+  }));
 });
 
 
