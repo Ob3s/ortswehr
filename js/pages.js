@@ -126,6 +126,8 @@ function getStats(anwesenheiten, dienstMap, einsatzMap, jahr) {
     const istRelevant = eintrag?.relevant !== false;
 
     if (istEinsatz) {
+      // Ausnahme: Einsätze mit statistikIgnorieren fließen bewusst nicht in Einsatzzahlen/-stunden ein.
+      if (einsatzEintrag?.statistikIgnorieren === true) continue;
       if (d.getFullYear() === jahrAkt) { gesamtEinsatz += h; einsaetze++; }
     } else {
       if (d.getFullYear() === jahrAkt) {
@@ -1214,6 +1216,11 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
   const darfMp = fw.hatRecht(mpRecht);
   const mpGeprueft = darfMp && u.mpGeprueft === true;
   const darfBemerkung = fw.hatRecht(bemerkungRecht);
+  // Statistik-Ausschluss: Ausnahme für einzelne Einsätze, die zwar in der Einsatzliste bleiben,
+  // aber nicht in Einsatzzahlen/-stunden einfließen sollen. WF-exklusiv, kein eigenes Recht
+  // (analog Passwort-Reset) – bewusst selten/sensibel genug, um kein RECHTE_KATALOG-Eintrag zu sein.
+  const darfStatistikAusschluss = isEinsatz && fw.isWehrfuehrer();
+  const statistikIgnoriert = u.statistikIgnorieren === true;
 
   const aSnap = await fw.getDocs('anwesenheiten',
     fw.where('uebungId','==',id), fw.where('userId','==',fw.user.uid));
@@ -1262,7 +1269,7 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
         onclick="einsatzReagieren('${id}','kommt_nicht')">👎 Komme nicht</button>
     </div>
     ${fw.hatRecht(teilnRecht) ? `<div style="padding:0 0 0.5rem">${eintragBtn}</div>` : ''}
-    ${(darfMp || darfBemerkung) ? `
+    ${(darfMp || darfBemerkung || darfStatistikAusschluss) ? `
     <div class="card" style="margin-top:0.8rem">
       ${darfMp ? `
         <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-size:0.85rem">
@@ -1276,6 +1283,13 @@ registerPage('uebung-detail', async (el, {id, typ}) => {
           <textarea id="bemerkung-feld" rows="3" style="width:100%;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:0.5rem;font-size:0.85rem;color:var(--text);resize:vertical;margin-top:0.3rem">${u.bemerkung||''}</textarea>
           <button class="btn btn-secondary btn-sm" style="margin-top:0.3rem" onclick="bemerkungSpeichern('${u.typ}','${id}')">💾 Bemerkung speichern</button>
         </div>
+      ` : ''}
+      ${darfStatistikAusschluss ? `
+        <label style="display:flex;align-items:center;gap:0.5rem;cursor:pointer;font-size:0.85rem;${(darfMp||darfBemerkung) ? 'margin-top:0.6rem' : ''}">
+          <input type="checkbox" id="statistik-ausschluss-checkbox" ${statistikIgnoriert ? 'checked' : ''} onchange="statistikAusschlussUmschalten('${id}',this.checked)">
+          Ausnahme: nicht in Einsatzzahlen/-statistiken zählen
+        </label>
+        <div class="muted" style="font-size:0.75rem;margin-top:0.2rem;margin-left:1.7rem">Bleibt in der Einsatzliste sichtbar, fließt aber nicht in Statistik, Jahresvergleich oder Einsatzstunden ein.</div>
       ` : ''}
     </div>
     ` : ''}
@@ -1484,6 +1498,17 @@ window.bemerkungSpeichern = async (typ, id) => {
   const text = document.getElementById('bemerkung-feld')?.value || '';
   await fw.updateDoc(col(typ)+'/'+id, { bemerkung: text, bemerkungAm: new Date(), bemerkungVon: fw.user.uid });
   fw.toast('Bemerkung gespeichert ✅');
+};
+
+// Statistik-Ausschluss: nur für Einsätze, WF-exklusiv (siehe uebung-detail). Feld direkt auf
+// einsaetze/{id}, wird von getStats() und der Statistik-Seite ausgewertet.
+window.statistikAusschlussUmschalten = async (id, ausgeschlossen) => {
+  await fw.updateDoc('einsaetze/'+id, {
+    statistikIgnorieren: ausgeschlossen,
+    statistikIgnoriertAm: ausgeschlossen ? new Date() : null,
+    statistikIgnoriertVon: ausgeschlossen ? fw.user.uid : null,
+  });
+  fw.toast(ausgeschlossen ? 'Von Statistik ausgeschlossen ✅' : 'Zählt wieder in Statistik ✅');
 };
 
 window.teilnahmeMelden = async (uebungId, titel, dauer_h, typ, datumStr) => {
@@ -2320,12 +2345,6 @@ registerPage('einstellungen', async (el) => {
         ⚠️ Nur in der nativen App verfügbar
       </div>` : ''}
     </div>
-
-    ${fw.isWehrfuehrer() ? `
-    <div class="section-header">🛠️ Technik</div>
-    <div class="card">
-      <button class="btn btn-secondary btn-sm btn-full" onclick="navigate('api-status')">📡 API-Status</button>
-    </div>` : ''}
   `;
 
   // Checkboxen setzen
@@ -2417,7 +2436,7 @@ registerPage('statistik', async (el) => {
 
   // Jahresvergleich gesamt
   const gesamt = (jahr) => ({
-    einsaetze: einsaetze.filter(e => jahrvon(e.datum, jahr)).length,
+    einsaetze: einsaetze.filter(e => jahrvon(e.datum, jahr) && e.statistikIgnorieren !== true).length,
     dienststunden: users.reduce((s,u) => s + statsFuer(u.id,jahr).dienstRelevant, 0),
     lehrgangsstunden: users.reduce((s,u) => s + lehrgangStunden(u.id,jahr), 0),
   });
@@ -3995,6 +4014,7 @@ window.aufgabeEinblenden = async (key) => {
       ${fw.hatRecht('stammdaten_raenge') ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('raenge-verwalten')">Ränge</button>` : ''}
       ${(fw.hatRecht('loeschwasser_verwalten') || fw.hatRecht('loeschwasser_pruefen')) ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('loeschwasser-verwalten')">💧 Löschwasser</button>` : ''}
       ${(fw.hatRecht('dienste_bearbeiten') || fw.hatRecht('einsaetze_bearbeiten')) ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('uebungen-backend')">📋 Dienste & Einsätze bearbeiten</button>` : ''}
+      ${fw.isWehrfuehrer() ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('api-status')">📡 API-Status</button>` : ''}
     </div>
   `;
   if (fw.hatRecht('stammdaten_ortswehren')) ladeOrtswehrenInline();

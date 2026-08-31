@@ -1,1 +1,1 @@
-[{"version": "20260831103253", "datum": "31.08.2026", "punkte": ["Neu: API-Status-Seite (Einstellungen, nur Administrator) – zeigt Erreichbarkeit von Firebase, Nominatim, Overpass API und Leaflet-CDN"]}]
+[{"version": "20260831104606", "datum": "31.08.2026", "punkte": ["API-Status: Einstieg von Einstellungen in den Kameraden-Hub verschoben (nur Administrator)", "Neu: Einsätze können von der Statistik ausgenommen werden (Ausnahme-Fall) – bleiben in der Einsatzliste, zählen aber nicht in Einsatzzahlen/-stunden"]}]
