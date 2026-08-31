@@ -1,1 +1,1 @@
-[{"version": "20260831114323", "datum": "31.08.2026", "punkte": ["DEV/PROD-Trennung: DEV-spezifische Cloud-Function-URLs (Kalender-Import, Orts-Autocomplete, Passwort-Reset) ergänzt", "DEV-Firebase-Projekt vollständig eingerichtet (Firestore, Functions, Push-Zertifikat)"]}]
+[{"version": "20260831114758", "datum": "31.08.2026", "punkte": ["Fix: Umgebungserkennung DEV/PROD lief über den falschen Wert (Hostname statt Pfad) und griff dadurch nie"]}]

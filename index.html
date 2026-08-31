@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="theme-color" content="#cc2200">
-  <meta name="app-version" content="20260831114323">
+  <meta name="app-version" content="20260831114758">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ortswehr">
@@ -84,11 +84,13 @@
   import { getStorage, ref, uploadBytes, getDownloadURL, deleteObject }
     from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-storage.js';
 
-  // Umgebungserkennung per Hostname: dieselbe index.html/pages.js wird unverändert nach
-  // ortswehr (PROD) UND ortswehr-dev (DEV) gepusht, deshalb hier zur Laufzeit statt per
-  // Build-Schritt entscheiden (kein Build-Step-Prinzip bleibt so erhalten). Capacitor lädt
-  // ebenfalls die echte https-URL, daher greift dieselbe Erkennung auch dort.
-  window.IST_DEV = location.hostname.includes('ortswehr-dev');
+  // Umgebungserkennung per Pfad (nicht Hostname!): GitHub Pages liefert beide Repos unter
+  // demselben Host ob3s.github.io aus, unterschieden nur durch /ortswehr/ vs. /ortswehr-dev/.
+  // Dieselbe index.html/pages.js wird unverändert nach ortswehr (PROD) UND ortswehr-dev (DEV)
+  // gepusht, deshalb hier zur Laufzeit statt per Build-Schritt entscheiden (kein
+  // Build-Step-Prinzip bleibt so erhalten). Capacitor lädt ebenfalls die echte https-URL,
+  // daher greift dieselbe Erkennung auch dort.
+  window.IST_DEV = location.pathname.includes('ortswehr-dev');
   window.APP_NAME = window.IST_DEV ? 'Ortswehr DEV' : 'Ortswehr';
   document.title = window.APP_NAME;
   document.querySelector('meta[name="apple-mobile-web-app-title"]')?.setAttribute('content', window.APP_NAME);
