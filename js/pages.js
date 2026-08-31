@@ -3916,6 +3916,7 @@ window.aufgabeEinblenden = async (key) => {
       ${fw.hatRecht('stammdaten_raenge') ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('raenge-verwalten')">Ränge</button>` : ''}
       ${(fw.hatRecht('loeschwasser_verwalten') || fw.hatRecht('loeschwasser_pruefen')) ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('loeschwasser-verwalten')">💧 Löschwasser</button>` : ''}
       ${(fw.hatRecht('dienste_bearbeiten') || fw.hatRecht('einsaetze_bearbeiten')) ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('uebungen-backend')">📋 Dienste & Einsätze bearbeiten</button>` : ''}
+      ${fw.isWehrfuehrer() ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('kameraden-einladen')">➕ Neue Kameraden einladen</button>` : ''}
       ${fw.isWehrfuehrer() ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('api-status')">📡 API-Status</button>` : ''}
     </div>
   `;
@@ -5314,6 +5315,69 @@ registerPage('api-status', async (el) => {
     const r = await d.check();
     badgeSetzen(d.id, r.ok, r.ok ? r.ms + ' ms' : (r.fehler || ('HTTP ' + r.status)));
   }));
+});
+
+// ── Neue Kameraden einladen ───────────────────────────────
+// Stabiler Link + QR-Code zur PWA, damit Neue sich selbst per Scan/Link installieren können,
+// statt die URL manuell abtippen zu müssen. Nur Administrator (Verteilung ist kein
+// Alltags-Feature, passt zur WF-exklusiven "Technik"-Ecke wie API-Status).
+registerPage('kameraden-einladen', async (el) => {
+  if (!fw.isWehrfuehrer()) { navigate('dashboard'); return; }
+  fw.setTitle('Neue Kameraden einladen');
+  fw.showBack(() => navigateBack());
+
+  const link = `${location.origin}${window.IST_DEV ? '/ortswehr-dev/' : '/ortswehr/'}`;
+
+  el.innerHTML = `
+    <div class="card">
+      <div class="card-title">Link</div>
+      <p class="muted" style="font-size:0.82rem;margin-bottom:0.6rem">Diesen Link teilen oder den QR-Code scannen lassen – öffnet die App im Browser, "Zum Startbildschirm hinzufügen" installiert sie wie eine normale App.</p>
+      <div style="display:flex;gap:0.5rem">
+        <input id="einladen-link" readonly value="${link}" style="flex:1;font-size:0.82rem;background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:0.5rem;color:var(--text)">
+        <button class="btn btn-secondary btn-sm" onclick="einladenLinkKopieren()">📋 Kopieren</button>
+      </div>
+      ${navigator.share ? `<button class="btn btn-primary btn-sm btn-full" style="margin-top:0.6rem" onclick="einladenTeilen('${link}')">📤 Teilen</button>` : ''}
+    </div>
+    <div class="card" style="text-align:center">
+      <div class="card-title" style="text-align:left">QR-Code</div>
+      <div id="einladen-qr" style="display:flex;justify-content:center;padding:0.8rem 0">⏳ Lade...</div>
+      <p class="muted" style="font-size:0.78rem">Zum Ausdrucken/Aufhängen im Gerätehaus geeignet.</p>
+    </div>
+  `;
+
+  window.einladenLinkKopieren = async () => {
+    try {
+      await navigator.clipboard.writeText(link);
+      fw.toast('Link kopiert ✅');
+    } catch (e) {
+      document.getElementById('einladen-link').select();
+      fw.toast('Bitte manuell kopieren (markiert)', true);
+    }
+  };
+  window.einladenTeilen = (url) => {
+    navigator.share({ title: window.APP_NAME, text: 'Ortswehr-App – hier anmelden:', url }).catch(() => {});
+  };
+
+  // qrcodejs erst hier nachladen (kleine Bibliothek, nur auf dieser Admin-Seite gebraucht, kein
+  // Offline-Caching nötig - anders als Leaflet keine Feld-kritische Funktion).
+  const ladeQr = () => new Promise((resolve, reject) => {
+    if (window.QRCode) { resolve(); return; }
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js';
+    s.onload = resolve; s.onerror = reject;
+    document.head.appendChild(s);
+  });
+  try {
+    await ladeQr();
+    const zielEl = document.getElementById('einladen-qr');
+    if (zielEl) {
+      zielEl.innerHTML = '';
+      new QRCode(zielEl, { text: link, width: 200, height: 200 });
+    }
+  } catch (e) {
+    const zielEl = document.getElementById('einladen-qr');
+    if (zielEl) zielEl.innerHTML = '<span class="muted">QR-Code konnte nicht geladen werden (offline?)</span>';
+  }
 });
 
 
