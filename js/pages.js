@@ -1911,7 +1911,10 @@ async function benachrichtigeOrtswehr(typ, titel, datumStr, dauer_h, uebungId, z
     const u = d.data();
     if (d.id === fw.user.uid && !fw.profil.notif_selbst) { console.log('Push: Selbst übersprungen'); continue; }
     if (!u.fcmToken) { console.log('Push: Kein Token für', d.id); continue; }
-    if (isEinsatz && u.notif_einsatz !== false) tokens.push(u.fcmToken);
+    // Verfügbarkeitsstatus: wer sich als nicht verfügbar gemeldet hat, bekommt keine Einsatz-Alarme
+    // (Dienst-Erinnerungen sind davon bewusst unberührt, s. dienstErinnerung - "nicht verfügbar"
+    // heißt "kann gerade nicht ausrücken", nicht "will nichts mehr von der Wehr hören").
+    if (isEinsatz && u.notif_einsatz !== false && u.verfuegbar !== false) tokens.push(u.fcmToken);
     // Dienst-Push bei Anlage wurde entfernt – Erinnerung erfolgt nur noch über dienstErinnerung (08:00 Uhr)
   }
   if (tokens.length === 0) { fw.toast('⚠️ Keine Push-Empfänger gefunden', true); return; }
@@ -2303,12 +2306,15 @@ registerPage('statistik', async (el) => {
     return d.getFullYear() === jahr;
   };
 
-  // Lehrgänge per User laden
-  const qualiSnaps = await Promise.all(users.map(u => fw.getDocs('users/'+u.id+'/qualifikationen')));
+  // Lehrgänge per User: eine collectionGroup-Abfrage statt einer Einzelabfrage pro User (spart bei
+  // wachsender Mannschaftsstärke N-1 Netzwerk-Rundreisen, s. gleiches Muster in "kameraden").
+  const qualiGroupSnap = await fw.getDocsGroup('qualifikationen');
   const qualiPerUser = {};
-  users.forEach((u, i) => {
-    qualiPerUser[u.id] = qualiSnaps[i].docs.map(d => d.data());
-  });
+  for (const d of qualiGroupSnap.docs) {
+    const userId = d.ref.parent.parent.id;
+    if (!qualiPerUser[userId]) qualiPerUser[userId] = [];
+    qualiPerUser[userId].push(d.data());
+  }
 
   // Dienste/Einsätze als Map für Stunden-Lookup
   const dienstMap  = new Map(dienste.map(d  => [d.id, d]));
@@ -3185,16 +3191,20 @@ registerPage('lehrgaenge', async (el) => {
 
   const renderUebersicht = async () => {
     const inh = document.getElementById('l-inhalt');
-    const [usersSnap, ...qualiSnaps] = await (async () => {
-      const us = await fw.getDocs('users');
-      const users = us.docs.map(d => ({id:d.id,...d.data()})).filter(u => u.aktiv !== false && u.vorname);
-      const qs = await Promise.all(users.map(u => fw.getDocs('users/'+u.id+'/qualifikationen')));
-      return [us, ...qs.map((q,i) => ({userId: users[i].id, qualis: q.docs.map(d => d.data())}))];
-    })();
+    // Eine collectionGroup-Abfrage statt einer Einzelabfrage pro User (s. gleiches Muster in
+    // "kameraden"/"statistik") - bei wachsender Mannschaftsstärke der dominante Langsam-Faktor.
+    const [usersSnap, qualiGroupSnap] = await Promise.all([
+      fw.getDocs('users'),
+      fw.getDocsGroup('qualifikationen'),
+    ]);
     const users = usersSnap.docs.map(d => ({id:d.id,...d.data()})).filter(u => u.aktiv !== false && u.vorname)
       .sort((a,b) => (a.nachname||'').localeCompare(b.nachname||'', 'de'));
     const qualiPerUser = {};
-    qualiSnaps.forEach(({userId, qualis}) => { qualiPerUser[userId] = qualis.map(q => (q.bezeichnung||'').trim().toLowerCase()); });
+    for (const d of qualiGroupSnap.docs) {
+      const userId = d.ref.parent.parent.id;
+      if (!qualiPerUser[userId]) qualiPerUser[userId] = [];
+      qualiPerUser[userId].push((d.data().bezeichnung||'').trim().toLowerCase());
+    }
 
     const cols = getLehrgangsartenNamen();
     const rows = users.map(u => {
@@ -3688,19 +3698,23 @@ registerPage('kameraden', async (el) => {
     const aufgaben = [];
 
     if (kannKameradenAufgaben) {
-      // Alle Qualifikationen aktiver Kameraden laden
-      const qualiPromises = aktiveUsers.map(u =>
-        fw.getDocs('users/'+u.id+'/qualifikationen').then(s => ({
-          user: u,
-          qualis: s.docs.map(d => ({id:d.id,...d.data()}))
-        }))
-      );
-      const alleQualis = await Promise.all(qualiPromises);
+      // Qualifikationen ALLER Kameraden in einer einzigen collectionGroup-Abfrage statt einer
+      // Einzelabfrage pro aktivem Kameraden (war zuvor der dominante Langsam-Faktor dieser Seite:
+      // jede Einzelabfrage braucht eine eigene Netzwerk-Rundreise, auch parallel ausgeführt - bei
+      // wachsender Mannschaftsstärke skaliert das linear mit, eine Gruppen-Abfrage bleibt bei 1).
+      const qualiGroupSnap = await fw.getDocsGroup('qualifikationen');
+      const qualisByUser = new Map();
+      for (const d of qualiGroupSnap.docs) {
+        const userId = d.ref.parent.parent.id;
+        if (!qualisByUser.has(userId)) qualisByUser.set(userId, []);
+        qualisByUser.get(userId).push({ id: d.id, ...d.data() });
+      }
       const heute = new Date();
       const j3 = new Date(); j3.setFullYear(heute.getFullYear()-3);
       const j1 = new Date(); j1.setFullYear(heute.getFullYear()-1);
 
-      for (const {user, qualis} of alleQualis) {
+      for (const user of aktiveUsers) {
+        const qualis = qualisByUser.get(user.id) || [];
         const name = `${user.vorname||''} ${user.nachname||''}`.trim();
         // Lehrgänge ohne Datum
         for (const q of qualis) {
@@ -3904,51 +3918,11 @@ window.aufgabeEinblenden = async (key) => {
           <div class="list-chevron">›</div>
         </div>`).join('')}
     </div>
-    ${fw.hatRecht('stammdaten_ortswehren') ? `
-    <details style="background:var(--card);border-radius:10px;padding:0.8rem;margin-top:0.8rem">
-      <summary style="font-weight:600;cursor:pointer;list-style:none;display:flex;align-items:center;gap:0.5rem">🏘️ Ortswehren verwalten</summary>
-      <div id="ortswehr-inline" style="margin-top:0.8rem">⏳ Lade...</div>
-    </details>` : ''}
-    <div style="display:flex;flex-direction:column;gap:0.4rem;margin-top:0.8rem">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.4rem">
-        <button class="btn btn-secondary btn-sm btn-full" onclick="navigate('lehrgaenge')">Lehrgänge</button>
-        <button class="btn btn-secondary btn-sm btn-full" onclick="navigate('statistik')">Statistiken</button>
-      </div>
-      ${fw.hatRecht('stammdaten_dienstgrade') ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('einstellungen-admin')">Dienstgrade & Filter</button>` : ''}
-      ${fw.hatRecht('stammdaten_dienstarten') ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('dienstarten-verwalten')">Dienst-Arten</button>` : ''}
-      ${fw.hatRecht('stammdaten_raenge') ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('raenge-verwalten')">Ränge</button>` : ''}
-      ${(fw.hatRecht('loeschwasser_verwalten') || fw.hatRecht('loeschwasser_pruefen')) ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('loeschwasser-verwalten')">💧 Löschwasser</button>` : ''}
-      ${(fw.hatRecht('dienste_bearbeiten') || fw.hatRecht('einsaetze_bearbeiten')) ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('uebungen-backend')">📋 Dienste & Einsätze bearbeiten</button>` : ''}
-      ${fw.isWehrfuehrer() ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('kameraden-einladen')">➕ Neue Kameraden einladen</button>` : ''}
-      ${fw.isWehrfuehrer() ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('api-status')">📡 API-Status</button>` : ''}
-    </div>
   `;
-  if (fw.hatRecht('stammdaten_ortswehren')) ladeOrtswehrenInline();
+  // Verwaltungsseiten (Lehrgänge, Statistik, Ortswehren, Dienstarten, ...) sind jetzt zentral
+  // über das ☰-Menü in der Kopfzeile erreichbar statt hier am Seitenende aufgelistet - s.
+  // menuAufbauen() in index.html.
 });
-
-async function ladeOrtswehrenInline() {
-  const snap = await fw.getDocs('ortswehren');
-  const wehren = snap.docs.map(d => ({id:d.id,...d.data()}));
-  const el = document.getElementById('ortswehr-inline');
-  if (!el) return;
-  el.innerHTML = `
-    ${wehren.map(w => `
-      <div class="list-item">
-        <div class="list-item-body"><div class="list-item-title">${w.name}</div></div>
-        <div style="display:flex;gap:0.4rem">
-          <button class="btn btn-sm btn-secondary" onclick="navigate('ortswehr-form',{id:'${w.id}'})">✏️</button>
-          <button class="btn btn-sm btn-danger" onclick="ortswehrLoeschenInline('${w.id}')">🗑</button>
-        </div>
-      </div>`).join('') || '<p class="muted" style="font-size:0.85rem">Noch keine Ortswehren</p>'}
-    <div style="margin-top:0.6rem">
-      <button class="btn btn-secondary btn-sm" onclick="navigate('ortswehr-form',{})">+ Neue Ortswehr</button>
-    </div>`;
-}
-window.ortswehrLoeschenInline = async (id) => {
-  if (!confirm('Ortswehr wirklich löschen?')) return;
-  await fw.deleteDoc('ortswehren/'+id);
-  fw.toast('Gelöscht'); ladeOrtswehrenInline();
-};
 
 window.ortMigration = async () => {
   const btn = document.getElementById('btn-ort-migration');

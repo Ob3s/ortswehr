@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="theme-color" content="#cc2200">
-  <meta name="app-version" content="20260901085451">
+  <meta name="app-version" content="20260901090801">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ortswehr">
@@ -73,6 +73,7 @@
 <!-- App Shell -->
 <div id="app" class="hidden">
   <header>
+    <button id="menu-btn" class="header-back" aria-label="Menü">&#9776;</button>
     <button id="back-btn" class="header-back hidden">&#8249;</button>
     <h1 id="page-title">Dashboard</h1>
     <span id="header-uhr" style="font-size:0.82rem;color:#fff;font-weight:700;margin-right:0.3rem;flex-shrink:0;letter-spacing:0.03em"></span>
@@ -89,6 +90,19 @@
   </nav>
 </div>
 
+<!-- Menü: über das ☰ in der Kopfzeile erreichbar, deckt die gesamte Seite ab (nicht nur ein
+     schmales Drawer-Panel mit Backdrop) - listet Profil/Einstellungen sowie alle vom jeweiligen
+     Kameraden erreichbaren Verwaltungsseiten an einer zentralen Stelle statt verteilt über
+     mehrere Seiten (vorher u. a. am Ende der Kameraden-Seite). -->
+<div id="menu-drawer" style="position:fixed;inset:0;z-index:998;background:var(--bg);transform:translateX(-100%);transition:transform 0.25s ease;display:flex;flex-direction:column">
+  <div style="background:var(--red);color:#fff;height:var(--header-h);flex-shrink:0;display:flex;align-items:center;padding:0 1rem;gap:0.5rem">
+    <button id="menu-schliessen" class="header-back" aria-label="Menü schließen">&#10005;</button>
+    <h1 style="font-family:'DM Serif Display',serif;font-size:1.15rem;flex:1;text-align:center;margin:0;color:#fff">Menü</h1>
+    <span style="width:36px;flex-shrink:0"></span>
+  </div>
+  <div id="menu-drawer-inhalt" style="overflow-y:auto;flex:1;padding:1rem"></div>
+</div>
+
 <div id="toast"></div>
 <div id="update-banner" style="display:none;position:fixed;bottom:70px;left:50%;transform:translateX(-50%);z-index:999;background:#1e293b;color:#fff;border-radius:14px;padding:0.7rem 1.2rem;align-items:center;gap:0.8rem;box-shadow:0 4px 20px rgba(0,0,0,0.3);font-size:0.88rem;white-space:nowrap">
   🆕 Update verfügbar: <span id="update-version-label" style="font-family:monospace;font-size:0.8rem;opacity:0.8"></span>
@@ -100,7 +114,7 @@
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
   import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail }
     from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
-  import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, doc, getDoc, getDocs, addDoc, setDoc, updateDoc, deleteDoc, query, where, orderBy, Timestamp, onSnapshot }
+  import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, collectionGroup, doc, getDoc, getDocs, addDoc, setDoc, updateDoc, deleteDoc, query, where, orderBy, Timestamp, onSnapshot }
     from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
   import { getMessaging, getToken, onMessage }
     from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging.js';
@@ -181,6 +195,12 @@
       const q = c.length ? query(collection(db, col), ...c) : collection(db, col);
       return getDocs(q);
     },
+    // Für "alle Unterkollektionen X über alle Parent-Dokumente hinweg" (z. B. alle
+    // users/*/qualifikationen) - eine Netzwerk-Rundreise statt einer pro Parent-Dokument.
+    async getDocsGroup(name, ...c) {
+      const q = c.length ? query(collectionGroup(db, name), ...c) : collectionGroup(db, name);
+      return getDocs(q);
+    },
     where, orderBy, Timestamp,
     onSnapshot(col, ...c) { const q = c.length ? query(collection(db, col), ...c) : collection(db, col); return onSnapshot(q, () => {}); },
     onDocSnapshot(path, cb) { return onSnapshot(doc(db, path), cb); },
@@ -199,8 +219,16 @@
       setTimeout(() => t.className = '', 2800);
     },
     setTitle(t)  { document.getElementById('page-title').textContent = t; },
-    showBack(cb) { const b=document.getElementById('back-btn'); b.classList.remove('hidden'); b.onclick=cb; },
-    hideBack()   { document.getElementById('back-btn').classList.add('hidden'); },
+    // Menü-Button (☰) und Zurück-Pfeil teilen sich denselben Platz in der Kopfzeile - auf
+    // Unterseiten (showBack) macht Zurück mehr Sinn als das Menü, auf Top-Level-Seiten umgekehrt.
+    showBack(cb) {
+      const b=document.getElementById('back-btn'); b.classList.remove('hidden'); b.onclick=cb;
+      document.getElementById('menu-btn')?.classList.add('hidden');
+    },
+    hideBack() {
+      document.getElementById('back-btn').classList.add('hidden');
+      document.getElementById('menu-btn')?.classList.remove('hidden');
+    },
     showHeaderAction(label, cb) { const b=document.getElementById('header-action'); b.classList.remove('hidden'); b.textContent=label; b.onclick=cb; },
     hideHeaderAction() { document.getElementById('header-action').classList.add('hidden'); },
 
@@ -521,6 +549,7 @@
       if (fw.hatRecht('kameraden_ansehen')) {
         document.getElementById('nav-kameraden').classList.remove('hidden');
       }
+      menuAufbauen();
       if (fw.profil.notif_einsatz || fw.profil.notif_uebung || fw.profil.notif_bestaetigung) {
         // Warten bis SW bereit ist bevor Push registriert wird
         navigator.serviceWorker.ready.then(() => fw.registerPush()).catch(() => {});
@@ -533,6 +562,7 @@
       fw.user = null; fw.profil = null;
       document.getElementById('nav-kameraden').classList.add('hidden');
       document.getElementById('app').classList.add('hidden');
+      menuSchliessen();
       // Auto-Login: gespeicherte Credentials aus nativem Store versuchen
       if (typeof window.CredentialStore !== 'undefined') {
         const savedEmail = window.CredentialStore.getEmail();
@@ -604,6 +634,73 @@
     window._navHistory = [];
     navigate(b.dataset.page);
   }));
+
+  // ── Menü (☰) ──────────────────────────────────────────────
+  // Sammelstelle für Profil/Einstellungen + alle Verwaltungsseiten, vorher verteilt (u. a. am
+  // Ende der Kameraden-Seite) - von überall über die Kopfzeile erreichbar statt nur von einer
+  // bestimmten Seite aus.
+  window.menuOeffnen = () => { document.getElementById('menu-drawer').style.transform = 'translateX(0)'; };
+  window.menuSchliessen = () => { document.getElementById('menu-drawer').style.transform = 'translateX(-100%)'; };
+  document.getElementById('menu-btn').addEventListener('click', menuOeffnen);
+  document.getElementById('menu-schliessen').addEventListener('click', menuSchliessen);
+
+  window.menuNavigieren = (page) => { menuSchliessen(); window._navHistory = []; navigate(page); };
+
+  window.verfuegbarkeitUmschalten = async () => {
+    const neu = !(fw.profil.verfuegbar !== false);
+    await fw.setDoc('users/'+fw.user.uid, { verfuegbar: neu });
+    fw.profil.verfuegbar = neu;
+    menuAufbauen();
+  };
+
+  window.menuAufbauen = () => {
+    const inh = document.getElementById('menu-drawer-inhalt');
+    if (!inh || !fw.profil) return;
+    const verfuegbar = fw.profil.verfuegbar !== false;
+    const zeile = (icon, label, page, sub) => `
+      <div class="list-item" onclick="menuNavigieren('${page}')">
+        <div class="list-item-icon">${icon}</div>
+        <div class="list-item-body">
+          <div class="list-item-title">${label}</div>
+          ${sub ? `<div class="list-item-sub">${sub}</div>` : ''}
+        </div>
+        <div class="list-chevron">›</div>
+      </div>`;
+
+    const verwaltung = [
+      fw.hatRecht('stammdaten_dienstgrade')   && zeile('🎖️', 'Dienstgrade & Filter', 'einstellungen-admin'),
+      fw.hatRecht('stammdaten_dienstarten')   && zeile('🚒', 'Dienst-Arten', 'dienstarten-verwalten'),
+      fw.hatRecht('stammdaten_raenge')        && zeile('🏅', 'Ränge', 'raenge-verwalten'),
+      fw.hatRecht('stammdaten_ortswehren')    && zeile('🏘️', 'Ortswehren', 'ortswehren'),
+      (fw.hatRecht('loeschwasser_verwalten') || fw.hatRecht('loeschwasser_pruefen'))
+                                               && zeile('💧', 'Löschwasser', 'loeschwasser-verwalten'),
+      (fw.hatRecht('dienste_bearbeiten') || fw.hatRecht('einsaetze_bearbeiten'))
+                                               && zeile('📋', 'Dienste & Einsätze bearbeiten', 'uebungen-backend'),
+      fw.isWehrfuehrer()                      && zeile('➕', 'Neue Kameraden einladen', 'kameraden-einladen'),
+      fw.isWehrfuehrer()                      && zeile('📡', 'API-Status', 'api-status'),
+    ].filter(Boolean).join('');
+
+    const mannschaft = fw.hatRecht('kameraden_ansehen') ? `
+      <div class="section-header">Mannschaft</div>
+      ${zeile('🎓', 'Lehrgänge', 'lehrgaenge')}
+      ${zeile('📊', 'Statistik', 'statistik')}
+    ` : '';
+
+    inh.innerHTML = `
+      <div class="section-header" style="margin-top:0">Persönlich</div>
+      <div class="list-item" onclick="verfuegbarkeitUmschalten()">
+        <div class="list-item-icon">${verfuegbar ? '🟢' : '🔴'}</div>
+        <div class="list-item-body">
+          <div class="list-item-title">${verfuegbar ? 'Verfügbar' : 'Nicht verfügbar'}</div>
+          <div class="list-item-sub">${verfuegbar ? 'Du bekommst Einsatz-Alarme' : 'Keine Einsatz-Alarme, bis du dich wieder verfügbar meldest'}</div>
+        </div>
+      </div>
+      ${zeile('👤', 'Mein Profil', 'profil')}
+      ${zeile('⚙️', 'Einstellungen', 'einstellungen')}
+      ${mannschaft}
+      ${verwaltung ? `<div class="section-header">Verwaltung</div>${verwaltung}` : ''}
+    `;
+  };
 
   // Neuen Kamerad anlegen ohne Wehrführer auszuloggen
   window.createKamerad = async (email, pw, data) => {
