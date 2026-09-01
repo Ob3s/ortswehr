@@ -3637,10 +3637,40 @@ registerPage('kameraden', async (el) => {
   fw.setTitle('Kameraden');
   if (fw.hatRecht('kameraden_anlegen')) fw.showHeaderAction('+ Neu', () => navigate('kamerad-form', {}));
 
-  const [snap, owSnapKam] = await Promise.all([
+  // Aufgaben-Rechte VOR dem Laden bestimmen, damit alle benötigten Abfragen in einem einzigen
+  // Promise.all gebündelt werden können. Vorher liefen bis zu 7 Abfragen strikt NACHEINANDER
+  // (jeder if-Block hatte sein eigenes await) - bei ~300-500ms pro Rundreise allein durch
+  // Serialisierung mehrere Sekunden, unabhängig von der tatsächlichen Mannschaftsstärke (das war
+  // der eigentliche Grund für die spürbare Langsamkeit, nicht das frühere N+1-Problem). Zusätzlich
+  // wurden dienste/einsaetze für die "Offene Aufgaben"-Liste ein zweites Mal separat abgefragt,
+  // obwohl dieselben Daten schon für die Stunden-Badges geladen wurden - jetzt einmal geladen,
+  // zweimal verwendet.
+  const kannKameradenAufgaben  = fw.hatRecht('aufgaben_kameraden');
+  const kannDienstAufgaben     = fw.hatRecht('aufgaben_dienste');
+  const kannFahrzeugAufgaben   = fw.hatRecht('aufgaben_fahrzeuge');
+  const kannPwResetAufgaben    = fw.isWehrfuehrer(); // Passwort-Resets bleiben bewusst WF-exklusiv
+  // Bemerkungen sind separat rechtebeschränkt (dienste_bemerkungen/einsaetze_bemerkungen) –
+  // unabhängig vom "Unvollständig"-Aufgaben-Recht, dieselbe Berechtigung wie am Dienst/Einsatz selbst.
+  const kannDienstBemerkungen  = fw.hatRecht('dienste_bemerkungen');
+  const kannEinsatzBemerkungen = fw.hatRecht('einsaetze_bemerkungen');
+  const hatIrgendeinAufgabenRecht = kannKameradenAufgaben || kannDienstAufgaben || kannFahrzeugAufgaben
+    || kannPwResetAufgaben || kannDienstBemerkungen || kannEinsatzBemerkungen;
+
+  const [
+    snap, owSnapKam, anwSnap, kDiensteSnap, kEinsaetzeSnap,
+    qualiGroupSnap, pwResetSnap, pruefSnap, ausgeblendetSnap,
+  ] = await Promise.all([
     fw.getDocs('users'),
     fw.getDocs('ortswehren'),
+    fw.getDocs('anwesenheiten'),
+    fw.getDocs('dienste'),
+    fw.getDocs('einsaetze'),
+    kannKameradenAufgaben ? fw.getDocsGroup('qualifikationen') : Promise.resolve({docs:[]}),
+    kannPwResetAufgaben   ? fw.getDocs('pw_reset_requests', fw.where('erledigt','==',false)) : Promise.resolve({docs:[]}),
+    kannFahrzeugAufgaben  ? fw.getDocs('pruefaufgaben') : Promise.resolve({docs:[]}),
+    hatIrgendeinAufgabenRecht ? fw.getDoc('users/'+fw.user.uid+'/settings/aufgaben_ausgeblendet').catch(() => null) : Promise.resolve(null),
   ]);
+
   const owMapKam = new Map(owSnapKam.docs.map(d => [d.id, d.data().name]));
   const users = snap.docs.map(d => ({id:d.id,...d.data()}))
     .sort((a,b) => {
@@ -3651,13 +3681,6 @@ registerPage('kameraden', async (el) => {
     });
   const aktiveUsers = users.filter(u => u.aktiv !== false);
 
-  // Anwesenheiten + Dienste/Einsätze laden, damit die Stunden wie überall sonst
-  // per getStats() berechnet werden (relevant-Flag beachten, Einsatzstunden nicht mit einrechnen)
-  const [anwSnap, kDiensteSnap, kEinsaetzeSnap] = await Promise.all([
-    fw.getDocs('anwesenheiten'),
-    fw.getDocs('dienste'),
-    fw.getDocs('einsaetze'),
-  ]);
   const kDienstMap  = new Map(kDiensteSnap.docs.map(d => [d.id, d.data()]));
   const kEinsatzMap = new Map(kEinsaetzeSnap.docs.map(d => [d.id, d.data()]));
   const anwByUserKam = new Map();
@@ -3685,24 +3708,10 @@ registerPage('kameraden', async (el) => {
   // Aufgaben für Kameraden mit passendem Recht berechnen (jede Teilliste einzeln über ein
   // eigenes "Offene Aufgaben"-Recht gated, unabhängig von den sonstigen Verwaltungsrechten)
   let aufgabenHtml = '';
-  const kannKameradenAufgaben  = fw.hatRecht('aufgaben_kameraden');
-  const kannDienstAufgaben     = fw.hatRecht('aufgaben_dienste');
-  const kannFahrzeugAufgaben   = fw.hatRecht('aufgaben_fahrzeuge');
-  const kannPwResetAufgaben    = fw.isWehrfuehrer(); // Passwort-Resets bleiben bewusst WF-exklusiv
-  // Bemerkungen sind separat rechtebeschränkt (dienste_bemerkungen/einsaetze_bemerkungen) –
-  // unabhängig vom "Unvollständig"-Aufgaben-Recht, dieselbe Berechtigung wie am Dienst/Einsatz selbst.
-  const kannDienstBemerkungen  = fw.hatRecht('dienste_bemerkungen');
-  const kannEinsatzBemerkungen = fw.hatRecht('einsaetze_bemerkungen');
-  if (kannKameradenAufgaben || kannDienstAufgaben || kannFahrzeugAufgaben || kannPwResetAufgaben
-      || kannDienstBemerkungen || kannEinsatzBemerkungen) {
+  if (hatIrgendeinAufgabenRecht) {
     const aufgaben = [];
 
     if (kannKameradenAufgaben) {
-      // Qualifikationen ALLER Kameraden in einer einzigen collectionGroup-Abfrage statt einer
-      // Einzelabfrage pro aktivem Kameraden (war zuvor der dominante Langsam-Faktor dieser Seite:
-      // jede Einzelabfrage braucht eine eigene Netzwerk-Rundreise, auch parallel ausgeführt - bei
-      // wachsender Mannschaftsstärke skaliert das linear mit, eine Gruppen-Abfrage bleibt bei 1).
-      const qualiGroupSnap = await fw.getDocsGroup('qualifikationen');
       const qualisByUser = new Map();
       for (const d of qualiGroupSnap.docs) {
         const userId = d.ref.parent.parent.id;
@@ -3753,13 +3762,9 @@ registerPage('kameraden', async (el) => {
     }
 
     if (kannDienstAufgaben || kannDienstBemerkungen || kannEinsatzBemerkungen) {
-      // Unvollständige Dienste/Einsätze sowie gefüllte Bemerkungen laden – ein Fetch für beide
-      // Zwecke, da nur pro Recht entschieden wird, was tatsächlich in die Liste aufgenommen wird.
-      const [dSnap, eSnap] = await Promise.all([
-        (kannDienstAufgaben || kannDienstBemerkungen)  ? fw.getDocs('dienste')  : Promise.resolve({docs:[]}),
-        (kannDienstAufgaben || kannEinsatzBemerkungen) ? fw.getDocs('einsaetze') : Promise.resolve({docs:[]}),
-      ]);
-      for (const d of dSnap.docs) {
+      // Wiederverwendung von kDiensteSnap/kEinsaetzeSnap (oben bereits für die Stunden-Badges
+      // geladen) statt eines eigenen, zuvor hier doppelt ausgeführten Fetches derselben Daten.
+      for (const d of kDiensteSnap.docs) {
         const dienst = {id:d.id,...d.data()};
         if (kannDienstAufgaben && dienstUnvollstaendig(dienst)) {
           aufgaben.push({ typ: 'dienst-unvollstaendig', text: `Dienst „${dienst.titel}" unvollständig`, uebungId: dienst.id, uebungTyp: 'dienst' });
@@ -3768,7 +3773,7 @@ registerPage('kameraden', async (el) => {
           aufgaben.push({ typ: 'dienst-bemerkung', text: `Dienst „${dienst.titel}": ${dienst.bemerkung}`, uebungId: dienst.id, uebungTyp: 'dienst' });
         }
       }
-      for (const d of eSnap.docs) {
+      for (const d of kEinsaetzeSnap.docs) {
         const einsatz = {id:d.id,...d.data()};
         if (kannDienstAufgaben && einsatzUnvollstaendig(einsatz)) {
           aufgaben.push({ typ: 'einsatz-unvollstaendig', text: `Einsatz „${einsatz.titel}" unvollständig`, uebungId: einsatz.id, uebungTyp: 'einsatz' });
@@ -3780,8 +3785,6 @@ registerPage('kameraden', async (el) => {
     }
 
     if (kannPwResetAufgaben) {
-      // Passwort-Reset-Anfragen laden
-      const pwResetSnap = await fw.getDocs('pw_reset_requests', fw.where('erledigt','==',false));
       for (const d of pwResetSnap.docs) {
         const r = d.data();
         aufgaben.push({ typ: 'pw-reset', text: `Passwort zurücksetzen: ${r.userName||r.loginName}`, resetId: d.id, userId: r.userId });
@@ -3789,8 +3792,7 @@ registerPage('kameraden', async (el) => {
     }
 
     if (kannFahrzeugAufgaben) {
-      // Geräteprüfungen: nicht bestandene + kommentierte laden
-      const pruefSnap = await fw.getDocs('pruefaufgaben');
+      // Geräteprüfungen: nicht bestandene + kommentierte
       const pruefIssues = pruefSnap.docs
         .map(d => ({id: d.id, ...d.data()}))
         .filter(p => p.id !== 'allgemeine-notiz' && !p.ausgeblendet && (p.bestanden === false || p.kommentar));
@@ -3803,9 +3805,7 @@ registerPage('kameraden', async (el) => {
       }
     }
 
-    // Ausgeblendete Aufgaben aus Firestore laden
     const aufgabeKey = a => a.typ + (a.userId||'') + (a.pruefId||'') + (a.uebungId||'');
-    const ausgeblendetSnap = await fw.getDoc('users/'+fw.user.uid+'/settings/aufgaben_ausgeblendet').catch(() => null);
     const ausgeblendet = new Set((ausgeblendetSnap?.data()?.ids) || []);
     const ausgeblendetAufgaben = aufgaben.filter(a => ausgeblendet.has(aufgabeKey(a)));
     const sichtbareAufgaben = aufgaben.filter(a => !ausgeblendet.has(aufgabeKey(a)));
