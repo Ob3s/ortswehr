@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="theme-color" content="#cc2200">
-  <meta name="app-version" content="20260901122757">
+  <meta name="app-version" content="20260901123354">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ortswehr">
@@ -21,7 +21,13 @@
     }
   </script>
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="css/style.css">
+  <!-- ?v=<version> auf den eigenen JS/CSS-Dateien: GitHub Pages liefert sie mit einem längeren
+       Cache-Control/max-age, der Update-Mechanismus unten (Service-Worker abmelden + Caches
+       leeren + reload) reicht dafür allein NICHT zuverlässig aus - der Browser kann trotzdem die
+       alte Datei unter derselben URL aus dem HTTP-Disk-Cache bedienen. Mit einer bei jedem Deploy
+       geänderten Query-Version ist es für den Browser eine komplett neue URL, garantiert frischer
+       Fetch. Versionsstring hier bei jedem Deploy synchron zu <meta name="app-version"> halten. -->
+  <link rel="stylesheet" href="css/style.css?v=20260901123354">
 </head>
 <body>
 
@@ -779,7 +785,7 @@
   tickUhr();
   setInterval(tickUhr, 1000);
 </script>
-<script src="js/logic.js"></script>
-<script src="js/pages.js" type="module" defer></script>
+<script src="js/logic.js?v=20260901123354"></script>
+<script src="js/pages.js?v=20260901123354" type="module" defer></script>
 </body>
 </html>
