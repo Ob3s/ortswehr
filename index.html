@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="theme-color" content="#cc2200">
-  <meta name="app-version" content="20260901084116">
+  <meta name="app-version" content="20260901085451">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ortswehr">
@@ -45,7 +45,6 @@
             <input id="install-hinweis-link" readonly style="width:100%;font-size:0.76rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:0.4rem 0.5rem;color:var(--text)">
           </div>
         </div>
-        <button id="install-hinweis-schliessen" aria-label="Schließen" style="background:none;border:none;color:var(--muted);font-size:0.95rem;cursor:pointer;padding:0.1rem;flex-shrink:0;line-height:1">✕</button>
       </div>
     </div>
     <div class="form-row">
@@ -308,16 +307,21 @@
     });
   }
 
-  // Installations-Hinweis: Firefox (Android+Desktop) kann PWAs generell nicht mehr installieren,
-  // auf iOS geht Installation NUR über Safari (andere iOS-Browser laufen zwar technisch auf
-  // Safaris Engine, dürfen aber selbst keine PWA installieren - Apple-Systembeschränkung, kein
-  // Bug hier). Statt nur eine Textzeile hinzuwerfen ("mach das mal in Chrome") bekommt der
-  // Nutzer eine konkrete Handlung angeboten: auf Android ein Button, der Chrome direkt per
-  // Android-Intent öffnet (mit Play-Store-Fallback falls nicht installiert); überall sonst, wo
-  // sich kein Browser aus JS heraus öffnen lässt (iOS, Desktop), ein "Link kopieren"-Button statt
-  // Menü-Jagd-Anleitungen - Firefeuerwehrleute sollen nicht selbst rausfinden müssen, was
-  // "Drei-Punkte-Menü" bedeutet. Läuft nur auf dem Login-Screen (vor Auth) - genau da landen neu
-  // eingeladene Kameraden über den Link/QR-Code aus "Kameraden einladen".
+  // Installations-Hinweis: nur auf Mobilgeräten und nur solange nicht als PWA installiert - am
+  // Desktop wird die App normal im Browser-Tab genutzt, kein Installations-Bedarf. Firefox
+  // (Android) kann PWAs generell nicht mehr installieren, auf iOS geht Installation NUR über
+  // Safari (andere iOS-Browser laufen zwar technisch auf Safaris Engine, dürfen aber selbst keine
+  // PWA installieren - Apple-Systembeschränkung, kein Bug hier). Statt nur eine Textzeile
+  // hinzuwerfen ("mach das mal in Chrome") bekommt der Nutzer eine konkrete Handlung angeboten:
+  // auf Android ein Button, der Chrome direkt per Android-Intent öffnet (Play-Store-Fallback
+  // falls nicht installiert); wo sich kein Browser aus JS heraus öffnen lässt (iOS), ein "Link
+  // kopieren"-Button statt Menü-Jagd-Anleitungen. Bewusst nicht schließbar (kein Nutzer-Feedback
+  // dazu, kein X-Button) - ein geschlossener Hinweis, der beim nächsten Aufruf verschwunden
+  // bleibt, hätte den Kameraden genau in dem Moment allein gelassen, in dem er noch nicht
+  // installiert hat; er soll so lange sichtbar bleiben, bis die App tatsächlich installiert ist
+  // (dann verschwindet er automatisch über den bereitsInstalliert-Check oben). Läuft nur auf dem
+  // Login-Screen (vor Auth) - genau da landen neu eingeladene Kameraden über den Link/QR-Code aus
+  // "Kameraden einladen".
   (function installHinweisPruefen() {
     const bereitsInstalliert = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
     if (bereitsInstalliert) return;
@@ -325,6 +329,8 @@
     const ua = navigator.userAgent;
     const istIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     const istAndroid = /Android/.test(ua);
+    if (!istIOS && !istAndroid) return; // Desktop: kein Hinweis nötig
+
     const istFirefox = /Firefox\//.test(ua) || /FxiOS\//.test(ua);
     const istSafariIOS = istIOS && /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(ua);
 
@@ -335,7 +341,6 @@
     const aktionenEl = document.getElementById('install-hinweis-aktionen');
     const linkBox   = document.getElementById('install-hinweis-linkbox');
     const linkInput = document.getElementById('install-hinweis-link');
-    const schliessenBtn = document.getElementById('install-hinweis-schliessen');
 
     const linkKopierenButton = () => {
       const btn = document.createElement('button');
@@ -369,42 +374,34 @@
       return a;
     };
 
-    let art = null; // 'warnung' | 'tipp'
+    let istWarnung = false;
     let icon = '', titel = '', text = '';
     let aktionen = [];
 
     if (istIOS && !istSafariIOS) {
-      art = 'warnung';
+      istWarnung = true;
       icon = '🧭'; titel = 'Installation nur über Safari möglich';
       text = 'iPhone/iPad erlauben App-Installation nur über Safari (Apple-Vorgabe, kein Fehler dieser App). Am einfachsten: Link kopieren und in Safari einfügen.';
       aktionen = [linkKopierenButton()];
-    } else if (istFirefox) {
-      art = 'warnung';
+    } else if (istFirefox) { // hier immer Android, da iOS-Firefox schon oben abgefangen ist
+      istWarnung = true;
       icon = '🌐'; titel = 'Firefox kann diese App nicht installieren';
-      if (istAndroid) {
-        text = 'Am einfachsten direkt in Chrome öffnen:';
-        aktionen = [chromeOeffnenButton(), linkKopierenButton()];
-      } else {
-        text = 'Bitte diesen Link in Chrome oder Edge öffnen.';
-        aktionen = [linkKopierenButton()];
-      }
-    } else if (istIOS && istSafariIOS) {
-      art = 'tipp';
+      text = 'Am einfachsten direkt in Chrome öffnen:';
+      aktionen = [chromeOeffnenButton(), linkKopierenButton()];
+    } else if (istIOS) { // Safari
       icon = '💡'; titel = 'Als App installieren';
       text = 'Unten auf Teilen tippen, dann „Zum Home-Bildschirm" – installiert die App wie eine normale App, inkl. Icon und Benachrichtigungen.';
-    } else if (istAndroid) {
-      art = 'tipp';
+    } else { // Android, Chromium-Browser
       icon = '💡'; titel = 'Als App installieren';
       text = 'Menü (⋮) → „App installieren" bzw. „Zum Startbildschirm hinzufügen".';
     }
 
-    // Für installierbare Chromium-Browser (Android + Desktop): nativen Install-Prompt einfangen
-    // und als direkten Button anbieten, statt nur auf das Browser-Menü zu verweisen. Das Event
-    // kann mehrfach feuern (z. B. nach Abbruch/Schließen des nativen Dialogs) - jedes Mal denselben
-    // Button wiederverwenden statt einen weiteren anzuhängen (sonst duplizieren sich die Buttons).
+    // Für installierbare Chromium-Browser: nativen Install-Prompt einfangen und als direkten
+    // Button anbieten, statt nur auf das Browser-Menü zu verweisen. Das Event kann mehrfach
+    // feuern (z. B. nach Abbruch/Schließen des nativen Dialogs) - jedes Mal denselben Button
+    // wiederverwenden statt einen weiteren anzuhängen (sonst duplizieren sich die Buttons).
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
-      if (art !== 'tipp') return;
       let btn = aktionenEl.querySelector('[data-install-btn]');
       if (!btn) {
         btn = document.createElement('button');
@@ -416,21 +413,12 @@
       btn.onclick = () => e.prompt();
     });
 
-    if (!art) return;
-    const dismissKey = 'install-hinweis-verborgen-' + art;
-    if (art === 'tipp' && localStorage.getItem(dismissKey)) return;
-
-    box.style.borderLeft = '3px solid ' + (art === 'warnung' ? 'var(--warning)' : 'var(--red)');
+    box.style.borderLeft = '3px solid ' + (istWarnung ? 'var(--warning)' : 'var(--red)');
     iconEl.textContent = icon;
     titelEl.textContent = titel;
     textEl.textContent = text;
     aktionen.forEach(el => aktionenEl.appendChild(el));
     box.style.display = 'block';
-
-    schliessenBtn.addEventListener('click', () => {
-      box.style.display = 'none';
-      if (art === 'tipp') { try { localStorage.setItem(dismissKey, '1'); } catch(e) {} }
-    });
   })();
 
   // Login
