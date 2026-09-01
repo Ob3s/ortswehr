@@ -5241,6 +5241,26 @@ async function apiStatusFetch(url, opts) {
   }
 }
 
+// Eigene Cloud Functions: ein "erreichbar" heißt hier nicht zwingend HTTP 2xx (ein bare GET ohne
+// die richtigen Parameter/Auth bekommt von der eigenen Logik oft berechtigterweise 4xx) - was
+// wirklich auf ein Problem hindeutet, ist 403 direkt von Google Frontend, BEVOR der Funktionscode
+// überhaupt läuft (siehe PROJEKT-UEBERGABE.md 13.11: fehlende Cloud-Run-Invoker-Freigabe, genau
+// der Bug, der die Adress-Autovervollständigung lahmgelegt hat und hier nicht mehr unbemerkt
+// bleiben soll).
+async function apiStatusEigeneFunction(url) {
+  const start = performance.now();
+  const ctrl = new AbortController();
+  const timeout = setTimeout(() => ctrl.abort(), 6000);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal });
+    return { ok: res.status !== 403, ms: Math.round(performance.now() - start), status: res.status };
+  } catch (e) {
+    return { ok: false, ms: Math.round(performance.now() - start), fehler: e.name === 'AbortError' ? 'Zeitüberschreitung' : e.message };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 const API_STATUS_DIENSTE = [
   {
     id: 'firebase', icon: '🔥', name: 'Firebase (Firestore)',
@@ -5257,6 +5277,32 @@ const API_STATUS_DIENSTE = [
         return { ok: false, ms: Math.round(performance.now() - start), fehler: e.message };
       }
     },
+  },
+  {
+    id: 'ortautocomplete', icon: '📮', name: 'Orts-Autocomplete (eigene Cloud Function)',
+    sub: 'Adressvorschläge beim Anlegen eines Einsatzes',
+    check: () => apiStatusEigeneFunction(AC_URL),
+  },
+  {
+    id: 'kalenderimport', icon: '📆', name: 'Kalender-Import (eigene Cloud Function)',
+    sub: 'Dienste/Einsätze aus Google Kalender importieren',
+    check: () => apiStatusEigeneFunction(window.IST_DEV
+      ? 'https://kalenderimport-i7y73cc75a-ey.a.run.app'
+      : 'https://europe-west3-ffw-oegeln-791ca.cloudfunctions.net/kalenderImport'),
+  },
+  {
+    id: 'pwreset', icon: '🔑', name: 'Passwort-Reset (eigene Cloud Function)',
+    sub: '"Passwort vergessen" beim Login',
+    check: () => apiStatusEigeneFunction(window.IST_DEV
+      ? 'https://requestpasswordreset-i7y73cc75a-ey.a.run.app'
+      : 'https://europe-west3-ffw-oegeln-791ca.cloudfunctions.net/requestPasswordReset'),
+  },
+  {
+    id: 'pwset', icon: '🔒', name: 'Passwort setzen (eigene Cloud Function)',
+    sub: 'Neues Passwort durch Administrator vergeben',
+    check: () => apiStatusEigeneFunction(window.IST_DEV
+      ? 'https://resetuserpassword-i7y73cc75a-ey.a.run.app'
+      : 'https://europe-west3-ffw-oegeln-791ca.cloudfunctions.net/resetUserPassword'),
   },
   {
     id: 'nominatim', icon: '📍', name: 'Nominatim (OpenStreetMap)',
@@ -5291,7 +5337,8 @@ registerPage('api-status', async (el) => {
     </div>`;
 
   el.innerHTML = `
-    <div class="card" style="padding:0 1rem">
+    <div class="card" id="api-status-summary" style="font-weight:600;text-align:center;padding:0.8rem">⏳ Prüfe alle Dienste…</div>
+    <div class="card" style="padding:0 1rem;margin-top:0.6rem">
       ${API_STATUS_DIENSTE.map(zeile).join('')}
     </div>
     <div class="card" style="margin-top:0.8rem;color:var(--muted);font-size:0.82rem;line-height:1.5">
@@ -5311,10 +5358,25 @@ registerPage('api-status', async (el) => {
     badge.textContent = ok ? `✅ erreichbar${detailText ? ' · ' + detailText : ''}` : `❌ nicht erreichbar${detailText ? ' · ' + detailText : ''}`;
   };
 
-  await Promise.all(API_STATUS_DIENSTE.map(async (d) => {
+  const ergebnisse = await Promise.all(API_STATUS_DIENSTE.map(async (d) => {
     const r = await d.check();
     badgeSetzen(d.id, r.ok, r.ok ? r.ms + ' ms' : (r.fehler || ('HTTP ' + r.status)));
+    return { name: d.name, ok: r.ok };
   }));
+
+  // Einzeiler oben: nur Grün, wenn wirklich alles läuft - sonst die betroffenen Dienste namentlich,
+  // damit man nicht erst die ganze Liste durchscrollen muss.
+  const summaryEl = document.getElementById('api-status-summary');
+  const ausgefallen = ergebnisse.filter(r => !r.ok);
+  if (summaryEl) {
+    if (ausgefallen.length === 0) {
+      summaryEl.textContent = '✅ Alle Dienste laufen';
+      summaryEl.style.color = '#16a34a';
+    } else {
+      summaryEl.textContent = `❌ ${ausgefallen.map(r => r.name).join(', ')} läuft nicht`;
+      summaryEl.style.color = 'var(--red)';
+    }
+  }
 });
 
 // ── Neue Kameraden einladen ───────────────────────────────
