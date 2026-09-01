@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="theme-color" content="#cc2200">
-  <meta name="app-version" content="20260901123718">
+  <meta name="app-version" content="20260901154530">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ortswehr">
@@ -27,7 +27,7 @@
        alte Datei unter derselben URL aus dem HTTP-Disk-Cache bedienen. Mit einer bei jedem Deploy
        geänderten Query-Version ist es für den Browser eine komplett neue URL, garantiert frischer
        Fetch. Versionsstring hier bei jedem Deploy synchron zu <meta name="app-version"> halten. -->
-  <link rel="stylesheet" href="css/style.css?v=20260901123718">
+  <link rel="stylesheet" href="css/style.css?v=20260901154530">
 </head>
 <body>
 
@@ -276,7 +276,12 @@
       try {
         const perm = await Notification.requestPermission();
         if (perm !== 'granted') { this.toast('Push: Berechtigung verweigert', true); return null; }
-        const swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+        // ?env=... an die root-relative Datei: liegt im separaten ob3s.github.io-Root-Repo
+        // (gemeinsam für PROD+DEV, Service Worker müssen root-relativ registriert werden), muss
+        // deshalb zur Laufzeit wissen, gegen welches Firebase-Projekt sie initialisieren soll
+        // (s. Kommentar dort). Ohne den Parameter würde sie sonst immer PROD annehmen.
+        const swReg = await navigator.serviceWorker.register(
+          '/firebase-messaging-sw.js?env=' + (window.IST_DEV ? 'dev' : 'prod'));
         await new Promise(resolve => {
           if (swReg.active) { resolve(); return; }
           const sw = swReg.installing || swReg.waiting;
@@ -786,7 +791,7 @@
   tickUhr();
   setInterval(tickUhr, 1000);
 </script>
-<script src="js/logic.js?v=20260901123718"></script>
-<script src="js/pages.js?v=20260901123718" type="module" defer></script>
+<script src="js/logic.js?v=20260901154530"></script>
+<script src="js/pages.js?v=20260901154530" type="module" defer></script>
 </body>
 </html>
