@@ -5322,7 +5322,7 @@ registerPage('api-status', async (el) => {
       💡 Das hier prüft nur, ob die Dienste gerade erreichbar sind – keine echten Nutzungs- oder
       Kostenzahlen (dafür hat die App keinen Zugriff auf das Firebase-Billing). Nutzung/Kosten von
       Firebase einsehen:
-      <a href="https://console.firebase.google.com/project/ffw-oegeln-791ca/usage" target="_blank" rel="noopener">
+      <a href="https://console.firebase.google.com/project/${window.IST_DEV ? 'ffw-oegeln-dev' : 'ffw-oegeln-791ca'}/usage" target="_blank" rel="noopener">
         Firebase Console öffnen ↗
       </a>
     </div>`;
