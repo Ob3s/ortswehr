@@ -5419,4 +5419,110 @@ registerPage('kameraden-einladen', async (el) => {
   }
 });
 
+// ── Verwaltung ─────────────────────────────────────────────
+// Nutzt ein Recht, das im RECHTE_KATALOG schon lange existierte, aber bisher an keiner Stelle
+// tatsächlich geprüft wurde ('verwaltung_sehen', Bereich "Statistik/Verwaltung") - offensichtlich
+// für genau so eine Seite vorgesehen. Bündelt: Umgebungs-Info, Testdaten-Werkzeuge (nur DEV, auf
+// PROD nicht mal gerendert - kein Risiko für echte Daten) und ein Änderungsprotokoll aus
+// changes.json (wird bei jedem Deploy schon gepflegt, war bisher aber nirgends sichtbar).
+registerPage('verwaltung', async (el) => {
+  if (!fw.hatRecht('verwaltung_sehen')) { navigate('dashboard'); return; }
+  fw.setTitle('Verwaltung');
+  fw.showBack(() => navigateBack());
+
+  el.innerHTML = `
+    <div class="card">
+      <div class="card-title">Umgebung</div>
+      <div class="list-item">
+        <div class="list-item-body">
+          <div class="list-item-title">${window.APP_NAME}</div>
+          <div class="list-item-sub">${window.IST_DEV ? 'DEV – zum Testen, eigene Datenbank, keine echten Daten' : 'PROD – Live-System'}</div>
+        </div>
+      </div>
+      <div class="list-item" onclick="navigate('api-status')">
+        <div class="list-item-body">
+          <div class="list-item-title">API-Status</div>
+          <div class="list-item-sub">Erreichbarkeit aller genutzten Dienste prüfen</div>
+        </div>
+        <div class="list-chevron">›</div>
+      </div>
+    </div>
+
+    ${window.IST_DEV ? `
+    <div class="card">
+      <div class="card-title">🧪 Testdaten (nur DEV)</div>
+      <p class="muted" style="font-size:0.8rem;margin-bottom:0.6rem">Zum Ausprobieren, ohne echte Daten anzufassen. Diese Karte erscheint auf PROD gar nicht.</p>
+      <div id="verwaltung-counts" style="font-size:0.82rem;margin-bottom:0.7rem">⏳ Lade Übersicht...</div>
+      <button class="btn btn-secondary btn-sm btn-full" onclick="verwaltungTestdatenAnlegen()">➕ Beispiel-Testdaten anlegen (2 Dienste, 1 Einsatz)</button>
+      <div style="margin-top:0.9rem">
+        <div class="card-subtitle" style="margin-bottom:0.3rem">Test-Accounts (Anmeldename · Rechte)</div>
+        <div style="font-size:0.78rem;color:var(--muted);line-height:1.7">
+          testwf · Wehrführer, alle Rechte<br>
+          testansicht · Kameraden ansehen + Aufgaben<br>
+          testloeschwasser · nur Löschwasser prüfen<br>
+          testbasis · keine Sonderrechte<br>
+          <span style="font-size:0.72rem">Passwort für alle: siehe PROJEKT-UEBERGABE.md</span>
+        </div>
+      </div>
+    </div>` : ''}
+
+    <div class="card">
+      <div class="card-title">Änderungsprotokoll</div>
+      <div id="verwaltung-changelog">⏳ Lade...</div>
+    </div>
+  `;
+
+  ladeVerwaltungCounts();
+  ladeAenderungsprotokoll();
+});
+
+async function ladeVerwaltungCounts() {
+  const zielEl = document.getElementById('verwaltung-counts');
+  if (!zielEl) return;
+  try {
+    const [u, d, e, f] = await Promise.all([
+      fw.getDocs('users'), fw.getDocs('dienste'), fw.getDocs('einsaetze'), fw.getDocs('fahrzeuge'),
+    ]);
+    zielEl.innerHTML = `👤 ${u.docs.length} Kameraden · 📅 ${d.docs.length} Dienste · 🚨 ${e.docs.length} Einsätze · 🚒 ${f.docs.length} Fahrzeuge`;
+  } catch (e) { zielEl.textContent = 'Übersicht konnte nicht geladen werden.'; }
+}
+
+window.verwaltungTestdatenAnlegen = async () => {
+  if (!window.IST_DEV) return; // Sicherheitsnetz - dieser Button existiert auf PROD gar nicht im DOM
+  if (!confirm('Beispiel-Testdaten anlegen (2 Dienste, 1 Einsatz mit Adresse für die Löschwasserkarte)?')) return;
+  try {
+    const heute = new Date();
+    const inZweiTagen = new Date(); inZweiTagen.setDate(heute.getDate() + 2);
+    await fw.addDoc('dienste', {
+      titel: 'TEST: Dienstabend', typ: 'dienst', datum: inZweiTagen, dauer_h: 2,
+      art: 'dienstabend', zeitBeginn: '19:00', relevant: true,
+    });
+    await fw.addDoc('dienste', {
+      // dauer_h/art bewusst leer, damit er in "Offene Aufgaben" als unvollständig auftaucht
+      titel: 'TEST: unvollständiger Dienst', typ: 'dienst', datum: inZweiTagen,
+    });
+    await fw.addDoc('einsaetze', {
+      titel: 'TEST: Kleinbrand', typ: 'einsatz', datum: heute, zeitBeginn: '14:00', zeitEnde: '15:30',
+      ort: 'Dorfstraße 1, Oegeln', relevant: true, ortswehrIds: [],
+    });
+    fw.toast('Testdaten angelegt ✅');
+    ladeVerwaltungCounts();
+  } catch (e) { fw.toast('Fehler: ' + e.message, true); }
+};
+
+async function ladeAenderungsprotokoll() {
+  const zielEl = document.getElementById('verwaltung-changelog');
+  if (!zielEl) return;
+  try {
+    const res = await fetch('./changes.json?t=' + Date.now(), { cache: 'no-store' });
+    const changes = await res.json();
+    zielEl.innerHTML = changes.slice(0, 10).map(c => `
+      <div style="border-bottom:1px solid var(--border);padding:0.5rem 0">
+        <div style="font-weight:600;font-size:0.85rem">${c.datum} <span style="font-weight:400;color:var(--muted);font-family:monospace;font-size:0.72rem">v${c.version}</span></div>
+        <ul style="margin:0.3rem 0 0 1.1rem;padding:0;font-size:0.8rem;color:var(--muted)">
+          ${c.punkte.map(p => `<li style="margin-bottom:0.2rem">${p}</li>`).join('')}
+        </ul>
+      </div>`).join('');
+  } catch (e) { zielEl.textContent = 'Änderungsprotokoll konnte nicht geladen werden.'; }
+}
 
