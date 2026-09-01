@@ -117,6 +117,12 @@ test('dienstSichtbar: Maschinisten-Dienst nur für Maschinisten sichtbar', () =>
   assert.equal(dienstSichtbar(d, profil, [{ bezeichnung: 'Maschinist' }]), true);
 });
 
+test('dienstSichtbar: Wehrführer sieht AGT-/Maschinisten-Dienste auch ohne eigene passende Qualifikation (Regressionstest 2026-09-01: der Wehrführer-Bypass fehlte bisher in diesen beiden Zweigen, obwohl er in Ortswehr- und Führungskräfte-Zweig existierte - er muss jeden Dienst anlegen/verwalten können)', () => {
+  const wf = { rolle: 'wehrfuehrer' };
+  assert.equal(dienstSichtbar({ titel: 'Belastungslauf AGT', ortswehrIds: ['ow1'] }, wf, []), true);
+  assert.equal(dienstSichtbar({ titel: 'Maschinisten-Fortbildung', ortswehrIds: ['ow1'] }, wf, []), true);
+});
+
 test('dienstSichtbar: Führungskräfte-Termin nur für Gruppen-/Zugführer oder Wehrführer sichtbar', () => {
   const d = { titel: 'Gruppenführersitzung', ortswehrIds: ['ow1'] };
   const kamerad = { rolle: 'kamerad', ortswehrIds: ['ow1'] };
