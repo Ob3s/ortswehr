@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="theme-color" content="#cc2200">
-  <meta name="app-version" content="20260901080616">
+  <meta name="app-version" content="20260901083115">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ortswehr">
@@ -34,10 +34,19 @@
     <div class="login-logo">🚒</div>
     <h1>Freiwillige Feuerwehr Beeskow</h1>
     <p class="sub">Löschzug Oegeln</p>
-    <div id="install-hinweis" style="display:none;text-align:left;border-radius:10px;padding:0.6rem 0.7rem;margin-bottom:0.8rem;font-size:0.78rem;line-height:1.4;position:relative">
-      <span id="install-hinweis-text"></span>
-      <button id="install-hinweis-aktion" style="display:none;margin-top:0.5rem" class="btn btn-primary btn-sm btn-full"></button>
-      <button id="install-hinweis-schliessen" aria-label="Schließen" style="position:absolute;top:0.3rem;right:0.4rem;background:none;border:none;color:inherit;opacity:0.6;font-size:0.95rem;cursor:pointer;padding:0.2rem">✕</button>
+    <div id="install-hinweis" class="card" style="display:none;text-align:left;padding:0.85rem 0.9rem;margin-bottom:0.9rem;box-shadow:none;border:1px solid var(--border)">
+      <div style="display:flex;align-items:flex-start;gap:0.6rem">
+        <span id="install-hinweis-icon" style="font-size:1.2rem;line-height:1.3;flex-shrink:0"></span>
+        <div style="flex:1;min-width:0">
+          <div id="install-hinweis-titel" style="font-weight:700;font-size:0.83rem;margin-bottom:0.15rem"></div>
+          <div id="install-hinweis-text" style="font-size:0.78rem;color:var(--muted);line-height:1.45"></div>
+          <div id="install-hinweis-aktionen" style="display:flex;gap:0.5rem;margin-top:0.6rem;flex-wrap:wrap"></div>
+          <div id="install-hinweis-linkbox" style="display:none;margin-top:0.5rem">
+            <input id="install-hinweis-link" readonly style="width:100%;font-size:0.76rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:0.4rem 0.5rem;color:var(--text)">
+          </div>
+        </div>
+        <button id="install-hinweis-schliessen" aria-label="Schließen" style="background:none;border:none;color:var(--muted);font-size:0.95rem;cursor:pointer;padding:0.1rem;flex-shrink:0;line-height:1">✕</button>
+      </div>
     </div>
     <div class="form-row">
       <label>Anmeldename</label>
@@ -302,9 +311,12 @@
   // Installations-Hinweis: Firefox (Android+Desktop) kann PWAs generell nicht mehr installieren,
   // auf iOS geht Installation NUR über Safari (andere iOS-Browser laufen zwar technisch auf
   // Safaris Engine, dürfen aber selbst keine PWA installieren - Apple-Systembeschränkung, kein
-  // Bug hier). Zeigt bei nicht-installierbaren Browsern eine Anleitung statt stiller Enttäuschung;
-  // bei installierbaren Chromium-Browsern wird stattdessen der native Install-Prompt eingefangen
-  // und als Button angeboten. Läuft nur auf dem Login-Screen (vor Auth) - genau da landen neu
+  // Bug hier). Statt nur eine Textzeile hinzuwerfen ("mach das mal in Chrome") bekommt der
+  // Nutzer eine konkrete Handlung angeboten: auf Android ein Button, der Chrome direkt per
+  // Android-Intent öffnet (mit Play-Store-Fallback falls nicht installiert); überall sonst, wo
+  // sich kein Browser aus JS heraus öffnen lässt (iOS, Desktop), ein "Link kopieren"-Button statt
+  // Menü-Jagd-Anleitungen - Firefeuerwehrleute sollen nicht selbst rausfinden müssen, was
+  // "Drei-Punkte-Menü" bedeutet. Läuft nur auf dem Login-Screen (vor Auth) - genau da landen neu
   // eingeladene Kameraden über den Link/QR-Code aus "Kameraden einladen".
   (function installHinweisPruefen() {
     const bereitsInstalliert = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
@@ -316,51 +328,97 @@
     const istFirefox = /Firefox\//.test(ua) || /FxiOS\//.test(ua);
     const istSafariIOS = istIOS && /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(ua);
 
-    const box = document.getElementById('install-hinweis');
-    const textEl = document.getElementById('install-hinweis-text');
-    const aktionBtn = document.getElementById('install-hinweis-aktion');
+    const box       = document.getElementById('install-hinweis');
+    const iconEl    = document.getElementById('install-hinweis-icon');
+    const titelEl   = document.getElementById('install-hinweis-titel');
+    const textEl    = document.getElementById('install-hinweis-text');
+    const aktionenEl = document.getElementById('install-hinweis-aktionen');
+    const linkBox   = document.getElementById('install-hinweis-linkbox');
+    const linkInput = document.getElementById('install-hinweis-link');
     const schliessenBtn = document.getElementById('install-hinweis-schliessen');
 
+    const linkKopierenButton = () => {
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-secondary btn-sm';
+      btn.textContent = '📋 Link kopieren';
+      btn.onclick = async () => {
+        try {
+          await navigator.clipboard.writeText(location.href);
+          btn.textContent = '✅ Kopiert';
+          setTimeout(() => { btn.textContent = '📋 Link kopieren'; }, 2000);
+        } catch (e) {
+          linkInput.value = location.href;
+          linkBox.style.display = 'block';
+          linkInput.select();
+        }
+      };
+      return btn;
+    };
+
+    // Android-Intent: öffnet Chrome direkt mit der aktuellen URL (funktioniert auch aus Firefox
+    // heraus als normaler Link-Tap), fällt auf den Play-Store-Eintrag zurück falls Chrome fehlt.
+    const chromeOeffnenButton = () => {
+      const ohneSchema = location.href.replace(/^https?:\/\//, '');
+      const fallback = encodeURIComponent('https://play.google.com/store/apps/details?id=com.android.chrome');
+      const intentUrl = `intent://${ohneSchema}#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${fallback};end`;
+      const a = document.createElement('a');
+      a.href = intentUrl;
+      a.className = 'btn btn-primary btn-sm';
+      a.style.textDecoration = 'none';
+      a.textContent = '🌐 In Chrome öffnen';
+      return a;
+    };
+
     let art = null; // 'warnung' | 'tipp'
-    let text = '';
+    let icon = '', titel = '', text = '';
+    let aktionen = [];
 
     if (istIOS && !istSafariIOS) {
       art = 'warnung';
-      text = '⚠️ Auf dem iPhone/iPad lässt sich diese App nur über <b>Safari</b> installieren (Apple erlaubt das anderen Browsern nicht). Bitte diesen Link in Safari öffnen.';
-    } else if (istIOS && istSafariIOS) {
-      art = 'tipp';
-      text = '💡 Für die beste Erfahrung: unten auf <b>Teilen</b> tippen, dann „Zum Home-Bildschirm" – installiert die App wie eine normale App.';
+      icon = '🧭'; titel = 'Installation nur über Safari möglich';
+      text = 'iPhone/iPad erlauben App-Installation nur über Safari (Apple-Vorgabe, kein Fehler dieser App). Am einfachsten: Link kopieren und in Safari einfügen.';
+      aktionen = [linkKopierenButton()];
     } else if (istFirefox) {
       art = 'warnung';
-      text = istAndroid
-        ? '⚠️ Firefox kann diese App nicht als eigene App installieren. Bitte diesen Link in <b>Chrome</b> oder <b>Samsung Internet</b> öffnen.'
-        : '⚠️ Firefox kann diese App nicht als eigene App installieren. Bitte diesen Link in <b>Chrome</b> oder <b>Edge</b> öffnen.';
+      icon = '🌐'; titel = 'Firefox kann diese App nicht installieren';
+      if (istAndroid) {
+        text = 'Am einfachsten direkt in Chrome öffnen:';
+        aktionen = [chromeOeffnenButton(), linkKopierenButton()];
+      } else {
+        text = 'Bitte diesen Link in Chrome oder Edge öffnen.';
+        aktionen = [linkKopierenButton()];
+      }
+    } else if (istIOS && istSafariIOS) {
+      art = 'tipp';
+      icon = '💡'; titel = 'Als App installieren';
+      text = 'Unten auf Teilen tippen, dann „Zum Home-Bildschirm" – installiert die App wie eine normale App, inkl. Icon und Benachrichtigungen.';
     } else if (istAndroid) {
       art = 'tipp';
-      text = '💡 Für die beste Erfahrung: Menü (⋮) → „App installieren" bzw. „Zum Startbildschirm hinzufügen".';
+      icon = '💡'; titel = 'Als App installieren';
+      text = 'Menü (⋮) → „App installieren" bzw. „Zum Startbildschirm hinzufügen".';
     }
 
     // Für installierbare Chromium-Browser (Android + Desktop): nativen Install-Prompt einfangen
     // und als direkten Button anbieten, statt nur auf das Browser-Menü zu verweisen.
-    let installPrompt = null;
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
-      installPrompt = e;
-      if (art === 'tipp' && aktionBtn) {
-        aktionBtn.textContent = '📲 Jetzt installieren';
-        aktionBtn.style.display = 'block';
-        aktionBtn.onclick = () => { installPrompt.prompt(); };
-      }
+      if (art !== 'tipp') return;
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-primary btn-sm';
+      btn.textContent = '📲 Jetzt installieren';
+      btn.onclick = () => e.prompt();
+      aktionenEl.prepend(btn);
     });
 
     if (!art) return;
     const dismissKey = 'install-hinweis-verborgen-' + art;
     if (art === 'tipp' && localStorage.getItem(dismissKey)) return;
 
-    box.style.background = art === 'warnung' ? '#fef2f2' : '#eff6ff';
-    box.style.color = art === 'warnung' ? '#991b1b' : '#1e3a8a';
-    box.style.border = '1px solid ' + (art === 'warnung' ? '#fecaca' : '#bfdbfe');
-    textEl.innerHTML = text;
+    box.style.borderLeft = '3px solid ' + (art === 'warnung' ? 'var(--warning)' : 'var(--red)');
+    iconEl.textContent = icon;
+    titelEl.textContent = titel;
+    textEl.textContent = text;
+    aktionen.forEach(el => aktionenEl.appendChild(el));
     box.style.display = 'block';
 
     schliessenBtn.addEventListener('click', () => {
