@@ -139,6 +139,9 @@ function meineEintraegeListen(anwesenheiten, dienstMap, einsatzMap) {
 const AC_URL = window.IST_DEV
   ? 'https://ortautocomplete-i7y73cc75a-ey.a.run.app'
   : 'https://europe-west3-ffw-oegeln-791ca.cloudfunctions.net/ortAutoComplete';
+// Global verfügbar machen: die API-Status-Seite (weiter unten in der Datei, außerhalb des
+// waitFw(...)-Wrappers, in dem AC_URL sonst nur lokal sichtbar wäre) braucht auch Zugriff darauf.
+window.AC_URL = AC_URL;
 
 function initOrtAutocomplete(inputId, onSelect) {
   const input = document.getElementById(inputId);
@@ -5281,7 +5284,7 @@ const API_STATUS_DIENSTE = [
   {
     id: 'ortautocomplete', icon: '📮', name: 'Orts-Autocomplete (eigene Cloud Function)',
     sub: 'Adressvorschläge beim Anlegen eines Einsatzes',
-    check: () => apiStatusEigeneFunction(AC_URL),
+    check: () => apiStatusEigeneFunction(window.AC_URL),
   },
   {
     id: 'kalenderimport', icon: '📆', name: 'Kalender-Import (eigene Cloud Function)',
