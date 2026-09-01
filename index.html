@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="theme-color" content="#cc2200">
-  <meta name="app-version" content="20260901083115">
+  <meta name="app-version" content="20260901084116">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ortswehr">
@@ -399,15 +399,21 @@
     }
 
     // Für installierbare Chromium-Browser (Android + Desktop): nativen Install-Prompt einfangen
-    // und als direkten Button anbieten, statt nur auf das Browser-Menü zu verweisen.
+    // und als direkten Button anbieten, statt nur auf das Browser-Menü zu verweisen. Das Event
+    // kann mehrfach feuern (z. B. nach Abbruch/Schließen des nativen Dialogs) - jedes Mal denselben
+    // Button wiederverwenden statt einen weiteren anzuhängen (sonst duplizieren sich die Buttons).
     window.addEventListener('beforeinstallprompt', (e) => {
       e.preventDefault();
       if (art !== 'tipp') return;
-      const btn = document.createElement('button');
-      btn.className = 'btn btn-primary btn-sm';
-      btn.textContent = '📲 Jetzt installieren';
+      let btn = aktionenEl.querySelector('[data-install-btn]');
+      if (!btn) {
+        btn = document.createElement('button');
+        btn.dataset.installBtn = '1';
+        btn.className = 'btn btn-primary btn-sm';
+        btn.textContent = '📲 Jetzt installieren';
+        aktionenEl.prepend(btn);
+      }
       btn.onclick = () => e.prompt();
-      aktionenEl.prepend(btn);
     });
 
     if (!art) return;
