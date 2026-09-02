@@ -8,7 +8,7 @@ const { login } = require('./helpers');
 // weshalb dieser Ausfall unbemerkt blieb (siehe PROJEKT-UEBERGABE.md 13.11).
 test('API-Status zeigt alle acht Dienste als erreichbar (inkl. eigener Cloud Functions)', async ({ page }) => {
   await login(page);
-  await page.click('[data-page="kameraden"]');
+  await page.click('#menu-btn');
   await page.getByRole('button', { name: /API-Status/ }).click();
   await expect(page.locator('#page-title')).toHaveText('API-Status');
 
