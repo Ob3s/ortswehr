@@ -273,6 +273,19 @@ hr       { border: none; border-top: 1px solid var(--border); margin: 1rem 0; }
 .pending-banner .text { flex: 1; font-size: 0.85rem; }
 .pending-banner .text strong { display: block; }
 
+/* ── Verfügbarkeits-Pill (Dashboard) ── */
+/* Bewusst klein, eckig, unten begrenzt vom .alarm-btn-Abstand - soll auf keinen Fall wie der
+   grosse, pulsierende Alarm-Button aussehen oder in dessen Antipp-Bereich hineinragen. */
+.verfuegbar-pill {
+  display: flex; align-items: center; gap: 0.5rem;
+  padding: 0.55rem 0.8rem; margin-bottom: 0.9rem;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+  font-size: 0.85rem; font-weight: 600; cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.verfuegbar-pill .punkt { font-size: 0.7rem; line-height: 1; }
+.verfuegbar-pill.nicht-verfuegbar { border-color: var(--red); color: var(--red); }
+
 /* ── Alarm Button ── */
 .alarm-btn {
   display: block; width: 100%;

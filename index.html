@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="theme-color" content="#cc2200">
-  <meta name="app-version" content="20260902052526">
+  <meta name="app-version" content="20260902113152">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ortswehr">
@@ -27,7 +27,7 @@
        alte Datei unter derselben URL aus dem HTTP-Disk-Cache bedienen. Mit einer bei jedem Deploy
        geänderten Query-Version ist es für den Browser eine komplett neue URL, garantiert frischer
        Fetch. Versionsstring hier bei jedem Deploy synchron zu <meta name="app-version"> halten. -->
-  <link rel="stylesheet" href="css/style.css?v=20260902052526">
+  <link rel="stylesheet" href="css/style.css?v=20260902113152">
 </head>
 <body>
 
@@ -661,13 +661,17 @@
     const neu = !(fw.profil.verfuegbar !== false);
     await fw.setDoc('users/'+fw.user.uid, { verfuegbar: neu });
     fw.profil.verfuegbar = neu;
-    menuAufbauen();
+    const pill = document.getElementById('verfuegbar-pill');
+    if (pill) {
+      pill.classList.toggle('nicht-verfuegbar', !neu);
+      pill.querySelector('.punkt').textContent = neu ? '🟢' : '🔴';
+      pill.querySelector('span:last-child').textContent = neu ? 'Verfügbar' : 'Nicht verfügbar';
+    }
   };
 
   window.menuAufbauen = () => {
     const inh = document.getElementById('menu-drawer-inhalt');
     if (!inh || !fw.profil) return;
-    const verfuegbar = fw.profil.verfuegbar !== false;
     const zeile = (icon, label, page, sub) => `
       <div class="list-item" role="button" tabindex="0" onclick="menuNavigieren('${page}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();menuNavigieren('${page}')}">
         <div class="list-item-icon">${icon}</div>
@@ -700,15 +704,15 @@
 
     inh.innerHTML = `
       <div class="section-header" style="margin-top:0">Persönlich</div>
-      <div class="list-item" role="button" tabindex="0" onclick="verfuegbarkeitUmschalten()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();verfuegbarkeitUmschalten()}">
-        <div class="list-item-icon">${verfuegbar ? '🟢' : '🔴'}</div>
-        <div class="list-item-body">
-          <div class="list-item-title">${verfuegbar ? 'Verfügbar' : 'Nicht verfügbar'}</div>
-          <div class="list-item-sub">${verfuegbar ? 'Du bekommst Einsatz-Alarme' : 'Keine Einsatz-Alarme, bis du dich wieder verfügbar meldest'}</div>
-        </div>
-      </div>
       ${zeile('👤', 'Mein Profil', 'profil')}
       ${zeile('⚙️', 'Einstellungen', 'einstellungen')}
+      <div class="list-item" role="button" tabindex="0" onclick="menuSchliessen();pruefeAufUpdate(true)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();menuSchliessen();pruefeAufUpdate(true)}">
+        <div class="list-item-icon">🔄</div>
+        <div class="list-item-body">
+          <div class="list-item-title">Updates</div>
+        </div>
+        <div class="list-chevron">›</div>
+      </div>
       ${mannschaft}
       ${verwaltung ? `<div class="section-header">Verwaltung</div>${verwaltung}` : ''}
     `;
@@ -791,7 +795,7 @@
   tickUhr();
   setInterval(tickUhr, 1000);
 </script>
-<script src="js/logic.js?v=20260902052526"></script>
-<script src="js/pages.js?v=20260902052526" type="module" defer></script>
+<script src="js/logic.js?v=20260902113152"></script>
+<script src="js/pages.js?v=20260902113152" type="module" defer></script>
 </body>
 </html>

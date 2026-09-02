@@ -270,12 +270,19 @@ registerPage('dashboard', async (el) => {
   const zweiter = naechster && naechsterOegeln && naechsterOegeln.id !== naechster.id ? naechsterOegeln : null;
   const stats    = getStats(meine, dienstMap, einsatzMap);
 
+  const verfuegbar = fw.profil.verfuegbar !== false;
   el.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.8rem">
       <div style="font-family:'DM Serif Display',serif;font-size:1.3rem">
         Hallo, ${fw.profil.vorname || fw.profil.email}
       </div>
       <span id="status-lampe" style="width:12px;height:12px;border-radius:50%;background:#ccc;display:inline-block;flex-shrink:0;cursor:pointer" title="Status wird geprüft..." onclick="zeigeStatusDetail()"></span>
+    </div>
+
+    <div id="verfuegbar-pill" class="verfuegbar-pill${verfuegbar ? '' : ' nicht-verfuegbar'}" role="button" tabindex="0"
+         onclick="verfuegbarkeitUmschalten()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();verfuegbarkeitUmschalten()}">
+      <span class="punkt">${verfuegbar ? '🟢' : '🔴'}</span>
+      <span>${verfuegbar ? 'Verfügbar' : 'Nicht verfügbar'}</span>
     </div>
 
     ${(fw.hatRecht('einsaetze_alarm_ausloesen') || fw.hatRecht('einsaetze_anlegen')) ? `<button class="alarm-btn" onclick="navigate('uebung-form',{typ:'einsatz',alarm:true})">🚨 Einsatz</button>` : ''}
@@ -2065,10 +2072,6 @@ registerPage('profil', async (el) => {
       <button class="btn btn-primary btn-full" onclick="passwortAendern()">🔒 Passwort ändern</button>
     </div>
     <div class="card">
-      <div style="display:flex;gap:0.5rem;margin-bottom:0.5rem">
-        <button class="btn btn-secondary btn-sm" style="flex:1" onclick="navigate('einstellungen')">Einstellungen</button>
-        <button class="btn btn-secondary btn-sm" style="flex:1" onclick="pruefeAufUpdate(true)">🔄 Updates</button>
-      </div>
       <button class="btn btn-secondary btn-full" style="margin-bottom:0.5rem" onclick="alarmSelbsttest()">🔔 Alarm-Selbsttest</button>
       <button class="btn btn-danger btn-full" onclick="abmelden()">Abmelden</button>
     </div>
