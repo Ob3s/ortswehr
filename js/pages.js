@@ -310,6 +310,7 @@ registerPage('dashboard', async (el) => {
     <div id="verfuegbar-dauer-panel" class="card" style="display:none;padding:0.9rem 1rem;margin-bottom:0.8rem">
       <div style="font-weight:600;font-size:0.88rem;margin-bottom:0.7rem">Wie lange nicht verfügbar?</div>
       <div style="display:flex;gap:0.4rem;flex-wrap:wrap;margin-bottom:0.8rem">
+        <button class="btn btn-secondary btn-sm" onclick="verfuegbarDauerSetzen(0,1)">1 Std.</button>
         <button class="btn btn-secondary btn-sm" onclick="verfuegbarDauerSetzen(0,2)">2 Std.</button>
         <button class="btn btn-secondary btn-sm" onclick="verfuegbarDauerSetzen(0,6)">6 Std.</button>
         <button class="btn btn-secondary btn-sm" onclick="verfuegbarDauerSetzen(1,0)">1 Tag</button>
