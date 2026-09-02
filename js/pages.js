@@ -1914,28 +1914,33 @@ async function benachrichtigeOrtswehr(typ, titel, datumStr, dauer_h, uebungId, z
   const usersSnap = await fw.getDocs('users', fw.where('ortswehrIds', 'array-contains-any', ortswehrIds.slice(0,10)));
   const isEinsatz = typ === 'einsatz';
   const tokens = [];
+  const tokensStumm = [];
   for (const d of usersSnap.docs) {
     const u = d.data();
     if (d.id === fw.user.uid && !fw.profil.notif_selbst) { console.log('Push: Selbst übersprungen'); continue; }
     if (!u.fcmToken) { console.log('Push: Kein Token für', d.id); continue; }
-    // Verfügbarkeitsstatus: wer sich als nicht verfügbar gemeldet hat, bekommt keine Einsatz-Alarme
+    // Verfügbarkeitsstatus: wer sich als nicht verfügbar gemeldet hat, bekommt den Einsatz-Alarm
+    // weiterhin (Meldung + Reaktions-Buttons, genau wie verfügbar) - nur ohne den alarmierenden Ton/
+    // die Vibration, s. "stumm" in sendPushNotification/AlarmService/firebase-messaging-sw.js.
     // (Dienst-Erinnerungen sind davon bewusst unberührt, s. dienstErinnerung - "nicht verfügbar"
-    // heißt "kann gerade nicht ausrücken", nicht "will nichts mehr von der Wehr hören").
-    if (isEinsatz && u.notif_einsatz !== false && u.verfuegbar !== false) tokens.push(u.fcmToken);
+    // heißt "kann gerade nicht ausrücken", nicht "will nichts mehr von der Wehr hören".)
+    if (isEinsatz && u.notif_einsatz !== false) {
+      (u.verfuegbar === false ? tokensStumm : tokens).push(u.fcmToken);
+    }
     // Dienst-Push bei Anlage wurde entfernt – Erinnerung erfolgt nur noch über dienstErinnerung (08:00 Uhr)
   }
-  if (tokens.length === 0) { fw.toast('⚠️ Keine Push-Empfänger gefunden', true); return; }
+  if (tokens.length === 0 && tokensStumm.length === 0) { fw.toast('⚠️ Keine Push-Empfänger gefunden', true); return; }
   const title = isEinsatz ? '🚨 EINSATZ ALARM' : '🔔 Neuer Dienst';
   const body  = isEinsatz
     ? titel
     : `${titel} am ${new Date(datumStr).toLocaleDateString('de-DE')} (${dauerFormat(dauer_h)}h)`;
-  await sendPush(tokens, title, body, isEinsatz, uebungId);
+  await sendPush(tokens, title, body, isEinsatz, uebungId, tokensStumm);
 }
 
-async function sendPush(tokens, title, body, alarm = false, uebungId = null) {
+async function sendPush(tokens, title, body, alarm = false, uebungId = null, tokensStumm = []) {
   try {
     await fw.addDoc('push_queue', {
-      tokens, title, body, alarm, uebungId,
+      tokens, tokensStumm, title, body, alarm, uebungId,
       erstelltAm: new Date(), erstelltVon: fw.user.uid,
     });
     fw.toast(alarm ? 'Alarm gesendet 🚨' : 'Benachrichtigung gesendet ✅');

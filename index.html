@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="theme-color" content="#cc2200">
-  <meta name="app-version" content="20260902113152">
+  <meta name="app-version" content="20260902114050">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ortswehr">
@@ -27,7 +27,7 @@
        alte Datei unter derselben URL aus dem HTTP-Disk-Cache bedienen. Mit einer bei jedem Deploy
        geänderten Query-Version ist es für den Browser eine komplett neue URL, garantiert frischer
        Fetch. Versionsstring hier bei jedem Deploy synchron zu <meta name="app-version"> halten. -->
-  <link rel="stylesheet" href="css/style.css?v=20260902113152">
+  <link rel="stylesheet" href="css/style.css?v=20260902114050">
 </head>
 <body>
 
@@ -317,11 +317,13 @@
       const body     = payload.notification?.body  || '';
       const alarm    = payload.data?.alarm === 'true';
       const uebungId = payload.data?.uebungId || '';
+      // Nicht verfügbar gemeldet: Meldung + Sprung zum Einsatz kommen trotzdem, nur ohne Ton.
+      const stumm    = payload.data?.stumm === 'true';
       console.log('FCM Vordergrund:', title);
       fw.toast((alarm ? '🚨 ' : '🔔 ') + title + ': ' + body);
       if (alarm) {
         // Alarmton über Web Audio API
-        try {
+        if (!stumm) try {
           const ctx = new (window.AudioContext || window.webkitAudioContext)();
           const spieleTon = (freq, start, dauer) => {
             const osc = ctx.createOscillator();
@@ -795,7 +797,7 @@
   tickUhr();
   setInterval(tickUhr, 1000);
 </script>
-<script src="js/logic.js?v=20260902113152"></script>
-<script src="js/pages.js?v=20260902113152" type="module" defer></script>
+<script src="js/logic.js?v=20260902114050"></script>
+<script src="js/pages.js?v=20260902114050" type="module" defer></script>
 </body>
 </html>
