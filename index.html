@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="theme-color" content="#cc2200">
-  <meta name="app-version" content="20260902114050">
+  <meta name="app-version" content="20260902115617">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ortswehr">
@@ -27,7 +27,7 @@
        alte Datei unter derselben URL aus dem HTTP-Disk-Cache bedienen. Mit einer bei jedem Deploy
        geänderten Query-Version ist es für den Browser eine komplett neue URL, garantiert frischer
        Fetch. Versionsstring hier bei jedem Deploy synchron zu <meta name="app-version"> halten. -->
-  <link rel="stylesheet" href="css/style.css?v=20260902114050">
+  <link rel="stylesheet" href="css/style.css?v=20260902115617">
 </head>
 <body>
 
@@ -659,16 +659,47 @@
 
   window.menuNavigieren = (page) => { menuSchliessen(); window._navHistory = []; navigate(page); };
 
-  window.verfuegbarkeitUmschalten = async () => {
-    const neu = !(fw.profil.verfuegbar !== false);
-    await fw.setDoc('users/'+fw.user.uid, { verfuegbar: neu });
-    fw.profil.verfuegbar = neu;
-    const pill = document.getElementById('verfuegbar-pill');
-    if (pill) {
-      pill.classList.toggle('nicht-verfuegbar', !neu);
-      pill.querySelector('.punkt').textContent = neu ? '🟢' : '🔴';
-      pill.querySelector('span:last-child').textContent = neu ? 'Verfügbar' : 'Nicht verfügbar';
+  // Klick auf die Pill: verfügbar → Dauer-Panel öffnen/schließen (Frist wählen oder dauerhaft
+  // nicht verfügbar); nicht verfügbar → ein Klick genügt, um sofort wieder verfügbar zu sein
+  // (dafür braucht es keine Rückfrage, nur das "nicht verfügbar werden" braucht die Dauer-Angabe).
+  window.verfuegbarPillKlick = () => {
+    if (fw.profil.verfuegbar !== false) {
+      const panel = document.getElementById('verfuegbar-dauer-panel');
+      if (panel) panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+    } else {
+      verfuegbarSetzen(true, null);
     }
+  };
+
+  window.verfuegbarDauerSetzen = (tage, stunden) => {
+    document.getElementById('verfuegbar-tage').value = tage;
+    document.getElementById('verfuegbar-stunden').value = stunden;
+    verfuegbarDauerBestaetigen();
+  };
+
+  window.verfuegbarDauerBestaetigen = () => {
+    const tage = parseInt(document.getElementById('verfuegbar-tage').value, 10) || 0;
+    const stunden = parseInt(document.getElementById('verfuegbar-stunden').value, 10) || 0;
+    if (tage <= 0 && stunden <= 0) { fw.toast('Bitte Tage und/oder Stunden angeben', true); return; }
+    verfuegbarSetzen(false, new Date(Date.now() + (tage * 24 + stunden) * 3600 * 1000));
+  };
+
+  window.verfuegbarDauerhaftSetzen = () => verfuegbarSetzen(false, null);
+
+  window.verfuegbarDauerAbbrechen = () => {
+    const panel = document.getElementById('verfuegbar-dauer-panel');
+    if (panel) panel.style.display = 'none';
+  };
+
+  window.verfuegbarSetzen = async (verfuegbar, bis) => {
+    await fw.setDoc('users/'+fw.user.uid, { verfuegbar, verfuegbarBis: bis || null });
+    fw.profil.verfuegbar = verfuegbar;
+    fw.profil.verfuegbarBis = bis || null;
+    // Neu rendern statt einzelne DOM-Stellen von Hand zu patchen - bei drei möglichen Zuständen
+    // (verfügbar / dauerhaft nicht verfügbar / befristet nicht verfügbar mit eigener Hinweiszeile)
+    // ist das deutlich weniger fehleranfällig. navigateReplace statt navigate, damit der
+    // Zurück-Pfeil dabei nicht unnötig einen History-Eintrag bekommt.
+    navigateReplace('dashboard');
   };
 
   window.menuAufbauen = () => {
@@ -797,7 +828,7 @@
   tickUhr();
   setInterval(tickUhr, 1000);
 </script>
-<script src="js/logic.js?v=20260902114050"></script>
-<script src="js/pages.js?v=20260902114050" type="module" defer></script>
+<script src="js/logic.js?v=20260902115617"></script>
+<script src="js/pages.js?v=20260902115617" type="module" defer></script>
 </body>
 </html>
