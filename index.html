@@ -4,7 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="theme-color" content="#cc2200">
-  <meta name="app-version" content="20260902052526">
+  <meta name="app-version" content="20260902162532">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ortswehr">
@@ -27,7 +27,7 @@
        alte Datei unter derselben URL aus dem HTTP-Disk-Cache bedienen. Mit einer bei jedem Deploy
        geänderten Query-Version ist es für den Browser eine komplett neue URL, garantiert frischer
        Fetch. Versionsstring hier bei jedem Deploy synchron zu <meta name="app-version"> halten. -->
-  <link rel="stylesheet" href="css/style.css?v=20260902052526">
+  <link rel="stylesheet" href="css/style.css?v=20260902162532">
 </head>
 <body>
 
@@ -317,11 +317,13 @@
       const body     = payload.notification?.body  || '';
       const alarm    = payload.data?.alarm === 'true';
       const uebungId = payload.data?.uebungId || '';
+      // Nicht verfügbar gemeldet: Meldung + Sprung zum Einsatz kommen trotzdem, nur ohne Ton.
+      const stumm    = payload.data?.stumm === 'true';
       console.log('FCM Vordergrund:', title);
       fw.toast((alarm ? '🚨 ' : '🔔 ') + title + ': ' + body);
       if (alarm) {
         // Alarmton über Web Audio API
-        try {
+        if (!stumm) try {
           const ctx = new (window.AudioContext || window.webkitAudioContext)();
           const spieleTon = (freq, start, dauer) => {
             const osc = ctx.createOscillator();
@@ -657,17 +659,52 @@
 
   window.menuNavigieren = (page) => { menuSchliessen(); window._navHistory = []; navigate(page); };
 
-  window.verfuegbarkeitUmschalten = async () => {
-    const neu = !(fw.profil.verfuegbar !== false);
-    await fw.setDoc('users/'+fw.user.uid, { verfuegbar: neu });
-    fw.profil.verfuegbar = neu;
-    menuAufbauen();
+  // Klick auf die Pill: verfügbar → Dauer-Panel öffnen/schließen (Frist wählen oder dauerhaft
+  // nicht verfügbar); nicht verfügbar → ein Klick genügt, um sofort wieder verfügbar zu sein
+  // (dafür braucht es keine Rückfrage, nur das "nicht verfügbar werden" braucht die Dauer-Angabe).
+  window.verfuegbarPillKlick = () => {
+    if (fw.profil.verfuegbar !== false) {
+      const panel = document.getElementById('verfuegbar-dauer-panel');
+      if (panel) panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+    } else {
+      verfuegbarSetzen(true, null);
+    }
+  };
+
+  window.verfuegbarDauerSetzen = (tage, stunden) => {
+    document.getElementById('verfuegbar-tage').value = tage;
+    document.getElementById('verfuegbar-stunden').value = stunden;
+    verfuegbarDauerBestaetigen();
+  };
+
+  window.verfuegbarDauerBestaetigen = () => {
+    const tage = parseInt(document.getElementById('verfuegbar-tage').value, 10) || 0;
+    const stunden = parseInt(document.getElementById('verfuegbar-stunden').value, 10) || 0;
+    if (tage <= 0 && stunden <= 0) { fw.toast('Bitte Tage und/oder Stunden angeben', true); return; }
+    verfuegbarSetzen(false, new Date(Date.now() + (tage * 24 + stunden) * 3600 * 1000));
+  };
+
+  window.verfuegbarDauerhaftSetzen = () => verfuegbarSetzen(false, null);
+
+  window.verfuegbarDauerAbbrechen = () => {
+    const panel = document.getElementById('verfuegbar-dauer-panel');
+    if (panel) panel.style.display = 'none';
+  };
+
+  window.verfuegbarSetzen = async (verfuegbar, bis) => {
+    await fw.setDoc('users/'+fw.user.uid, { verfuegbar, verfuegbarBis: bis || null });
+    fw.profil.verfuegbar = verfuegbar;
+    fw.profil.verfuegbarBis = bis || null;
+    // Neu rendern statt einzelne DOM-Stellen von Hand zu patchen - bei drei möglichen Zuständen
+    // (verfügbar / dauerhaft nicht verfügbar / befristet nicht verfügbar mit eigener Hinweiszeile)
+    // ist das deutlich weniger fehleranfällig. navigateReplace statt navigate, damit der
+    // Zurück-Pfeil dabei nicht unnötig einen History-Eintrag bekommt.
+    navigateReplace('dashboard');
   };
 
   window.menuAufbauen = () => {
     const inh = document.getElementById('menu-drawer-inhalt');
     if (!inh || !fw.profil) return;
-    const verfuegbar = fw.profil.verfuegbar !== false;
     const zeile = (icon, label, page, sub) => `
       <div class="list-item" role="button" tabindex="0" onclick="menuNavigieren('${page}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();menuNavigieren('${page}')}">
         <div class="list-item-icon">${icon}</div>
@@ -700,15 +737,15 @@
 
     inh.innerHTML = `
       <div class="section-header" style="margin-top:0">Persönlich</div>
-      <div class="list-item" role="button" tabindex="0" onclick="verfuegbarkeitUmschalten()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();verfuegbarkeitUmschalten()}">
-        <div class="list-item-icon">${verfuegbar ? '🟢' : '🔴'}</div>
-        <div class="list-item-body">
-          <div class="list-item-title">${verfuegbar ? 'Verfügbar' : 'Nicht verfügbar'}</div>
-          <div class="list-item-sub">${verfuegbar ? 'Du bekommst Einsatz-Alarme' : 'Keine Einsatz-Alarme, bis du dich wieder verfügbar meldest'}</div>
-        </div>
-      </div>
       ${zeile('👤', 'Mein Profil', 'profil')}
       ${zeile('⚙️', 'Einstellungen', 'einstellungen')}
+      <div class="list-item" role="button" tabindex="0" onclick="menuSchliessen();pruefeAufUpdate(true)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();menuSchliessen();pruefeAufUpdate(true)}">
+        <div class="list-item-icon">🔄</div>
+        <div class="list-item-body">
+          <div class="list-item-title">Updates</div>
+        </div>
+        <div class="list-chevron">›</div>
+      </div>
       ${mannschaft}
       ${verwaltung ? `<div class="section-header">Verwaltung</div>${verwaltung}` : ''}
     `;
@@ -791,7 +828,7 @@
   tickUhr();
   setInterval(tickUhr, 1000);
 </script>
-<script src="js/logic.js?v=20260902052526"></script>
-<script src="js/pages.js?v=20260902052526" type="module" defer></script>
+<script src="js/logic.js?v=20260902162532"></script>
+<script src="js/pages.js?v=20260902162532" type="module" defer></script>
 </body>
 </html>

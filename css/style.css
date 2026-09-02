@@ -273,6 +273,20 @@ hr       { border: none; border-top: 1px solid var(--border); margin: 1rem 0; }
 .pending-banner .text { flex: 1; font-size: 0.85rem; }
 .pending-banner .text strong { display: block; }
 
+/* ── Verfügbarkeits-Pill (Dashboard) ── */
+/* Sitzt inline zwischen Namen und Status-Lampe in der Kopfzeile, bewusst kompakt (kein
+   width:100%) statt einer eigenen vollen Zeile - soll auf keinen Fall wie der grosse, pulsierende
+   Alarm-Button aussehen oder in dessen Antipp-Bereich hineinragen. */
+.verfuegbar-pill {
+  display: flex; align-items: center; gap: 0.4rem; flex-shrink: 0;
+  padding: 0.4rem 0.7rem;
+  background: var(--panel); border: 1px solid var(--border); border-radius: 20px;
+  font-size: 0.78rem; font-weight: 600; cursor: pointer; white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+.verfuegbar-pill .punkt { font-size: 0.65rem; line-height: 1; }
+.verfuegbar-pill.nicht-verfuegbar { border-color: var(--red); color: var(--red); }
+
 /* ── Alarm Button ── */
 .alarm-btn {
   display: block; width: 100%;

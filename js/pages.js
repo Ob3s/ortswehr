@@ -34,6 +34,15 @@ function datumUhrzeit(d) {
 function plural(n, singular, plural_) {
   return n + ' ' + (n === 1 ? singular : plural_);
 }
+// Kurzform fuer den wieder-verfuegbar-Hinweis: heute nur Uhrzeit, sonst Datum + Uhrzeit
+function verfuegbarBisLabel(d) {
+  const ts = d?.toDate ? d.toDate() : new Date(d);
+  if (isNaN(ts)) return '';
+  const heute = new Date(); heute.setHours(0,0,0,0);
+  const tsTag = new Date(ts); tsTag.setHours(0,0,0,0);
+  const uhrzeit = ts.toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit' });
+  return tsTag.getTime() === heute.getTime() ? ('ab ' + uhrzeit + ' Uhr') : ('ab ' + datumUhrzeit(ts) + ' Uhr');
+}
 
 function dauerFormat(h) {
   if (h === null || h === undefined) return '';
@@ -245,6 +254,18 @@ function renderNaechsteDienste(naechster, zweiter) {
 // ── Dashboard ─────────────────────────────────────────────
 registerPage('dashboard', async (el) => {
   fw.setTitle('Dashboard');
+  // Zeitlich begrenzte Nichtverfügbarkeit abgelaufen? Beim Laden des Dashboards automatisch
+  // wieder verfügbar setzen, statt darauf zu warten, dass der Kamerad selbst umschaltet - wichtig
+  // auch serverseitig für benachrichtigeOrtswehr()/sendPushNotification (prüfen verfuegbarBis
+  // unabhängig davon nochmal live, falls die App bis dahin gar nicht geöffnet wurde).
+  if (fw.profil.verfuegbar === false && fw.profil.verfuegbarBis) {
+    const bis = fw.profil.verfuegbarBis?.toDate ? fw.profil.verfuegbarBis.toDate() : new Date(fw.profil.verfuegbarBis);
+    if (bis <= new Date()) {
+      fw.profil.verfuegbar = true;
+      fw.profil.verfuegbarBis = null;
+      fw.setDoc('users/'+fw.user.uid, { verfuegbar: true, verfuegbarBis: null }).catch(()=>{});
+    }
+  }
   const [aSnap, diensteSnap, einsaetzeSnap, qualiSnap, dienstFilter] = await Promise.all([
     fw.getDocs('anwesenheiten', fw.where('userId','==',fw.user.uid)),
     fw.getDocs('dienste', fw.orderBy('datum','asc')),
@@ -270,12 +291,41 @@ registerPage('dashboard', async (el) => {
   const zweiter = naechster && naechsterOegeln && naechsterOegeln.id !== naechster.id ? naechsterOegeln : null;
   const stats    = getStats(meine, dienstMap, einsatzMap);
 
+  const verfuegbar = fw.profil.verfuegbar !== false;
+  const verfuegbarBisText = (!verfuegbar && fw.profil.verfuegbarBis) ? verfuegbarBisLabel(fw.profil.verfuegbarBis) : '';
   el.innerHTML = `
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.8rem">
-      <div style="font-family:'DM Serif Display',serif;font-size:1.3rem">
+    <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:${verfuegbarBisText ? '0.15rem' : '0.8rem'}">
+      <div style="font-family:'DM Serif Display',serif;font-size:1.3rem;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">
         Hallo, ${fw.profil.vorname || fw.profil.email}
       </div>
+      <div id="verfuegbar-pill" class="verfuegbar-pill${verfuegbar ? '' : ' nicht-verfuegbar'}" role="button" tabindex="0"
+           onclick="verfuegbarPillKlick()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();verfuegbarPillKlick()}">
+        <span class="punkt">${verfuegbar ? '🟢' : '🔴'}</span>
+        <span class="label">${verfuegbar ? 'Verfügbar' : 'Nicht verfügbar'}</span>
+      </div>
       <span id="status-lampe" style="width:12px;height:12px;border-radius:50%;background:#ccc;display:inline-block;flex-shrink:0;cursor:pointer" title="Status wird geprüft..." onclick="zeigeStatusDetail()"></span>
+    </div>
+    ${verfuegbarBisText ? `<div style="text-align:right;font-size:0.72rem;color:var(--muted);margin-bottom:0.7rem">wieder verfügbar ${verfuegbarBisText}</div>` : ''}
+
+    <div id="verfuegbar-dauer-panel" class="card" style="display:none;padding:0.9rem 1rem;margin-bottom:0.8rem">
+      <div style="font-weight:600;font-size:0.88rem;margin-bottom:0.7rem">Wie lange nicht verfügbar?</div>
+      <div style="display:flex;gap:0.4rem;flex-wrap:wrap;margin-bottom:0.8rem">
+        <button class="btn btn-secondary btn-sm" onclick="verfuegbarDauerSetzen(0,1)">1 Std.</button>
+        <button class="btn btn-secondary btn-sm" onclick="verfuegbarDauerSetzen(0,2)">2 Std.</button>
+        <button class="btn btn-secondary btn-sm" onclick="verfuegbarDauerSetzen(0,6)">6 Std.</button>
+        <button class="btn btn-secondary btn-sm" onclick="verfuegbarDauerSetzen(1,0)">1 Tag</button>
+        <button class="btn btn-secondary btn-sm" onclick="verfuegbarDauerSetzen(3,0)">3 Tage</button>
+        <button class="btn btn-secondary btn-sm" onclick="verfuegbarDauerSetzen(7,0)">1 Woche</button>
+      </div>
+      <div style="display:flex;gap:0.6rem;margin-bottom:0.8rem">
+        <div class="form-row" style="flex:1;margin-bottom:0"><label>Tage</label><input id="verfuegbar-tage" type="number" min="0" value="0" inputmode="numeric"></div>
+        <div class="form-row" style="flex:1;margin-bottom:0"><label>Stunden</label><input id="verfuegbar-stunden" type="number" min="0" max="23" value="0" inputmode="numeric"></div>
+      </div>
+      <div style="display:flex;gap:0.5rem">
+        <button class="btn btn-primary btn-sm" style="flex:1" onclick="verfuegbarDauerBestaetigen()">Übernehmen</button>
+        <button class="btn btn-secondary btn-sm" style="flex:1" onclick="verfuegbarDauerhaftSetzen()">Dauerhaft</button>
+        <button class="btn btn-secondary btn-sm" onclick="verfuegbarDauerAbbrechen()">Abbrechen</button>
+      </div>
     </div>
 
     ${(fw.hatRecht('einsaetze_alarm_ausloesen') || fw.hatRecht('einsaetze_anlegen')) ? `<button class="alarm-btn" onclick="navigate('uebung-form',{typ:'einsatz',alarm:true})">🚨 Einsatz</button>` : ''}
@@ -1907,28 +1957,38 @@ async function benachrichtigeOrtswehr(typ, titel, datumStr, dauer_h, uebungId, z
   const usersSnap = await fw.getDocs('users', fw.where('ortswehrIds', 'array-contains-any', ortswehrIds.slice(0,10)));
   const isEinsatz = typ === 'einsatz';
   const tokens = [];
+  const tokensStumm = [];
   for (const d of usersSnap.docs) {
     const u = d.data();
     if (d.id === fw.user.uid && !fw.profil.notif_selbst) { console.log('Push: Selbst übersprungen'); continue; }
     if (!u.fcmToken) { console.log('Push: Kein Token für', d.id); continue; }
-    // Verfügbarkeitsstatus: wer sich als nicht verfügbar gemeldet hat, bekommt keine Einsatz-Alarme
+    // Verfügbarkeitsstatus: wer sich als nicht verfügbar gemeldet hat, bekommt den Einsatz-Alarm
+    // weiterhin (Meldung + Reaktions-Buttons, genau wie verfügbar) - nur ohne den alarmierenden Ton/
+    // die Vibration, s. "stumm" in sendPushNotification/AlarmService/firebase-messaging-sw.js.
     // (Dienst-Erinnerungen sind davon bewusst unberührt, s. dienstErinnerung - "nicht verfügbar"
-    // heißt "kann gerade nicht ausrücken", nicht "will nichts mehr von der Wehr hören").
-    if (isEinsatz && u.notif_einsatz !== false && u.verfuegbar !== false) tokens.push(u.fcmToken);
+    // heißt "kann gerade nicht ausrücken", nicht "will nichts mehr von der Wehr hören".)
+    if (isEinsatz && u.notif_einsatz !== false) {
+      // Zeitlich begrenzte Nichtverfügbarkeit (verfuegbarBis) live prüfen statt dem gespeicherten
+      // Boolean blind zu vertrauen - falls der Kamerad die App seit Fristablauf nicht mehr
+      // geöffnet hat, wäre er sonst weiter fälschlich "stumm" statt wieder ganz normal erreichbar.
+      const bis = u.verfuegbarBis?.toDate ? u.verfuegbarBis.toDate() : (u.verfuegbarBis ? new Date(u.verfuegbarBis) : null);
+      const nichtVerfuegbar = u.verfuegbar === false && (!bis || bis > new Date());
+      (nichtVerfuegbar ? tokensStumm : tokens).push(u.fcmToken);
+    }
     // Dienst-Push bei Anlage wurde entfernt – Erinnerung erfolgt nur noch über dienstErinnerung (08:00 Uhr)
   }
-  if (tokens.length === 0) { fw.toast('⚠️ Keine Push-Empfänger gefunden', true); return; }
+  if (tokens.length === 0 && tokensStumm.length === 0) { fw.toast('⚠️ Keine Push-Empfänger gefunden', true); return; }
   const title = isEinsatz ? '🚨 EINSATZ ALARM' : '🔔 Neuer Dienst';
   const body  = isEinsatz
     ? titel
     : `${titel} am ${new Date(datumStr).toLocaleDateString('de-DE')} (${dauerFormat(dauer_h)}h)`;
-  await sendPush(tokens, title, body, isEinsatz, uebungId);
+  await sendPush(tokens, title, body, isEinsatz, uebungId, tokensStumm);
 }
 
-async function sendPush(tokens, title, body, alarm = false, uebungId = null) {
+async function sendPush(tokens, title, body, alarm = false, uebungId = null, tokensStumm = []) {
   try {
     await fw.addDoc('push_queue', {
-      tokens, title, body, alarm, uebungId,
+      tokens, tokensStumm, title, body, alarm, uebungId,
       erstelltAm: new Date(), erstelltVon: fw.user.uid,
     });
     fw.toast(alarm ? 'Alarm gesendet 🚨' : 'Benachrichtigung gesendet ✅');
@@ -2065,10 +2125,6 @@ registerPage('profil', async (el) => {
       <button class="btn btn-primary btn-full" onclick="passwortAendern()">🔒 Passwort ändern</button>
     </div>
     <div class="card">
-      <div style="display:flex;gap:0.5rem;margin-bottom:0.5rem">
-        <button class="btn btn-secondary btn-sm" style="flex:1" onclick="navigate('einstellungen')">Einstellungen</button>
-        <button class="btn btn-secondary btn-sm" style="flex:1" onclick="pruefeAufUpdate(true)">🔄 Updates</button>
-      </div>
       <button class="btn btn-secondary btn-full" style="margin-bottom:0.5rem" onclick="alarmSelbsttest()">🔔 Alarm-Selbsttest</button>
       <button class="btn btn-danger btn-full" onclick="abmelden()">Abmelden</button>
     </div>
