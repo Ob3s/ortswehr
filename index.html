@@ -4,14 +4,30 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
   <meta name="theme-color" content="#cc2200">
-  <meta name="app-version" content="20260831141625">
+  <meta name="app-version" content="20260902052526">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Ortswehr">
   <title>Ortswehr</title>
-  <link rel="manifest" href="manifest.json">
+  <link id="manifest-link" rel="manifest" href="manifest.json">
+  <script>
+    // manifest.json kann nicht wie index.html/pages.js einfach identisch nach ortswehr UND
+    // ortswehr-dev gepusht werden (der Browser braucht bereits beim Laden die richtige Datei für
+    // "Zum Startbildschirm hinzufügen", u. a. App-Name/start_url) - deshalb hier ganz früh,
+    // synchron, per Pfad umgeschaltet, bevor irgendetwas den Manifest-Link auswertet. Zweite
+    // Datei manifest-dev.json liegt in beiden Repos mit, ist auf PROD einfach ungenutzt.
+    if (location.pathname.includes('ortswehr-dev')) {
+      document.getElementById('manifest-link').href = 'manifest-dev.json';
+    }
+  </script>
   <link rel="apple-touch-icon" href="icons/icon-192.png">
-  <link rel="stylesheet" href="css/style.css">
+  <!-- ?v=<version> auf den eigenen JS/CSS-Dateien: GitHub Pages liefert sie mit einem längeren
+       Cache-Control/max-age, der Update-Mechanismus unten (Service-Worker abmelden + Caches
+       leeren + reload) reicht dafür allein NICHT zuverlässig aus - der Browser kann trotzdem die
+       alte Datei unter derselben URL aus dem HTTP-Disk-Cache bedienen. Mit einer bei jedem Deploy
+       geänderten Query-Version ist es für den Browser eine komplett neue URL, garantiert frischer
+       Fetch. Versionsstring hier bei jedem Deploy synchron zu <meta name="app-version"> halten. -->
+  <link rel="stylesheet" href="css/style.css?v=20260902052526">
 </head>
 <body>
 
@@ -24,6 +40,19 @@
     <div class="login-logo">🚒</div>
     <h1>Freiwillige Feuerwehr Beeskow</h1>
     <p class="sub">Löschzug Oegeln</p>
+    <div id="install-hinweis" class="card" style="display:none;text-align:left;padding:0.85rem 0.9rem;margin-bottom:0.9rem;box-shadow:none;border:1px solid var(--border)">
+      <div style="display:flex;align-items:flex-start;gap:0.6rem">
+        <span id="install-hinweis-icon" style="font-size:1.2rem;line-height:1.3;flex-shrink:0"></span>
+        <div style="flex:1;min-width:0">
+          <div id="install-hinweis-titel" style="font-weight:700;font-size:0.83rem;margin-bottom:0.15rem"></div>
+          <div id="install-hinweis-text" style="font-size:0.78rem;color:var(--muted);line-height:1.45"></div>
+          <div id="install-hinweis-aktionen" style="display:flex;gap:0.5rem;margin-top:0.6rem;flex-wrap:wrap"></div>
+          <div id="install-hinweis-linkbox" style="display:none;margin-top:0.5rem">
+            <input id="install-hinweis-link" readonly style="width:100%;font-size:0.76rem;background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:0.4rem 0.5rem;color:var(--text)">
+          </div>
+        </div>
+      </div>
+    </div>
     <div class="form-row">
       <label>Anmeldename</label>
       <input id="login-email" type="text" placeholder="Anmeldename" autocomplete="username" autocapitalize="none">
@@ -50,6 +79,7 @@
 <!-- App Shell -->
 <div id="app" class="hidden">
   <header>
+    <button id="menu-btn" class="header-back" aria-label="Menü">&#9776;</button>
     <button id="back-btn" class="header-back hidden">&#8249;</button>
     <h1 id="page-title">Dashboard</h1>
     <span id="header-uhr" style="font-size:0.82rem;color:#fff;font-weight:700;margin-right:0.3rem;flex-shrink:0;letter-spacing:0.03em"></span>
@@ -66,6 +96,19 @@
   </nav>
 </div>
 
+<!-- Menü: über das ☰ in der Kopfzeile erreichbar, deckt die gesamte Seite ab (nicht nur ein
+     schmales Drawer-Panel mit Backdrop) - listet Profil/Einstellungen sowie alle vom jeweiligen
+     Kameraden erreichbaren Verwaltungsseiten an einer zentralen Stelle statt verteilt über
+     mehrere Seiten (vorher u. a. am Ende der Kameraden-Seite). -->
+<div id="menu-drawer" style="position:fixed;inset:0;z-index:998;background:var(--bg);transform:translateX(-100%);transition:transform 0.25s ease;display:flex;flex-direction:column">
+  <div style="background:var(--red);color:#fff;height:var(--header-h);flex-shrink:0;display:flex;align-items:center;padding:0 1rem;gap:0.5rem">
+    <button id="menu-schliessen" class="header-back" aria-label="Menü schließen">&#10005;</button>
+    <h1 style="font-family:'DM Serif Display',serif;font-size:1.15rem;flex:1;text-align:center;margin:0;color:#fff">Menü</h1>
+    <span style="width:36px;flex-shrink:0"></span>
+  </div>
+  <div id="menu-drawer-inhalt" style="overflow-y:auto;flex:1;padding:1rem"></div>
+</div>
+
 <div id="toast"></div>
 <div id="update-banner" style="display:none;position:fixed;bottom:70px;left:50%;transform:translateX(-50%);z-index:999;background:#1e293b;color:#fff;border-radius:14px;padding:0.7rem 1.2rem;align-items:center;gap:0.8rem;box-shadow:0 4px 20px rgba(0,0,0,0.3);font-size:0.88rem;white-space:nowrap">
   🆕 Update verfügbar: <span id="update-version-label" style="font-family:monospace;font-size:0.8rem;opacity:0.8"></span>
@@ -77,7 +120,7 @@
   import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js';
   import { getAuth, signInWithEmailAndPassword, signOut, onAuthStateChanged, sendPasswordResetEmail }
     from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js';
-  import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, doc, getDoc, getDocs, addDoc, setDoc, updateDoc, deleteDoc, query, where, orderBy, Timestamp, onSnapshot }
+  import { getFirestore, initializeFirestore, persistentLocalCache, persistentMultipleTabManager, collection, collectionGroup, doc, getDoc, getDocs, addDoc, setDoc, updateDoc, deleteDoc, query, where, orderBy, Timestamp, onSnapshot }
     from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js';
   import { getMessaging, getToken, onMessage }
     from 'https://www.gstatic.com/firebasejs/10.8.0/firebase-messaging.js';
@@ -158,6 +201,12 @@
       const q = c.length ? query(collection(db, col), ...c) : collection(db, col);
       return getDocs(q);
     },
+    // Für "alle Unterkollektionen X über alle Parent-Dokumente hinweg" (z. B. alle
+    // users/*/qualifikationen) - eine Netzwerk-Rundreise statt einer pro Parent-Dokument.
+    async getDocsGroup(name, ...c) {
+      const q = c.length ? query(collectionGroup(db, name), ...c) : collectionGroup(db, name);
+      return getDocs(q);
+    },
     where, orderBy, Timestamp,
     onSnapshot(col, ...c) { const q = c.length ? query(collection(db, col), ...c) : collection(db, col); return onSnapshot(q, () => {}); },
     onDocSnapshot(path, cb) { return onSnapshot(doc(db, path), cb); },
@@ -176,8 +225,16 @@
       setTimeout(() => t.className = '', 2800);
     },
     setTitle(t)  { document.getElementById('page-title').textContent = t; },
-    showBack(cb) { const b=document.getElementById('back-btn'); b.classList.remove('hidden'); b.onclick=cb; },
-    hideBack()   { document.getElementById('back-btn').classList.add('hidden'); },
+    // Menü-Button (☰) und Zurück-Pfeil teilen sich denselben Platz in der Kopfzeile - auf
+    // Unterseiten (showBack) macht Zurück mehr Sinn als das Menü, auf Top-Level-Seiten umgekehrt.
+    showBack(cb) {
+      const b=document.getElementById('back-btn'); b.classList.remove('hidden'); b.onclick=cb;
+      document.getElementById('menu-btn')?.classList.add('hidden');
+    },
+    hideBack() {
+      document.getElementById('back-btn').classList.add('hidden');
+      document.getElementById('menu-btn')?.classList.remove('hidden');
+    },
     showHeaderAction(label, cb) { const b=document.getElementById('header-action'); b.classList.remove('hidden'); b.textContent=label; b.onclick=cb; },
     hideHeaderAction() { document.getElementById('header-action').classList.add('hidden'); },
 
@@ -219,7 +276,12 @@
       try {
         const perm = await Notification.requestPermission();
         if (perm !== 'granted') { this.toast('Push: Berechtigung verweigert', true); return null; }
-        const swReg = await navigator.serviceWorker.register('/firebase-messaging-sw.js');
+        // ?env=... an die root-relative Datei: liegt im separaten ob3s.github.io-Root-Repo
+        // (gemeinsam für PROD+DEV, Service Worker müssen root-relativ registriert werden), muss
+        // deshalb zur Laufzeit wissen, gegen welches Firebase-Projekt sie initialisieren soll
+        // (s. Kommentar dort). Ohne den Parameter würde sie sonst immer PROD annehmen.
+        const swReg = await navigator.serviceWorker.register(
+          '/firebase-messaging-sw.js?env=' + (window.IST_DEV ? 'dev' : 'prod'));
         await new Promise(resolve => {
           if (swReg.active) { resolve(); return; }
           const sw = swReg.installing || swReg.waiting;
@@ -283,6 +345,120 @@
       }
     });
   }
+
+  // Installations-Hinweis: nur auf Mobilgeräten und nur solange nicht als PWA installiert - am
+  // Desktop wird die App normal im Browser-Tab genutzt, kein Installations-Bedarf. Firefox
+  // (Android) kann PWAs generell nicht mehr installieren, auf iOS geht Installation NUR über
+  // Safari (andere iOS-Browser laufen zwar technisch auf Safaris Engine, dürfen aber selbst keine
+  // PWA installieren - Apple-Systembeschränkung, kein Bug hier). Statt nur eine Textzeile
+  // hinzuwerfen ("mach das mal in Chrome") bekommt der Nutzer eine konkrete Handlung angeboten:
+  // auf Android ein Button, der Chrome direkt per Android-Intent öffnet (Play-Store-Fallback
+  // falls nicht installiert); wo sich kein Browser aus JS heraus öffnen lässt (iOS), ein "Link
+  // kopieren"-Button statt Menü-Jagd-Anleitungen. Bewusst nicht schließbar (kein Nutzer-Feedback
+  // dazu, kein X-Button) - ein geschlossener Hinweis, der beim nächsten Aufruf verschwunden
+  // bleibt, hätte den Kameraden genau in dem Moment allein gelassen, in dem er noch nicht
+  // installiert hat; er soll so lange sichtbar bleiben, bis die App tatsächlich installiert ist
+  // (dann verschwindet er automatisch über den bereitsInstalliert-Check oben). Läuft nur auf dem
+  // Login-Screen (vor Auth) - genau da landen neu eingeladene Kameraden über den Link/QR-Code aus
+  // "Kameraden einladen".
+  (function installHinweisPruefen() {
+    const bereitsInstalliert = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+    if (bereitsInstalliert) return;
+
+    const ua = navigator.userAgent;
+    const istIOS = /iPad|iPhone|iPod/.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const istAndroid = /Android/.test(ua);
+    if (!istIOS && !istAndroid) return; // Desktop: kein Hinweis nötig
+
+    const istFirefox = /Firefox\//.test(ua) || /FxiOS\//.test(ua);
+    const istSafariIOS = istIOS && /Safari/.test(ua) && !/CriOS|FxiOS|EdgiOS|OPiOS/.test(ua);
+
+    const box       = document.getElementById('install-hinweis');
+    const iconEl    = document.getElementById('install-hinweis-icon');
+    const titelEl   = document.getElementById('install-hinweis-titel');
+    const textEl    = document.getElementById('install-hinweis-text');
+    const aktionenEl = document.getElementById('install-hinweis-aktionen');
+    const linkBox   = document.getElementById('install-hinweis-linkbox');
+    const linkInput = document.getElementById('install-hinweis-link');
+
+    const linkKopierenButton = () => {
+      const btn = document.createElement('button');
+      btn.className = 'btn btn-secondary btn-sm';
+      btn.textContent = '📋 Link kopieren';
+      btn.onclick = async () => {
+        try {
+          await navigator.clipboard.writeText(location.href);
+          btn.textContent = '✅ Kopiert';
+          setTimeout(() => { btn.textContent = '📋 Link kopieren'; }, 2000);
+        } catch (e) {
+          linkInput.value = location.href;
+          linkBox.style.display = 'block';
+          linkInput.select();
+        }
+      };
+      return btn;
+    };
+
+    // Android-Intent: öffnet Chrome direkt mit der aktuellen URL (funktioniert auch aus Firefox
+    // heraus als normaler Link-Tap), fällt auf den Play-Store-Eintrag zurück falls Chrome fehlt.
+    const chromeOeffnenButton = () => {
+      const ohneSchema = location.href.replace(/^https?:\/\//, '');
+      const fallback = encodeURIComponent('https://play.google.com/store/apps/details?id=com.android.chrome');
+      const intentUrl = `intent://${ohneSchema}#Intent;scheme=https;package=com.android.chrome;S.browser_fallback_url=${fallback};end`;
+      const a = document.createElement('a');
+      a.href = intentUrl;
+      a.className = 'btn btn-primary btn-sm';
+      a.style.textDecoration = 'none';
+      a.textContent = '🌐 In Chrome öffnen';
+      return a;
+    };
+
+    let istWarnung = false;
+    let icon = '', titel = '', text = '';
+    let aktionen = [];
+
+    if (istIOS && !istSafariIOS) {
+      istWarnung = true;
+      icon = '🧭'; titel = 'Installation nur über Safari möglich';
+      text = 'iPhone/iPad erlauben App-Installation nur über Safari (Apple-Vorgabe, kein Fehler dieser App). Am einfachsten: Link kopieren und in Safari einfügen.';
+      aktionen = [linkKopierenButton()];
+    } else if (istFirefox) { // hier immer Android, da iOS-Firefox schon oben abgefangen ist
+      istWarnung = true;
+      icon = '🌐'; titel = 'Firefox kann diese App nicht installieren';
+      text = 'Am einfachsten direkt in Chrome öffnen:';
+      aktionen = [chromeOeffnenButton(), linkKopierenButton()];
+    } else if (istIOS) { // Safari
+      icon = '💡'; titel = 'Als App installieren';
+      text = 'Unten auf Teilen tippen, dann „Zum Home-Bildschirm" – installiert die App wie eine normale App, inkl. Icon und Benachrichtigungen.';
+    } else { // Android, Chromium-Browser
+      icon = '💡'; titel = 'Als App installieren';
+      text = 'Menü (⋮) → „App installieren" bzw. „Zum Startbildschirm hinzufügen".';
+    }
+
+    // Für installierbare Chromium-Browser: nativen Install-Prompt einfangen und als direkten
+    // Button anbieten, statt nur auf das Browser-Menü zu verweisen. Das Event kann mehrfach
+    // feuern (z. B. nach Abbruch/Schließen des nativen Dialogs) - jedes Mal denselben Button
+    // wiederverwenden statt einen weiteren anzuhängen (sonst duplizieren sich die Buttons).
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      let btn = aktionenEl.querySelector('[data-install-btn]');
+      if (!btn) {
+        btn = document.createElement('button');
+        btn.dataset.installBtn = '1';
+        btn.className = 'btn btn-primary btn-sm';
+        btn.textContent = '📲 Jetzt installieren';
+        aktionenEl.prepend(btn);
+      }
+      btn.onclick = () => e.prompt();
+    });
+
+    box.style.borderLeft = '3px solid ' + (istWarnung ? 'var(--warning)' : 'var(--red)');
+    iconEl.textContent = icon;
+    titelEl.textContent = titel;
+    textEl.textContent = text;
+    aktionen.forEach(el => aktionenEl.appendChild(el));
+    box.style.display = 'block';
+  })();
 
   // Login
   document.getElementById('login-btn').addEventListener('click', async () => {
@@ -384,6 +560,7 @@
       if (fw.hatRecht('kameraden_ansehen')) {
         document.getElementById('nav-kameraden').classList.remove('hidden');
       }
+      menuAufbauen();
       if (fw.profil.notif_einsatz || fw.profil.notif_uebung || fw.profil.notif_bestaetigung) {
         // Warten bis SW bereit ist bevor Push registriert wird
         navigator.serviceWorker.ready.then(() => fw.registerPush()).catch(() => {});
@@ -396,6 +573,7 @@
       fw.user = null; fw.profil = null;
       document.getElementById('nav-kameraden').classList.add('hidden');
       document.getElementById('app').classList.add('hidden');
+      menuSchliessen();
       // Auto-Login: gespeicherte Credentials aus nativem Store versuchen
       if (typeof window.CredentialStore !== 'undefined') {
         const savedEmail = window.CredentialStore.getEmail();
@@ -467,6 +645,74 @@
     window._navHistory = [];
     navigate(b.dataset.page);
   }));
+
+  // ── Menü (☰) ──────────────────────────────────────────────
+  // Sammelstelle für Profil/Einstellungen + alle Verwaltungsseiten, vorher verteilt (u. a. am
+  // Ende der Kameraden-Seite) - von überall über die Kopfzeile erreichbar statt nur von einer
+  // bestimmten Seite aus.
+  window.menuOeffnen = () => { document.getElementById('menu-drawer').style.transform = 'translateX(0)'; };
+  window.menuSchliessen = () => { document.getElementById('menu-drawer').style.transform = 'translateX(-100%)'; };
+  document.getElementById('menu-btn').addEventListener('click', menuOeffnen);
+  document.getElementById('menu-schliessen').addEventListener('click', menuSchliessen);
+
+  window.menuNavigieren = (page) => { menuSchliessen(); window._navHistory = []; navigate(page); };
+
+  window.verfuegbarkeitUmschalten = async () => {
+    const neu = !(fw.profil.verfuegbar !== false);
+    await fw.setDoc('users/'+fw.user.uid, { verfuegbar: neu });
+    fw.profil.verfuegbar = neu;
+    menuAufbauen();
+  };
+
+  window.menuAufbauen = () => {
+    const inh = document.getElementById('menu-drawer-inhalt');
+    if (!inh || !fw.profil) return;
+    const verfuegbar = fw.profil.verfuegbar !== false;
+    const zeile = (icon, label, page, sub) => `
+      <div class="list-item" role="button" tabindex="0" onclick="menuNavigieren('${page}')" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();menuNavigieren('${page}')}">
+        <div class="list-item-icon">${icon}</div>
+        <div class="list-item-body">
+          <div class="list-item-title">${label}</div>
+          ${sub ? `<div class="list-item-sub">${sub}</div>` : ''}
+        </div>
+        <div class="list-chevron">›</div>
+      </div>`;
+
+    const verwaltung = [
+      fw.hatRecht('stammdaten_dienstgrade')   && zeile('🎖️', 'Dienstgrade & Filter', 'einstellungen-admin'),
+      fw.hatRecht('stammdaten_dienstarten')   && zeile('🚒', 'Dienst-Arten', 'dienstarten-verwalten'),
+      fw.hatRecht('stammdaten_raenge')        && zeile('🏅', 'Ränge', 'raenge-verwalten'),
+      fw.hatRecht('stammdaten_ortswehren')    && zeile('🏘️', 'Ortswehren', 'ortswehren'),
+      (fw.hatRecht('loeschwasser_verwalten') || fw.hatRecht('loeschwasser_pruefen'))
+                                               && zeile('💧', 'Löschwasser', 'loeschwasser-verwalten'),
+      (fw.hatRecht('dienste_bearbeiten') || fw.hatRecht('einsaetze_bearbeiten'))
+                                               && zeile('📋', 'Dienste & Einsätze bearbeiten', 'uebungen-backend'),
+      fw.isWehrfuehrer()                      && zeile('➕', 'Neue Kameraden einladen', 'kameraden-einladen'),
+      fw.isWehrfuehrer()                      && zeile('📡', 'API-Status', 'api-status'),
+      fw.hatRecht('verwaltung_sehen')         && zeile('🛠️', 'Verwaltung', 'verwaltung'),
+    ].filter(Boolean).join('');
+
+    const mannschaft = fw.hatRecht('kameraden_ansehen') ? `
+      <div class="section-header">Mannschaft</div>
+      ${zeile('🎓', 'Lehrgänge', 'lehrgaenge')}
+      ${zeile('📊', 'Statistik', 'statistik')}
+    ` : '';
+
+    inh.innerHTML = `
+      <div class="section-header" style="margin-top:0">Persönlich</div>
+      <div class="list-item" role="button" tabindex="0" onclick="verfuegbarkeitUmschalten()" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();verfuegbarkeitUmschalten()}">
+        <div class="list-item-icon">${verfuegbar ? '🟢' : '🔴'}</div>
+        <div class="list-item-body">
+          <div class="list-item-title">${verfuegbar ? 'Verfügbar' : 'Nicht verfügbar'}</div>
+          <div class="list-item-sub">${verfuegbar ? 'Du bekommst Einsatz-Alarme' : 'Keine Einsatz-Alarme, bis du dich wieder verfügbar meldest'}</div>
+        </div>
+      </div>
+      ${zeile('👤', 'Mein Profil', 'profil')}
+      ${zeile('⚙️', 'Einstellungen', 'einstellungen')}
+      ${mannschaft}
+      ${verwaltung ? `<div class="section-header">Verwaltung</div>${verwaltung}` : ''}
+    `;
+  };
 
   // Neuen Kamerad anlegen ohne Wehrführer auszuloggen
   window.createKamerad = async (email, pw, data) => {
@@ -545,7 +791,7 @@
   tickUhr();
   setInterval(tickUhr, 1000);
 </script>
-<script src="js/logic.js"></script>
-<script src="js/pages.js" type="module" defer></script>
+<script src="js/logic.js?v=20260902052526"></script>
+<script src="js/pages.js?v=20260902052526" type="module" defer></script>
 </body>
 </html>

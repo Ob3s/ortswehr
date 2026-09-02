@@ -104,8 +104,16 @@ function einsatzUnvollstaendig(u) {
 // (pages.js) als auch serverseitig (Cloud Function dienstErinnerung, eigene Kopie dort da Functions
 // nur ihr eigenes Verzeichnis deployen) verwendbar ist.
 function dienstSichtbar(d, profil, qualis, dienstFilter) {
-  // Ortswehr-Filter: nur Dienste der eigenen Wehren anzeigen. Wehrführer sieht immer alles.
-  if (d.ortswehrIds?.length && profil?.rolle !== 'wehrfuehrer') {
+  // Wehrführer sieht ausnahmslos ALLE Dienste, unabhängig von Ortswehr- oder Themen-Filter (AGT/
+  // Maschinist/Führungskräfte) - er muss jeden Dienst anlegen/bearbeiten/verwalten können, auch
+  // wenn er selbst z. B. keine AGT- oder Maschinisten-Qualifikation eingetragen hat. Zentral hier
+  // statt in jedem einzelnen Filterzweig geprüft (vorher hatten nur der Ortswehr- und der
+  // Führungskräfte-Zweig einen Wehrführer-Bypass, AGT/Maschinist fehlerhaft nicht - Themen-Dienste
+  // ohne passende eigene Qualifikation waren dadurch auch für den Wehrführer unsichtbar).
+  if (profil?.rolle === 'wehrfuehrer') return true;
+
+  // Ortswehr-Filter: nur Dienste der eigenen Wehren anzeigen.
+  if (d.ortswehrIds?.length) {
     const meineIds = profil?.ortswehrIds?.length ? profil.ortswehrIds
       : (profil?.ortswehrId ? [profil.ortswehrId] : []);
     // Wenn User keine Wehr zugeordnet: alle sehen
@@ -126,7 +134,7 @@ function dienstSichtbar(d, profil, qualis, dienstFilter) {
   // Stärke-Kategorie, nicht mehr nach einer manuell gepflegten Rolle)
   const fuehTitel = (dienstFilter?.fuehrung || ['führungskräfte', 'gruppenführersitzung', 'zugführersitzung', 'zug- und gruppenführer']);
   if (fuehTitel.some(t => titel.includes(t))) {
-    return profil?.rolle === 'wehrfuehrer' || staerkeKategorie(qualis) !== 'kamerad';
+    return staerkeKategorie(qualis) !== 'kamerad';
   }
   return true;
 }

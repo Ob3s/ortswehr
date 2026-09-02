@@ -139,6 +139,9 @@ function meineEintraegeListen(anwesenheiten, dienstMap, einsatzMap) {
 const AC_URL = window.IST_DEV
   ? 'https://ortautocomplete-i7y73cc75a-ey.a.run.app'
   : 'https://europe-west3-ffw-oegeln-791ca.cloudfunctions.net/ortAutoComplete';
+// Global verfügbar machen: die API-Status-Seite (weiter unten in der Datei, außerhalb des
+// waitFw(...)-Wrappers, in dem AC_URL sonst nur lokal sichtbar wäre) braucht auch Zugriff darauf.
+window.AC_URL = AC_URL;
 
 function initOrtAutocomplete(inputId, onSelect) {
   const input = document.getElementById(inputId);
@@ -1908,7 +1911,10 @@ async function benachrichtigeOrtswehr(typ, titel, datumStr, dauer_h, uebungId, z
     const u = d.data();
     if (d.id === fw.user.uid && !fw.profil.notif_selbst) { console.log('Push: Selbst übersprungen'); continue; }
     if (!u.fcmToken) { console.log('Push: Kein Token für', d.id); continue; }
-    if (isEinsatz && u.notif_einsatz !== false) tokens.push(u.fcmToken);
+    // Verfügbarkeitsstatus: wer sich als nicht verfügbar gemeldet hat, bekommt keine Einsatz-Alarme
+    // (Dienst-Erinnerungen sind davon bewusst unberührt, s. dienstErinnerung - "nicht verfügbar"
+    // heißt "kann gerade nicht ausrücken", nicht "will nichts mehr von der Wehr hören").
+    if (isEinsatz && u.notif_einsatz !== false && u.verfuegbar !== false) tokens.push(u.fcmToken);
     // Dienst-Push bei Anlage wurde entfernt – Erinnerung erfolgt nur noch über dienstErinnerung (08:00 Uhr)
   }
   if (tokens.length === 0) { fw.toast('⚠️ Keine Push-Empfänger gefunden', true); return; }
@@ -2300,12 +2306,15 @@ registerPage('statistik', async (el) => {
     return d.getFullYear() === jahr;
   };
 
-  // Lehrgänge per User laden
-  const qualiSnaps = await Promise.all(users.map(u => fw.getDocs('users/'+u.id+'/qualifikationen')));
+  // Lehrgänge per User: eine collectionGroup-Abfrage statt einer Einzelabfrage pro User (spart bei
+  // wachsender Mannschaftsstärke N-1 Netzwerk-Rundreisen, s. gleiches Muster in "kameraden").
+  const qualiGroupSnap = await fw.getDocsGroup('qualifikationen');
   const qualiPerUser = {};
-  users.forEach((u, i) => {
-    qualiPerUser[u.id] = qualiSnaps[i].docs.map(d => d.data());
-  });
+  for (const d of qualiGroupSnap.docs) {
+    const userId = d.ref.parent.parent.id;
+    if (!qualiPerUser[userId]) qualiPerUser[userId] = [];
+    qualiPerUser[userId].push(d.data());
+  }
 
   // Dienste/Einsätze als Map für Stunden-Lookup
   const dienstMap  = new Map(dienste.map(d  => [d.id, d]));
@@ -3182,16 +3191,20 @@ registerPage('lehrgaenge', async (el) => {
 
   const renderUebersicht = async () => {
     const inh = document.getElementById('l-inhalt');
-    const [usersSnap, ...qualiSnaps] = await (async () => {
-      const us = await fw.getDocs('users');
-      const users = us.docs.map(d => ({id:d.id,...d.data()})).filter(u => u.aktiv !== false && u.vorname);
-      const qs = await Promise.all(users.map(u => fw.getDocs('users/'+u.id+'/qualifikationen')));
-      return [us, ...qs.map((q,i) => ({userId: users[i].id, qualis: q.docs.map(d => d.data())}))];
-    })();
+    // Eine collectionGroup-Abfrage statt einer Einzelabfrage pro User (s. gleiches Muster in
+    // "kameraden"/"statistik") - bei wachsender Mannschaftsstärke der dominante Langsam-Faktor.
+    const [usersSnap, qualiGroupSnap] = await Promise.all([
+      fw.getDocs('users'),
+      fw.getDocsGroup('qualifikationen'),
+    ]);
     const users = usersSnap.docs.map(d => ({id:d.id,...d.data()})).filter(u => u.aktiv !== false && u.vorname)
       .sort((a,b) => (a.nachname||'').localeCompare(b.nachname||'', 'de'));
     const qualiPerUser = {};
-    qualiSnaps.forEach(({userId, qualis}) => { qualiPerUser[userId] = qualis.map(q => (q.bezeichnung||'').trim().toLowerCase()); });
+    for (const d of qualiGroupSnap.docs) {
+      const userId = d.ref.parent.parent.id;
+      if (!qualiPerUser[userId]) qualiPerUser[userId] = [];
+      qualiPerUser[userId].push((d.data().bezeichnung||'').trim().toLowerCase());
+    }
 
     const cols = getLehrgangsartenNamen();
     const rows = users.map(u => {
@@ -3624,10 +3637,40 @@ registerPage('kameraden', async (el) => {
   fw.setTitle('Kameraden');
   if (fw.hatRecht('kameraden_anlegen')) fw.showHeaderAction('+ Neu', () => navigate('kamerad-form', {}));
 
-  const [snap, owSnapKam] = await Promise.all([
+  // Aufgaben-Rechte VOR dem Laden bestimmen, damit alle benötigten Abfragen in einem einzigen
+  // Promise.all gebündelt werden können. Vorher liefen bis zu 7 Abfragen strikt NACHEINANDER
+  // (jeder if-Block hatte sein eigenes await) - bei ~300-500ms pro Rundreise allein durch
+  // Serialisierung mehrere Sekunden, unabhängig von der tatsächlichen Mannschaftsstärke (das war
+  // der eigentliche Grund für die spürbare Langsamkeit, nicht das frühere N+1-Problem). Zusätzlich
+  // wurden dienste/einsaetze für die "Offene Aufgaben"-Liste ein zweites Mal separat abgefragt,
+  // obwohl dieselben Daten schon für die Stunden-Badges geladen wurden - jetzt einmal geladen,
+  // zweimal verwendet.
+  const kannKameradenAufgaben  = fw.hatRecht('aufgaben_kameraden');
+  const kannDienstAufgaben     = fw.hatRecht('aufgaben_dienste');
+  const kannFahrzeugAufgaben   = fw.hatRecht('aufgaben_fahrzeuge');
+  const kannPwResetAufgaben    = fw.isWehrfuehrer(); // Passwort-Resets bleiben bewusst WF-exklusiv
+  // Bemerkungen sind separat rechtebeschränkt (dienste_bemerkungen/einsaetze_bemerkungen) –
+  // unabhängig vom "Unvollständig"-Aufgaben-Recht, dieselbe Berechtigung wie am Dienst/Einsatz selbst.
+  const kannDienstBemerkungen  = fw.hatRecht('dienste_bemerkungen');
+  const kannEinsatzBemerkungen = fw.hatRecht('einsaetze_bemerkungen');
+  const hatIrgendeinAufgabenRecht = kannKameradenAufgaben || kannDienstAufgaben || kannFahrzeugAufgaben
+    || kannPwResetAufgaben || kannDienstBemerkungen || kannEinsatzBemerkungen;
+
+  const [
+    snap, owSnapKam, anwSnap, kDiensteSnap, kEinsaetzeSnap,
+    qualiGroupSnap, pwResetSnap, pruefSnap, ausgeblendetSnap,
+  ] = await Promise.all([
     fw.getDocs('users'),
     fw.getDocs('ortswehren'),
+    fw.getDocs('anwesenheiten'),
+    fw.getDocs('dienste'),
+    fw.getDocs('einsaetze'),
+    kannKameradenAufgaben ? fw.getDocsGroup('qualifikationen') : Promise.resolve({docs:[]}),
+    kannPwResetAufgaben   ? fw.getDocs('pw_reset_requests', fw.where('erledigt','==',false)) : Promise.resolve({docs:[]}),
+    kannFahrzeugAufgaben  ? fw.getDocs('pruefaufgaben') : Promise.resolve({docs:[]}),
+    hatIrgendeinAufgabenRecht ? fw.getDoc('users/'+fw.user.uid+'/settings/aufgaben_ausgeblendet').catch(() => null) : Promise.resolve(null),
   ]);
+
   const owMapKam = new Map(owSnapKam.docs.map(d => [d.id, d.data().name]));
   const users = snap.docs.map(d => ({id:d.id,...d.data()}))
     .sort((a,b) => {
@@ -3638,13 +3681,6 @@ registerPage('kameraden', async (el) => {
     });
   const aktiveUsers = users.filter(u => u.aktiv !== false);
 
-  // Anwesenheiten + Dienste/Einsätze laden, damit die Stunden wie überall sonst
-  // per getStats() berechnet werden (relevant-Flag beachten, Einsatzstunden nicht mit einrechnen)
-  const [anwSnap, kDiensteSnap, kEinsaetzeSnap] = await Promise.all([
-    fw.getDocs('anwesenheiten'),
-    fw.getDocs('dienste'),
-    fw.getDocs('einsaetze'),
-  ]);
   const kDienstMap  = new Map(kDiensteSnap.docs.map(d => [d.id, d.data()]));
   const kEinsatzMap = new Map(kEinsaetzeSnap.docs.map(d => [d.id, d.data()]));
   const anwByUserKam = new Map();
@@ -3672,32 +3708,22 @@ registerPage('kameraden', async (el) => {
   // Aufgaben für Kameraden mit passendem Recht berechnen (jede Teilliste einzeln über ein
   // eigenes "Offene Aufgaben"-Recht gated, unabhängig von den sonstigen Verwaltungsrechten)
   let aufgabenHtml = '';
-  const kannKameradenAufgaben  = fw.hatRecht('aufgaben_kameraden');
-  const kannDienstAufgaben     = fw.hatRecht('aufgaben_dienste');
-  const kannFahrzeugAufgaben   = fw.hatRecht('aufgaben_fahrzeuge');
-  const kannPwResetAufgaben    = fw.isWehrfuehrer(); // Passwort-Resets bleiben bewusst WF-exklusiv
-  // Bemerkungen sind separat rechtebeschränkt (dienste_bemerkungen/einsaetze_bemerkungen) –
-  // unabhängig vom "Unvollständig"-Aufgaben-Recht, dieselbe Berechtigung wie am Dienst/Einsatz selbst.
-  const kannDienstBemerkungen  = fw.hatRecht('dienste_bemerkungen');
-  const kannEinsatzBemerkungen = fw.hatRecht('einsaetze_bemerkungen');
-  if (kannKameradenAufgaben || kannDienstAufgaben || kannFahrzeugAufgaben || kannPwResetAufgaben
-      || kannDienstBemerkungen || kannEinsatzBemerkungen) {
+  if (hatIrgendeinAufgabenRecht) {
     const aufgaben = [];
 
     if (kannKameradenAufgaben) {
-      // Alle Qualifikationen aktiver Kameraden laden
-      const qualiPromises = aktiveUsers.map(u =>
-        fw.getDocs('users/'+u.id+'/qualifikationen').then(s => ({
-          user: u,
-          qualis: s.docs.map(d => ({id:d.id,...d.data()}))
-        }))
-      );
-      const alleQualis = await Promise.all(qualiPromises);
+      const qualisByUser = new Map();
+      for (const d of qualiGroupSnap.docs) {
+        const userId = d.ref.parent.parent.id;
+        if (!qualisByUser.has(userId)) qualisByUser.set(userId, []);
+        qualisByUser.get(userId).push({ id: d.id, ...d.data() });
+      }
       const heute = new Date();
       const j3 = new Date(); j3.setFullYear(heute.getFullYear()-3);
       const j1 = new Date(); j1.setFullYear(heute.getFullYear()-1);
 
-      for (const {user, qualis} of alleQualis) {
+      for (const user of aktiveUsers) {
+        const qualis = qualisByUser.get(user.id) || [];
         const name = `${user.vorname||''} ${user.nachname||''}`.trim();
         // Lehrgänge ohne Datum
         for (const q of qualis) {
@@ -3736,13 +3762,9 @@ registerPage('kameraden', async (el) => {
     }
 
     if (kannDienstAufgaben || kannDienstBemerkungen || kannEinsatzBemerkungen) {
-      // Unvollständige Dienste/Einsätze sowie gefüllte Bemerkungen laden – ein Fetch für beide
-      // Zwecke, da nur pro Recht entschieden wird, was tatsächlich in die Liste aufgenommen wird.
-      const [dSnap, eSnap] = await Promise.all([
-        (kannDienstAufgaben || kannDienstBemerkungen)  ? fw.getDocs('dienste')  : Promise.resolve({docs:[]}),
-        (kannDienstAufgaben || kannEinsatzBemerkungen) ? fw.getDocs('einsaetze') : Promise.resolve({docs:[]}),
-      ]);
-      for (const d of dSnap.docs) {
+      // Wiederverwendung von kDiensteSnap/kEinsaetzeSnap (oben bereits für die Stunden-Badges
+      // geladen) statt eines eigenen, zuvor hier doppelt ausgeführten Fetches derselben Daten.
+      for (const d of kDiensteSnap.docs) {
         const dienst = {id:d.id,...d.data()};
         if (kannDienstAufgaben && dienstUnvollstaendig(dienst)) {
           aufgaben.push({ typ: 'dienst-unvollstaendig', text: `Dienst „${dienst.titel}" unvollständig`, uebungId: dienst.id, uebungTyp: 'dienst' });
@@ -3751,7 +3773,7 @@ registerPage('kameraden', async (el) => {
           aufgaben.push({ typ: 'dienst-bemerkung', text: `Dienst „${dienst.titel}": ${dienst.bemerkung}`, uebungId: dienst.id, uebungTyp: 'dienst' });
         }
       }
-      for (const d of eSnap.docs) {
+      for (const d of kEinsaetzeSnap.docs) {
         const einsatz = {id:d.id,...d.data()};
         if (kannDienstAufgaben && einsatzUnvollstaendig(einsatz)) {
           aufgaben.push({ typ: 'einsatz-unvollstaendig', text: `Einsatz „${einsatz.titel}" unvollständig`, uebungId: einsatz.id, uebungTyp: 'einsatz' });
@@ -3763,8 +3785,6 @@ registerPage('kameraden', async (el) => {
     }
 
     if (kannPwResetAufgaben) {
-      // Passwort-Reset-Anfragen laden
-      const pwResetSnap = await fw.getDocs('pw_reset_requests', fw.where('erledigt','==',false));
       for (const d of pwResetSnap.docs) {
         const r = d.data();
         aufgaben.push({ typ: 'pw-reset', text: `Passwort zurücksetzen: ${r.userName||r.loginName}`, resetId: d.id, userId: r.userId });
@@ -3772,8 +3792,7 @@ registerPage('kameraden', async (el) => {
     }
 
     if (kannFahrzeugAufgaben) {
-      // Geräteprüfungen: nicht bestandene + kommentierte laden
-      const pruefSnap = await fw.getDocs('pruefaufgaben');
+      // Geräteprüfungen: nicht bestandene + kommentierte
       const pruefIssues = pruefSnap.docs
         .map(d => ({id: d.id, ...d.data()}))
         .filter(p => p.id !== 'allgemeine-notiz' && !p.ausgeblendet && (p.bestanden === false || p.kommentar));
@@ -3786,9 +3805,7 @@ registerPage('kameraden', async (el) => {
       }
     }
 
-    // Ausgeblendete Aufgaben aus Firestore laden
     const aufgabeKey = a => a.typ + (a.userId||'') + (a.pruefId||'') + (a.uebungId||'');
-    const ausgeblendetSnap = await fw.getDoc('users/'+fw.user.uid+'/settings/aufgaben_ausgeblendet').catch(() => null);
     const ausgeblendet = new Set((ausgeblendetSnap?.data()?.ids) || []);
     const ausgeblendetAufgaben = aufgaben.filter(a => ausgeblendet.has(aufgabeKey(a)));
     const sichtbareAufgaben = aufgaben.filter(a => !ausgeblendet.has(aufgabeKey(a)));
@@ -3901,51 +3918,11 @@ window.aufgabeEinblenden = async (key) => {
           <div class="list-chevron">›</div>
         </div>`).join('')}
     </div>
-    ${fw.hatRecht('stammdaten_ortswehren') ? `
-    <details style="background:var(--card);border-radius:10px;padding:0.8rem;margin-top:0.8rem">
-      <summary style="font-weight:600;cursor:pointer;list-style:none;display:flex;align-items:center;gap:0.5rem">🏘️ Ortswehren verwalten</summary>
-      <div id="ortswehr-inline" style="margin-top:0.8rem">⏳ Lade...</div>
-    </details>` : ''}
-    <div style="display:flex;flex-direction:column;gap:0.4rem;margin-top:0.8rem">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:0.4rem">
-        <button class="btn btn-secondary btn-sm btn-full" onclick="navigate('lehrgaenge')">Lehrgänge</button>
-        <button class="btn btn-secondary btn-sm btn-full" onclick="navigate('statistik')">Statistiken</button>
-      </div>
-      ${fw.hatRecht('stammdaten_dienstgrade') ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('einstellungen-admin')">Dienstgrade & Filter</button>` : ''}
-      ${fw.hatRecht('stammdaten_dienstarten') ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('dienstarten-verwalten')">Dienst-Arten</button>` : ''}
-      ${fw.hatRecht('stammdaten_raenge') ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('raenge-verwalten')">Ränge</button>` : ''}
-      ${(fw.hatRecht('loeschwasser_verwalten') || fw.hatRecht('loeschwasser_pruefen')) ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('loeschwasser-verwalten')">💧 Löschwasser</button>` : ''}
-      ${(fw.hatRecht('dienste_bearbeiten') || fw.hatRecht('einsaetze_bearbeiten')) ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('uebungen-backend')">📋 Dienste & Einsätze bearbeiten</button>` : ''}
-      ${fw.isWehrfuehrer() ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('kameraden-einladen')">➕ Neue Kameraden einladen</button>` : ''}
-      ${fw.isWehrfuehrer() ? `<button class="btn btn-secondary btn-sm btn-full" onclick="navigate('api-status')">📡 API-Status</button>` : ''}
-    </div>
   `;
-  if (fw.hatRecht('stammdaten_ortswehren')) ladeOrtswehrenInline();
+  // Verwaltungsseiten (Lehrgänge, Statistik, Ortswehren, Dienstarten, ...) sind jetzt zentral
+  // über das ☰-Menü in der Kopfzeile erreichbar statt hier am Seitenende aufgelistet - s.
+  // menuAufbauen() in index.html.
 });
-
-async function ladeOrtswehrenInline() {
-  const snap = await fw.getDocs('ortswehren');
-  const wehren = snap.docs.map(d => ({id:d.id,...d.data()}));
-  const el = document.getElementById('ortswehr-inline');
-  if (!el) return;
-  el.innerHTML = `
-    ${wehren.map(w => `
-      <div class="list-item">
-        <div class="list-item-body"><div class="list-item-title">${w.name}</div></div>
-        <div style="display:flex;gap:0.4rem">
-          <button class="btn btn-sm btn-secondary" onclick="navigate('ortswehr-form',{id:'${w.id}'})">✏️</button>
-          <button class="btn btn-sm btn-danger" onclick="ortswehrLoeschenInline('${w.id}')">🗑</button>
-        </div>
-      </div>`).join('') || '<p class="muted" style="font-size:0.85rem">Noch keine Ortswehren</p>'}
-    <div style="margin-top:0.6rem">
-      <button class="btn btn-secondary btn-sm" onclick="navigate('ortswehr-form',{})">+ Neue Ortswehr</button>
-    </div>`;
-}
-window.ortswehrLoeschenInline = async (id) => {
-  if (!confirm('Ortswehr wirklich löschen?')) return;
-  await fw.deleteDoc('ortswehren/'+id);
-  fw.toast('Gelöscht'); ladeOrtswehrenInline();
-};
 
 window.ortMigration = async () => {
   const btn = document.getElementById('btn-ort-migration');
@@ -5241,6 +5218,26 @@ async function apiStatusFetch(url, opts) {
   }
 }
 
+// Eigene Cloud Functions: ein "erreichbar" heißt hier nicht zwingend HTTP 2xx (ein bare GET ohne
+// die richtigen Parameter/Auth bekommt von der eigenen Logik oft berechtigterweise 4xx) - was
+// wirklich auf ein Problem hindeutet, ist 403 direkt von Google Frontend, BEVOR der Funktionscode
+// überhaupt läuft (siehe PROJEKT-UEBERGABE.md 13.11: fehlende Cloud-Run-Invoker-Freigabe, genau
+// der Bug, der die Adress-Autovervollständigung lahmgelegt hat und hier nicht mehr unbemerkt
+// bleiben soll).
+async function apiStatusEigeneFunction(url) {
+  const start = performance.now();
+  const ctrl = new AbortController();
+  const timeout = setTimeout(() => ctrl.abort(), 6000);
+  try {
+    const res = await fetch(url, { signal: ctrl.signal });
+    return { ok: res.status !== 403, ms: Math.round(performance.now() - start), status: res.status };
+  } catch (e) {
+    return { ok: false, ms: Math.round(performance.now() - start), fehler: e.name === 'AbortError' ? 'Zeitüberschreitung' : e.message };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 const API_STATUS_DIENSTE = [
   {
     id: 'firebase', icon: '🔥', name: 'Firebase (Firestore)',
@@ -5257,6 +5254,32 @@ const API_STATUS_DIENSTE = [
         return { ok: false, ms: Math.round(performance.now() - start), fehler: e.message };
       }
     },
+  },
+  {
+    id: 'ortautocomplete', icon: '📮', name: 'Orts-Autocomplete (eigene Cloud Function)',
+    sub: 'Adressvorschläge beim Anlegen eines Einsatzes',
+    check: () => apiStatusEigeneFunction(window.AC_URL),
+  },
+  {
+    id: 'kalenderimport', icon: '📆', name: 'Kalender-Import (eigene Cloud Function)',
+    sub: 'Dienste/Einsätze aus Google Kalender importieren',
+    check: () => apiStatusEigeneFunction(window.IST_DEV
+      ? 'https://kalenderimport-i7y73cc75a-ey.a.run.app'
+      : 'https://europe-west3-ffw-oegeln-791ca.cloudfunctions.net/kalenderImport'),
+  },
+  {
+    id: 'pwreset', icon: '🔑', name: 'Passwort-Reset (eigene Cloud Function)',
+    sub: '"Passwort vergessen" beim Login',
+    check: () => apiStatusEigeneFunction(window.IST_DEV
+      ? 'https://requestpasswordreset-i7y73cc75a-ey.a.run.app'
+      : 'https://europe-west3-ffw-oegeln-791ca.cloudfunctions.net/requestPasswordReset'),
+  },
+  {
+    id: 'pwset', icon: '🔒', name: 'Passwort setzen (eigene Cloud Function)',
+    sub: 'Neues Passwort durch Administrator vergeben',
+    check: () => apiStatusEigeneFunction(window.IST_DEV
+      ? 'https://resetuserpassword-i7y73cc75a-ey.a.run.app'
+      : 'https://europe-west3-ffw-oegeln-791ca.cloudfunctions.net/resetUserPassword'),
   },
   {
     id: 'nominatim', icon: '📍', name: 'Nominatim (OpenStreetMap)',
@@ -5291,14 +5314,15 @@ registerPage('api-status', async (el) => {
     </div>`;
 
   el.innerHTML = `
-    <div class="card" style="padding:0 1rem">
+    <div class="card" id="api-status-summary" style="font-weight:600;text-align:center;padding:0.8rem">⏳ Prüfe alle Dienste…</div>
+    <div class="card" style="padding:0 1rem;margin-top:0.6rem">
       ${API_STATUS_DIENSTE.map(zeile).join('')}
     </div>
     <div class="card" style="margin-top:0.8rem;color:var(--muted);font-size:0.82rem;line-height:1.5">
       💡 Das hier prüft nur, ob die Dienste gerade erreichbar sind – keine echten Nutzungs- oder
       Kostenzahlen (dafür hat die App keinen Zugriff auf das Firebase-Billing). Nutzung/Kosten von
       Firebase einsehen:
-      <a href="https://console.firebase.google.com/project/ffw-oegeln-791ca/usage" target="_blank" rel="noopener">
+      <a href="https://console.firebase.google.com/project/${window.IST_DEV ? 'ffw-oegeln-dev' : 'ffw-oegeln-791ca'}/usage" target="_blank" rel="noopener">
         Firebase Console öffnen ↗
       </a>
     </div>`;
@@ -5311,10 +5335,25 @@ registerPage('api-status', async (el) => {
     badge.textContent = ok ? `✅ erreichbar${detailText ? ' · ' + detailText : ''}` : `❌ nicht erreichbar${detailText ? ' · ' + detailText : ''}`;
   };
 
-  await Promise.all(API_STATUS_DIENSTE.map(async (d) => {
+  const ergebnisse = await Promise.all(API_STATUS_DIENSTE.map(async (d) => {
     const r = await d.check();
     badgeSetzen(d.id, r.ok, r.ok ? r.ms + ' ms' : (r.fehler || ('HTTP ' + r.status)));
+    return { name: d.name, ok: r.ok };
   }));
+
+  // Einzeiler oben: nur Grün, wenn wirklich alles läuft - sonst die betroffenen Dienste namentlich,
+  // damit man nicht erst die ganze Liste durchscrollen muss.
+  const summaryEl = document.getElementById('api-status-summary');
+  const ausgefallen = ergebnisse.filter(r => !r.ok);
+  if (summaryEl) {
+    if (ausgefallen.length === 0) {
+      summaryEl.textContent = '✅ Alle Dienste laufen';
+      summaryEl.style.color = '#16a34a';
+    } else {
+      summaryEl.textContent = `❌ ${ausgefallen.map(r => r.name).join(', ')} läuft nicht`;
+      summaryEl.style.color = 'var(--red)';
+    }
+  }
 });
 
 // ── Neue Kameraden einladen ───────────────────────────────
@@ -5380,4 +5419,110 @@ registerPage('kameraden-einladen', async (el) => {
   }
 });
 
+// ── Verwaltung ─────────────────────────────────────────────
+// Nutzt ein Recht, das im RECHTE_KATALOG schon lange existierte, aber bisher an keiner Stelle
+// tatsächlich geprüft wurde ('verwaltung_sehen', Bereich "Statistik/Verwaltung") - offensichtlich
+// für genau so eine Seite vorgesehen. Bündelt: Umgebungs-Info, Testdaten-Werkzeuge (nur DEV, auf
+// PROD nicht mal gerendert - kein Risiko für echte Daten) und ein Änderungsprotokoll aus
+// changes.json (wird bei jedem Deploy schon gepflegt, war bisher aber nirgends sichtbar).
+registerPage('verwaltung', async (el) => {
+  if (!fw.hatRecht('verwaltung_sehen')) { navigate('dashboard'); return; }
+  fw.setTitle('Verwaltung');
+  fw.showBack(() => navigateBack());
+
+  el.innerHTML = `
+    <div class="card">
+      <div class="card-title">Umgebung</div>
+      <div class="list-item">
+        <div class="list-item-body">
+          <div class="list-item-title">${window.APP_NAME}</div>
+          <div class="list-item-sub">${window.IST_DEV ? 'DEV – zum Testen, eigene Datenbank, keine echten Daten' : 'PROD – Live-System'}</div>
+        </div>
+      </div>
+      <div class="list-item" onclick="navigate('api-status')">
+        <div class="list-item-body">
+          <div class="list-item-title">API-Status</div>
+          <div class="list-item-sub">Erreichbarkeit aller genutzten Dienste prüfen</div>
+        </div>
+        <div class="list-chevron">›</div>
+      </div>
+    </div>
+
+    ${window.IST_DEV ? `
+    <div class="card">
+      <div class="card-title">🧪 Testdaten (nur DEV)</div>
+      <p class="muted" style="font-size:0.8rem;margin-bottom:0.6rem">Zum Ausprobieren, ohne echte Daten anzufassen. Diese Karte erscheint auf PROD gar nicht.</p>
+      <div id="verwaltung-counts" style="font-size:0.82rem;margin-bottom:0.7rem">⏳ Lade Übersicht...</div>
+      <button class="btn btn-secondary btn-sm btn-full" onclick="verwaltungTestdatenAnlegen()">➕ Beispiel-Testdaten anlegen (2 Dienste, 1 Einsatz)</button>
+      <div style="margin-top:0.9rem">
+        <div class="card-subtitle" style="margin-bottom:0.3rem">Test-Accounts (Anmeldename · Rechte)</div>
+        <div style="font-size:0.78rem;color:var(--muted);line-height:1.7">
+          testwf · Wehrführer, alle Rechte<br>
+          testansicht · Kameraden ansehen + Aufgaben<br>
+          testloeschwasser · nur Löschwasser prüfen<br>
+          testbasis · keine Sonderrechte<br>
+          <span style="font-size:0.72rem">Passwort für alle: siehe PROJEKT-UEBERGABE.md</span>
+        </div>
+      </div>
+    </div>` : ''}
+
+    <div class="card">
+      <div class="card-title">Änderungsprotokoll</div>
+      <div id="verwaltung-changelog">⏳ Lade...</div>
+    </div>
+  `;
+
+  ladeVerwaltungCounts();
+  ladeAenderungsprotokoll();
+});
+
+async function ladeVerwaltungCounts() {
+  const zielEl = document.getElementById('verwaltung-counts');
+  if (!zielEl) return;
+  try {
+    const [u, d, e, f] = await Promise.all([
+      fw.getDocs('users'), fw.getDocs('dienste'), fw.getDocs('einsaetze'), fw.getDocs('fahrzeuge'),
+    ]);
+    zielEl.innerHTML = `👤 ${u.docs.length} Kameraden · 📅 ${d.docs.length} Dienste · 🚨 ${e.docs.length} Einsätze · 🚒 ${f.docs.length} Fahrzeuge`;
+  } catch (e) { zielEl.textContent = 'Übersicht konnte nicht geladen werden.'; }
+}
+
+window.verwaltungTestdatenAnlegen = async () => {
+  if (!window.IST_DEV) return; // Sicherheitsnetz - dieser Button existiert auf PROD gar nicht im DOM
+  if (!confirm('Beispiel-Testdaten anlegen (2 Dienste, 1 Einsatz mit Adresse für die Löschwasserkarte)?')) return;
+  try {
+    const heute = new Date();
+    const inZweiTagen = new Date(); inZweiTagen.setDate(heute.getDate() + 2);
+    await fw.addDoc('dienste', {
+      titel: 'TEST: Dienstabend', typ: 'dienst', datum: inZweiTagen, dauer_h: 2,
+      art: 'dienstabend', zeitBeginn: '19:00', relevant: true,
+    });
+    await fw.addDoc('dienste', {
+      // dauer_h/art bewusst leer, damit er in "Offene Aufgaben" als unvollständig auftaucht
+      titel: 'TEST: unvollständiger Dienst', typ: 'dienst', datum: inZweiTagen,
+    });
+    await fw.addDoc('einsaetze', {
+      titel: 'TEST: Kleinbrand', typ: 'einsatz', datum: heute, zeitBeginn: '14:00', zeitEnde: '15:30',
+      ort: 'Dorfstraße 1, Oegeln', relevant: true, ortswehrIds: [],
+    });
+    fw.toast('Testdaten angelegt ✅');
+    ladeVerwaltungCounts();
+  } catch (e) { fw.toast('Fehler: ' + e.message, true); }
+};
+
+async function ladeAenderungsprotokoll() {
+  const zielEl = document.getElementById('verwaltung-changelog');
+  if (!zielEl) return;
+  try {
+    const res = await fetch('./changes.json?t=' + Date.now(), { cache: 'no-store' });
+    const changes = await res.json();
+    zielEl.innerHTML = changes.slice(0, 10).map(c => `
+      <div style="border-bottom:1px solid var(--border);padding:0.5rem 0">
+        <div style="font-weight:600;font-size:0.85rem">${c.datum} <span style="font-weight:400;color:var(--muted);font-family:monospace;font-size:0.72rem">v${c.version}</span></div>
+        <ul style="margin:0.3rem 0 0 1.1rem;padding:0;font-size:0.8rem;color:var(--muted)">
+          ${c.punkte.map(p => `<li style="margin-bottom:0.2rem">${p}</li>`).join('')}
+        </ul>
+      </div>`).join('');
+  } catch (e) { zielEl.textContent = 'Änderungsprotokoll konnte nicht geladen werden.'; }
+}
 
